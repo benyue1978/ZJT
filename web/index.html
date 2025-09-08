@@ -127,7 +127,7 @@
       return {
         server: localStorage.getItem('comfyui_server') || 'http://127.0.0.1:8188/',
         file: null,
-        prompt: '换成写实风格，将裤子换成裙子',
+        prompt: '请输入图片的编辑指令',
         loading: false,
         error: '',
         results: [],
@@ -152,7 +152,6 @@
     },
     methods: {
       onFile(e){ this.file = e.target.files[0] || null; },
-      saveServer(){ localStorage.setItem('comfyui_server', this.server || ''); },
       
       async submit(){
         if(!this.canSubmit) return;
@@ -220,9 +219,13 @@
       },
       
       downloadImage(url, index) {
+        // Use backend proxy download API for better compatibility
+        const filename = `generated_image_${index + 1}.png`;
+        const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+        
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `generated_image_${index + 1}.png`;
+        link.href = downloadUrl;
+        link.download = filename;
         link.target = '_blank';
         document.body.appendChild(link);
         link.click();
@@ -237,12 +240,9 @@
       <div>
         <div class="form">
           <div class="field">
-            <label class="label">ComfyUI 后端地址（可选）</label>
-            <div class="row">
-              <input class="input" v-model.trim="server" placeholder="http://127.0.0.1:8188/" />
-              <button class="btn secondary" @click="saveServer">保存</button>
-            </div>
-            <div class="muted" style="margin-top:6px">若留空，将使用后端默认值。必须与 ComfyUI 实例的地址一致。</div>
+            <label class="label">ComfyUI 后端地址</label>
+            <div class="input" style="background: #1a1f2e; color: #9ca3af; cursor: not-allowed;">{{ server || 'http://127.0.0.1:8188/' }}</div>
+            <div class="muted" style="margin-top:6px">当前使用的 ComfyUI 服务地址</div>
           </div>
 
           <div class="field">

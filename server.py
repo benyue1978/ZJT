@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -240,6 +240,51 @@ async def check_status(
         "status": queue_status,
         "image_urls": []
     })
+
+
+@app.get("/api/download")
+async def download_image(
+    url: str = Query(..., description="Image URL to download"),
+    filename: str = Query(None, description="Custom filename")
+):
+    """
+    Proxy download for ComfyUI images to handle CORS and provide proper download headers
+    """
+    try:
+        # Fetch the image from ComfyUI server
+        response = requests.get(url, timeout=30, stream=True)
+        response.raise_for_status()
+        
+        # Determine filename
+        if not filename:
+            # Extract filename from URL or generate one
+            if "filename=" in url:
+                filename = url.split("filename=")[-1].split("&")[0]
+            else:
+                filename = f"generated_image_{int(time.time())}.png"
+        
+        # Ensure proper file extension
+        if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            filename += '.png'
+        
+        # Get content type
+        content_type = response.headers.get('content-type', 'image/png')
+        
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        
+        return StreamingResponse(
+            generate(),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": content_type
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 
 # Serve frontend - MUST be after API routes
