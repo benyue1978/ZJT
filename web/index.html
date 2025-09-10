@@ -112,10 +112,17 @@
       <div class="list">
         <div class="list-item">
           <div>
-            <div style="font-weight:700">图片AI编辑功能</div>
+            <div style="font-weight:700">qwen中文图片编辑</div>
             <div class="muted">上传图片 + 提示词（调用 ComfyUI 工作流）</div>
           </div>
           <button class="btn" @click="$router.push({name:'image-edit'})">打开</button>
+        </div>
+        <div class="list-item">
+          <div>
+            <div style="font-weight:700">nano banano图片编辑</div>
+            <div class="muted">上传图片 + 提示词（调用 RunningHub API）</div>
+          </div>
+          <button class="btn" @click="$router.push({name:'nanobanana-edit'})">打开</button>
         </div>
       </div>
     `,
@@ -218,6 +225,11 @@
         }
       },
       
+      getProxyImageUrl(url) {
+        // Use backend proxy for image display to avoid CORS issues in Electron
+        return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+      },
+
       downloadImage(url, index) {
         // Use backend proxy download API for better compatibility
         const filename = `generated_image_${index + 1}.png`;
@@ -266,9 +278,155 @@
 
         <div class="preview" v-if="results.length">
           <div class="imgbox" v-for="(url, i) in results" :key="i">
-            <img :src="url" :alt="'result-'+i" />
+            <img :src="getProxyImageUrl(url)" :alt="'result-'+i" />
             <div style="padding: 8px; text-align: center;">
               <button class="btn secondary" @click="downloadImage(url, i)">下载图片</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `
+  };
+
+  const NanobananaEdit = {
+    name: 'NanobananaEdit',
+    data() {
+      return {
+        file: null,
+        prompt: '请输入图片的编辑指令',
+        loading: false,
+        error: '',
+        results: [],
+        taskId: '',
+        status: '',
+        statusInterval: null,
+      }
+    },
+    computed: {
+      canSubmit() { return !!this.file && !!this.prompt && !this.loading },
+      statusText() {
+        switch(this.status) {
+          case 'submitted': return '任务已提交，等待处理...';
+          case 'QUEUED': return '任务排队中...';
+          case 'RUNNING': return '正在生成图片...';
+          case 'SUCCESS': return '生成完成！';
+          case 'FAILED': return '任务失败';
+          default: return '';
+        }
+      }
+    },
+    methods: {
+      onFile(e){ this.file = e.target.files[0] || null; },
+      
+      async submit(){
+        if(!this.canSubmit) return;
+        this.loading = true; this.error=''; this.results=[]; this.taskId=''; this.status='';
+        this.clearStatusCheck();
+        
+        try {
+          const form = new FormData();
+          form.append('image', this.file);
+          form.append('prompt', this.prompt);
+
+          const res = await axios.post('/api/nanobanana-edit', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          
+          this.taskId = res.data.task_id || '';
+          this.status = res.data.status || 'submitted';
+          
+          // Start polling for status
+          this.startStatusCheck();
+          
+        } catch (err) {
+          console.error(err);
+          this.error = err?.response?.data?.detail || err?.message || '请求失败';
+          this.loading = false;
+        }
+      },
+      
+      async checkStatus() {
+        if (!this.taskId) return;
+        
+        try {
+          const res = await axios.get(`/api/nanobanana-status/${this.taskId}`);
+          
+          this.status = res.data.status;
+          
+          if (res.data.status === 'SUCCESS') {
+            this.results = res.data.results || [];
+            this.loading = false;
+            this.clearStatusCheck();
+          } else if (res.data.status === 'FAILED') {
+            this.error = '任务处理失败';
+            this.loading = false;
+            this.clearStatusCheck();
+          }
+        } catch (err) {
+          console.error('Status check error:', err);
+          // Continue checking, don't stop on temporary errors
+        }
+      },
+      
+      startStatusCheck() {
+        this.statusInterval = setInterval(() => {
+          this.checkStatus();
+        }, 3000); // Check every 3 seconds
+      },
+      
+      clearStatusCheck() {
+        if (this.statusInterval) {
+          clearInterval(this.statusInterval);
+          this.statusInterval = null;
+        }
+      },
+      
+      downloadImage(url, index) {
+        // Use backend proxy download API for better compatibility
+        const filename = `nanobanana_result_${index + 1}.png`;
+        const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+        
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    },
+    
+    beforeUnmount() {
+      this.clearStatusCheck();
+    },
+    template: `
+      <div>
+        <div class="form">
+          <div class="field">
+            <label class="label">上传图片</label>
+            <input class="input" type="file" accept="image/*" @change="onFile" />
+          </div>
+
+          <div class="field">
+            <label class="label">提示词</label>
+            <textarea class="textarea" v-model.trim="prompt" placeholder="请输入对图片的编辑指令，例如：将人物制作成为手办"></textarea>
+          </div>
+
+          <div class="field">
+            <button class="btn" :disabled="!canSubmit" @click="submit">{{ loading ? '提交中…' : '提交任务' }}</button>
+          </div>
+        </div>
+
+        <div class="status" v-if="taskId">任务 ID：{{ taskId }}</div>
+        <div class="status" v-if="statusText">{{ statusText }}</div>
+        <div class="status danger" v-if="error">{{ error }}</div>
+
+        <div class="preview" v-if="results.length">
+          <div class="imgbox" v-for="(result, i) in results" :key="i">
+            <img :src="result.file_url" :alt="'result-'+i" />
+            <div style="padding: 8px; text-align: center;">
+              <button class="btn secondary" @click="downloadImage(result.file_url, i)">下载图片</button>
+              <div class="muted" style="margin-top: 4px; font-size: 11px;">耗时: {{ result.task_cost_time }}s</div>
             </div>
           </div>
         </div>
@@ -279,6 +437,7 @@
   const routes = [
     { path: '/', name: 'list', component: ListPage },
     { path: '/image-edit', name: 'image-edit', component: ImageEdit },
+    { path: '/nanobanana-edit', name: 'nanobanana-edit', component: NanobananaEdit },
   ];
   const router = VueRouter.createRouter({
     history: VueRouter.createWebHistory(),
@@ -289,7 +448,12 @@
     data(){ return { tools: [{name:'图片AI编辑功能', path:'/image-edit'}] } },
     computed: {
       route(){ return this.$route },
-      pageTitle(){ return this.route.name === 'list' ? 'AI 工具列表' : '图片AI编辑功能'; }
+      pageTitle(){ 
+        if (this.route.name === 'list') return 'AI 工具列表';
+        if (this.route.name === 'image-edit') return 'qwen中文图片编辑';
+        if (this.route.name === 'nanobanana-edit') return 'nano banano图片编辑';
+        return 'AI 工具';
+      }
     },
     methods: {
       goHome(){ this.$router.push({name:'list'}); }

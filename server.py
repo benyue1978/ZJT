@@ -10,10 +10,18 @@ import os
 import time
 from datetime import datetime
 from typing import List
+from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
 COMFYUI_OUTPUT_PATH = '/mnt/disk/ComfyUI/server_output'
+UPLOAD_DIR = os.path.join(APP_DIR, "upload")
+
+# Load server configuration
+import yaml
+with open(os.path.join(APP_DIR, "config.yml"), 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+SERVER_HOST = config["server"]["host"]
 
 # Default ComfyUI server address; can be overridden by request field
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
@@ -285,6 +293,125 @@ async def download_image(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+
+
+@app.get("/api/proxy-image")
+async def proxy_image(url: str = Query(..., description="Image URL to proxy")):
+    """
+    Proxy image requests to avoid CORS issues in Electron
+    """
+    try:
+        # Fetch the image from the external server
+        response = requests.get(url, timeout=30, stream=True)
+        response.raise_for_status()
+        
+        # Get content type
+        content_type = response.headers.get('content-type', 'image/png')
+        
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        
+        return StreamingResponse(
+            generate(),
+            media_type=content_type,
+            headers={
+                "Content-Type": content_type,
+                "Cache-Control": "public, max-age=3600"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image proxy failed: {str(e)}")
+
+
+def _save_uploaded_image(upload_file: UploadFile) -> str:
+    """
+    Save uploaded image to upload directory and return the file URL
+    """
+    # Ensure upload directory exists
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    # Generate unique filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    file_extension = os.path.splitext(upload_file.filename or "image.png")[1]
+    filename = f"upload_{timestamp}_{unique_id}{file_extension}"
+    
+    # Save file
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    with open(file_path, "wb") as f:
+        content = upload_file.file.read()
+        f.write(content)
+    
+    # Return URL that can be accessed via static file serving
+    return f"{SERVER_HOST}/upload/{filename}"
+
+
+@app.post("/api/nanobanana-edit")
+async def nanobanana_edit(
+    image: UploadFile = File(...),
+    prompt: str = Form(...)
+):
+    """
+    Submit image editing task to RunningHub nanobanana service
+    """
+    try:
+        # Save uploaded image to upload directory
+        image_url = _save_uploaded_image(image)
+        
+        # Initialize RunningHub client
+        client = RunningHubClient()
+        
+        # Create nodes for the workflow
+        nodes = create_image_edit_nodes(image_url, prompt)
+        
+        # Submit task
+        response = client.run_task(nodes)
+        task_id = response["data"]["taskId"]
+        
+        return JSONResponse({
+            "task_id": task_id,
+            "status": "submitted",
+            "image_url": image_url
+        })
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit nanobanana task: {str(e)}")
+
+
+@app.get("/api/nanobanana-status/{task_id}")
+async def nanobanana_status(task_id: str):
+    """
+    Check the status of a nanobanana task
+    """
+    try:
+        client = RunningHubClient()
+        status = client.check_status(task_id)
+        
+        if status == TaskStatus.SUCCESS:
+            # Get results
+            results = client.get_outputs(task_id)
+            return JSONResponse({
+                "status": status.value,
+                "results": [
+                    {
+                        "file_url": result.file_url,
+                        "file_type": result.file_type,
+                        "task_cost_time": result.task_cost_time,
+                        "node_id": result.node_id
+                    }
+                    for result in results
+                ]
+            })
+        else:
+            return JSONResponse({
+                "status": status.value,
+                "results": []
+            })
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check nanobanana status: {str(e)}")
 
 
 # Serve upload directory for static file access
