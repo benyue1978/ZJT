@@ -287,6 +287,12 @@ async def download_image(
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 
+# Serve upload directory for static file access
+upload_dir = os.path.join(APP_DIR, "upload")
+if not os.path.exists(upload_dir):
+    os.makedirs(upload_dir, exist_ok=True)
+app.mount("/upload", StaticFiles(directory=upload_dir), name="uploads")
+
 # Serve frontend - MUST be after API routes
 static_dir = os.path.join(APP_DIR, "web")
 if not os.path.exists(static_dir):
