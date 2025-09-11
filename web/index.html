@@ -119,7 +119,7 @@
         </div>
         <div class="list-item">
           <div>
-            <div style="font-weight:700">nano banano图片编辑</div>
+            <div style="font-weight:700">nano banana图片编辑</div>
             <div class="muted">上传图片 + 提示词（调用 RunningHub API）</div>
           </div>
           <button class="btn" @click="$router.push({name:'nanobanana-edit'})">打开</button>
@@ -389,7 +389,13 @@
       
       downloadImage(url, index) {
         // Use backend proxy download API for better compatibility
-        const filename = `nanobanana_result_${index + 1}.png`;
+        const now = new Date();
+        const dateStr = now.getFullYear().toString() + 
+                       (now.getMonth() + 1).toString().padStart(2, '0') + 
+                       now.getDate().toString().padStart(2, '0');
+        const timeStr = now.getHours().toString().padStart(2, '0') + 
+                       now.getMinutes().toString().padStart(2, '0');
+        const filename = `nanobanana_image_${dateStr}_${timeStr}_${index + 1}.png`;
         const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
         
         const link = document.createElement('a');
