@@ -232,7 +232,13 @@
 
       downloadImage(url, index) {
         // Use backend proxy download API for better compatibility
-        const filename = `generated_image_${index + 1}.png`;
+        const now = new Date();
+        const dateStr = now.getFullYear().toString() + 
+                       (now.getMonth() + 1).toString().padStart(2, '0') + 
+                       now.getDate().toString().padStart(2, '0');
+        const timeStr = now.getHours().toString().padStart(2, '0') + 
+                       now.getMinutes().toString().padStart(2, '0');
+        const filename = `qwen_image_${dateStr}_${timeStr}_${index + 1}.png`;
         const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
         
         const link = document.createElement('a');
