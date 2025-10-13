@@ -10,7 +10,7 @@ import os
 import time
 from datetime import datetime
 from typing import List
-from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus
+from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -412,6 +412,46 @@ async def nanobanana_status(task_id: str):
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to check nanobanana status: {str(e)}")
+
+
+@app.post("/api/runninghub-edit-sync")
+async def runninghub_edit_sync(
+    image_url: str = Form(..., description="URL of the image to edit"),
+    prompt: str = Form(..., description="Text prompt for editing")
+):
+    """
+    Submit image editing task to RunningHub and wait for completion.
+    Unlike nanobanana-edit, this endpoint accepts an image URL instead of uploaded file
+    and waits for the task to complete before returning results (with 3-minute timeout).
+    """
+    try:
+        print(image_url)
+        print(prompt)
+        # Run the image editing task and wait for completion (3-minute timeout)
+        task_id, results = run_image_edit_task(image_url, prompt, timeout=180)
+
+        return JSONResponse({
+            "task_id": task_id,
+            "status": "completed",
+            "image_url": image_url,
+            "results": [
+                {
+                    "file_url": result.file_url,
+                    "file_type": result.file_type,
+                    "task_cost_time": result.task_cost_time,
+                    "node_id": result.node_id
+                }
+                for result in results
+            ]
+        })
+
+    except TimeoutError as e:
+        raise HTTPException(status_code=408, detail=f"Task timed out: {str(e)}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=f"Task failed: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process image editing task: {str(e)}")
+
 
 
 # Serve upload directory for static file access

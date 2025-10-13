@@ -290,17 +290,47 @@ def create_image_edit_nodes(image_url: str, prompt: str) -> List[NodeInfo]:
     ]
 
 
+
+
+def run_image_edit_task(image_url: str, prompt: str, timeout: int = 180) -> tuple[str, List[TaskResult]]:
+    """
+    Run image editing task with URL input and wait for completion
+    
+    Args:
+        image_url: URL of the input image
+        prompt: Text prompt for editing
+        timeout: Maximum time to wait for completion in seconds (default: 180s = 3 minutes)
+        
+    Returns:
+        Tuple of (task_id, results)
+        
+    Raises:
+        RuntimeError: If task fails
+        TimeoutError: If task doesn't complete within timeout
+    """
+    # Initialize client
+    client = RunningHubClient()
+    
+    # Create nodes for image editing
+    nodes = create_image_edit_nodes(image_url, prompt)
+    
+    # Submit and wait for completion
+    task_id, results = client.run_and_wait(nodes, timeout)
+    
+    return task_id, results
+
+
 # Example usage
 if __name__ == "__main__":
     # Initialize client
     client = RunningHubClient()
-    
+
     # Example: Create nodes for image editing
     nodes = create_image_edit_nodes(
-        image_url="https://www.perseids.cn/007mfYxXly1hvdnrv6k9ij30qo140425.jpg",
-        prompt="将人物制作成为手办"
+        image_url="https://sns-webpic-qc.xhscdn.com/202510101731/76968279d8c5d2a1efa2cbb8065d32af/1040g00831g1s92qa0idg5npsq1c0bnlahbnd6eo!nd_dft_wlteh_webp_3",
+        prompt="将图片的背景替换掉，换成你认为更加合适的背景。新背景和原背景一定要不同。将所有的文字全部去除"
     )
-    
+
     try:
         # Submit and wait for completion
         task_id, results = client.run_and_wait(nodes)
