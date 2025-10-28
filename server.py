@@ -12,11 +12,14 @@ from datetime import datetime
 from typing import List
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync
 from config_util import get_config_path, is_dev_environment
+from perseids_client import make_perseids_request
+import uuid
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
 COMFYUI_OUTPUT_PATH = '/mnt/disk/ComfyUI/server_output'
 UPLOAD_DIR = os.path.join(APP_DIR, "upload")
+CHECK_AUTH_TOKEN = True
 
 # Load server configuration
 import yaml
@@ -24,7 +27,7 @@ config_file = get_config_path()
 with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
     config = yaml.safe_load(f)
 SERVER_HOST = config["server"]["host"]
-
+BASE_URL = config["authentication"]["url"]
 # Default ComfyUI server address; can be overridden by request field
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
 
@@ -362,12 +365,63 @@ def _save_uploaded_image(upload_file: UploadFile) -> str:
 @app.post("/api/nanobanana-edit")
 async def nanobanana_edit(
     image: UploadFile = File(...),
-    prompt: str = Form(...)
+    prompt: str = Form(...),
+    auth_token: str = Form(None, description="Authentication token")
 ):
     """
     Submit image editing task to RunningHub nanobanana service
     """
     try:
+        if CHECK_AUTH_TOKEN and auth_token is None:
+            raise HTTPException(
+                status_code=400, 
+                detail="Authentication token is required"
+            )
+
+        #用uuid生成交易id
+        transaction_id = str(uuid.uuid4())
+        if CHECK_AUTH_TOKEN:
+            computing_power = 2
+            headers = {'Authorization': f'Bearer {auth_token}'}
+            #发起请求，检查算力是否充足
+            success, message, response_data = make_perseids_request(
+                BASE_URL,
+                endpoint='user/check_computing_power',
+                method='GET',
+                headers=headers
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=message
+                )
+            
+            # Check if computing power is sufficient
+            user_computing_power = response_data.get('computing_power', 0)
+            if user_computing_power < computing_power:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="您的算力不足，无法生成视频"
+                )
+            
+
+            #发起请求，扣除算力
+            success, message, response_data = make_perseids_request(
+                BASE_URL,
+                endpoint='user/calculate_computing_power',
+                method='POST',
+                headers=headers,
+                data={
+                    "computing_power": computing_power,
+                    "behavior": "deduct",
+                    "transaction_id": transaction_id
+                }
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=message
+                )
         # Save uploaded image to upload directory
         image_url = _save_uploaded_image(image)
         
@@ -378,7 +432,7 @@ async def nanobanana_edit(
         nodes = create_image_edit_nodes(image_url, prompt)
         
         # Submit task
-        response = client.run_task(nodes)
+        response = client.run_task(nodes,transaction_id)
         task_id = response["data"]["taskId"]
         
         return JSONResponse({
@@ -468,13 +522,19 @@ async def runninghub_edit_sync(
 async def ai_app_run(
     prompt: str = Form(..., description="Text prompt for the AI app"),
     model: str = Form("portrait", description="Model type: portrait, landscape, portrait-hd, landscape-hd"),
-    timeout: int = Form(300, description="Maximum wait time in seconds")
+    timeout: int = Form(300, description="Maximum wait time in seconds"),
+    auth_token: str = Form(None, description="Authentication token")
 ):
     """
     Submit task to RunningHub AI-app/run endpoint and wait for completion.
     Automatically polls task status and returns final video/image URLs.
     """
     try:
+        if CHECK_AUTH_TOKEN and auth_token is None:
+            raise HTTPException(
+                status_code=400, 
+                detail="Authentication token is required"
+            )
         # Validate model parameter
         valid_models = ["portrait", "landscape", "portrait-hd", "landscape-hd"]
         if model not in valid_models:
@@ -508,16 +568,62 @@ async def ai_app_run(
             }
         ]
         
-        # Get AI-app configuration from config file
+        # Get AI-app configuration from config file0
         webapp_id = config["runninghub"].get("ai_app_webapp_id", "1973555977595301890")
         api_key = config["runninghub"].get("ai_app_api_key", config["runninghub"]["api_key"])
-        
+
+        #用uuid生成交易id
+        transaction_id = str(uuid.uuid4())
+        if CHECK_AUTH_TOKEN:
+            computing_power = 20
+            headers = {'Authorization': f'Bearer {auth_token}'}
+            #发起请求，检查算力是否充足
+            success, message, response_data = make_perseids_request(
+                BASE_URL,
+                endpoint='user/check_computing_power',
+                method='GET',
+                headers=headers
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=message
+                )
+            
+            # Check if computing power is sufficient
+            user_computing_power = response_data.get('computing_power', 0)
+            if user_computing_power < computing_power:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="您的算力不足，无法生成视频"
+                )
+            
+
+            #发起请求，扣除算力
+            success, message, response_data = make_perseids_request(
+                BASE_URL,
+                endpoint='user/calculate_computing_power',
+                method='POST',
+                headers=headers,
+                data={
+                    "computing_power": computing_power,
+                    "behavior": "deduct",
+                    "transaction_id": transaction_id
+                }
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=message
+                )
+            
         # Run task and wait for completion
         task_id, results = run_ai_app_task_sync(
             webapp_id=webapp_id,
             api_key=api_key,
             node_info_list=node_info_list,
-            timeout=timeout
+            timeout=timeout,
+            transaction_id=transaction_id
         )
         
         return JSONResponse({
@@ -559,5 +665,5 @@ app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
 
 if __name__ == "__main__":
-    port = 9002 if is_dev_environment() else config["server"].get("port", 5173)
+    port = 9003 if is_dev_environment() else config["server"].get("port", 5174)
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)

@@ -320,7 +320,12 @@
         taskId: '',
         status: '',
         statusInterval: null,
+        authToken: '',
       }
+    },
+    mounted() {
+      // Get auth_token from sessionStorage (set by App component)
+      this.authToken = sessionStorage.getItem('auth_token') || '';
     },
     computed: {
       canSubmit() { return !!this.file && !!this.prompt && !this.loading },
@@ -347,6 +352,11 @@
           const form = new FormData();
           form.append('image', this.file);
           form.append('prompt', this.prompt);
+          
+          // Add auth_token if available
+          if (this.authToken) {
+            form.append('auth_token', this.authToken);
+          }
 
           const res = await axios.post('/api/nanobanana-edit', form, {
             headers: { 'Content-Type': 'multipart/form-data' },
@@ -472,7 +482,12 @@
         results: [],
         taskId: '',
         status: '',
+        authToken: '',
       }
+    },
+    mounted() {
+      // Get auth_token from sessionStorage (set by App component)
+      this.authToken = sessionStorage.getItem('auth_token') || '';
     },
     computed: {
       canSubmit() { return !!this.prompt.trim() && !this.loading },
@@ -504,6 +519,11 @@
           form.append('prompt', this.prompt);
           form.append('model', this.model);
           form.append('timeout', '900'); // 15 minutes timeout
+          
+          // Add auth_token if available
+          if (this.authToken) {
+            form.append('auth_token', this.authToken);
+          }
 
           const res = await axios.post('/api/ai-app-run', form, {
             headers: { 'Content-Type': 'multipart/form-data' },
@@ -592,12 +612,27 @@
   });
 
   const App = {
-    data(){ return { tools: [
-      {name:'qwen中文图片编辑', path:'/image-edit'},
-      {name:'nano banana图片编辑', path:'/nanobanana-edit'},
-      {name:'AI视频生成', path:'/ai-video-gen'},
-      {name:'小红书笔记修改', path:'http://ssh.perseids.cn:15678/form/8cd1955c-5cf6-4111-a3a4-406001d7e3b2'}
-    ] } },
+    data(){ return { 
+      tools: [
+        {name:'qwen中文图片编辑', path:'/image-edit'},
+        {name:'nano banana图片编辑', path:'/nanobanana-edit'},
+        {name:'AI视频生成', path:'/ai-video-gen'},
+        {name:'小红书笔记修改', path:'http://ssh.perseids.cn:15678/form/8cd1955c-5cf6-4111-a3a4-406001d7e3b2'}
+      ],
+      authToken: ''
+    } },
+    mounted() {
+      // Extract auth_token from URL query parameters at app level
+      const urlParams = new URLSearchParams(window.location.search);
+      this.authToken = urlParams.get('auth_token') || '';
+      if (this.authToken) {
+        // Store in sessionStorage for persistence across navigation
+        sessionStorage.setItem('auth_token', this.authToken);
+      } else {
+        // Try to restore from sessionStorage
+        this.authToken = sessionStorage.getItem('auth_token') || '';
+      }
+    },
     computed: {
       route(){ return this.$route },
       pageTitle(){ 
