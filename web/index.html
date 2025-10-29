@@ -846,16 +846,16 @@
       // Extract auth_token from URL query parameters at app level
       const urlParams = new URLSearchParams(window.location.search);
       this.authToken = urlParams.get('auth_token') || '';
+      this.userPhone = urlParams.get('phone') || '';
       if (this.authToken) {
         // Store in sessionStorage for persistence across navigation
         sessionStorage.setItem('auth_token', this.authToken);
+        sessionStorage.setItem('phone', this.userPhone);
       } else {
         // Try to restore from sessionStorage
         this.authToken = sessionStorage.getItem('auth_token') || '';
+        this.userPhone = sessionStorage.getItem('phone') || '';
       }
-      
-      // Restore user phone from sessionStorage
-      this.userPhone = sessionStorage.getItem('phone') || '';
     },
     computed: {
       route(){ return this.$route },
