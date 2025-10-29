@@ -858,7 +858,7 @@ async def register(request: RegisterRequest):
                 content={
                     'success': True,
                     'message': '注册成功',
-                    'data': response_data
+                    'data': auth_data
                 }
             )
         else:

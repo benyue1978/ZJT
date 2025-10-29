@@ -362,14 +362,14 @@
         <div class="list-item">
           <div>
             <div style="font-weight:700">nano banana图片编辑</div>
-            <div class="muted">上传图片 + 提示词（调用 RunningHub API）</div>
+            <div class="muted">上传图片 + 提示词</div>
           </div>
           <button class="btn" @click="$router.push({name:'nanobanana-edit'})">打开</button>
         </div>
         <div class="list-item">
           <div>
             <div style="font-weight:700">AI视频生成</div>
-            <div class="muted">输入文本提示词生成视频（调用 RunningHub AI-app）</div>
+            <div class="muted">输入文本提示词生成视频</div>
           </div>
           <button class="btn" @click="$router.push({name:'ai-video-gen'})">打开</button>
         </div>
@@ -1210,10 +1210,12 @@
           if (response.data.success) {
             this.computingPower = response.data.data.computing_power;
           } else {
+            this.computingPower = 0;
             console.error('Failed to fetch computing power:', response.data.message);
           }
         } catch (error) {
           console.error('Fetch computing power error:', error);
+          this.computingPower = 0;
         }
       },
       
