@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,11 +8,14 @@ import uuid
 import json
 import os
 import time
+import logging
+import traceback
 from datetime import datetime
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync
 from config_util import get_config_path, is_dev_environment
-from perseids_client import make_perseids_request
+from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
 import uuid
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,11 +30,15 @@ config_file = get_config_path()
 with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
     config = yaml.safe_load(f)
 SERVER_HOST = config["server"]["host"]
-BASE_URL = config["authentication"]["url"]
+
 # Default ComfyUI server address; can be overridden by request field
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
 
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Allow CORS for local dev if needed
 app.add_middleware(
@@ -385,7 +392,6 @@ async def nanobanana_edit(
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
             success, message, response_data = make_perseids_request(
-                BASE_URL,
                 endpoint='user/check_computing_power',
                 method='GET',
                 headers=headers
@@ -407,7 +413,6 @@ async def nanobanana_edit(
 
             #发起请求，扣除算力
             success, message, response_data = make_perseids_request(
-                BASE_URL,
                 endpoint='user/calculate_computing_power',
                 method='POST',
                 headers=headers,
@@ -579,7 +584,6 @@ async def ai_app_run(
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
             success, message, response_data = make_perseids_request(
-                BASE_URL,
                 endpoint='user/check_computing_power',
                 method='GET',
                 headers=headers
@@ -601,7 +605,6 @@ async def ai_app_run(
 
             #发起请求，扣除算力
             success, message, response_data = make_perseids_request(
-                BASE_URL,
                 endpoint='user/calculate_computing_power',
                 method='POST',
                 headers=headers,
@@ -649,6 +652,306 @@ async def ai_app_run(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to submit AI app task: {str(e)}")
+
+
+class SendVerifyCodeRequest(BaseModel):
+    phone: str
+    type: str
+    agent: Optional[str] = 'default'
+
+@app.post('/api/auth/send_verify_code')
+async def send_verify_code(request: SendVerifyCodeRequest):
+    """
+    发送验证码
+    """
+    try:
+        phone = request.phone
+        verify_type = request.type
+        agent = request.agent
+
+        if not phone or not verify_type:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '手机号和验证码类型不能为空'
+                }
+            )
+
+        # 验证手机号格式
+        if not phone.isdigit() or len(phone) != 11:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '无效的手机号格式'
+                }
+            )
+
+        # 验证码类型检查
+        valid_types = ['register', 'login', 'reset_password', 'get_serial', 'update_serial']
+        if verify_type not in valid_types:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '无效的验证码类型'
+                }
+            )
+
+        # 调用 Go 服务器发送验证码
+        success, message, response_data = make_perseids_request(
+            endpoint='send_verify_code',
+            data={
+                'phone': phone,
+                'type': verify_type,
+                'agent': agent
+            }
+        )
+
+        if success:
+            return JSONResponse(
+                content={
+                    'success': True,
+                    'message': '验证码发送成功'
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': message or '验证码发送失败'
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"发送验证码时发生错误: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'message': '服务器内部错误'
+            }
+        )
+
+class RegisterRequest(BaseModel):
+    phone: str
+    code: str
+    password: str
+    agent: Optional[str] = 'default'
+
+@app.post('/api/auth/register')
+async def register(request: RegisterRequest):
+    """
+    用户注册接口
+    """
+    try:
+        phone = request.phone
+        password = request.password
+        verify_code = request.code
+        agent = request.agent
+        
+        logger.info(f"收到注册请求 - 手机号: {phone}")
+
+        # 验证必填字段
+        if not all([phone, password, verify_code]):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '手机号、密码和验证码不能为空'
+                }
+            )
+
+        # 验证手机号格式
+        if not phone.isdigit() or len(phone) != 11:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '无效的手机号格式'
+                }
+            )
+
+        # 验证密码长度
+        if len(password) < 6:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '密码长度不能少于6位'
+                }
+            )
+
+        # 调用认证服务器注册
+        success, message, auth_data = call_external_auth_server(
+            phone=phone,
+            password=password,
+            auth_type='register',
+            extra_data={'code': verify_code}  # 使用 code 而不是 verify_code
+        )
+        
+        if success:
+            logger.info(f"用户注册成功 - 手机号: {phone}")
+            return JSONResponse(
+                content={
+                    'success': True,
+                    'message': '注册成功',
+                    'data': response_data
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': message or '注册失败'
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"处理注册请求时发生异常: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'message': '系统异常，请稍后重试'
+            }
+        )
+
+class LoginRequest(BaseModel):
+    phone: str
+    password: str
+    agent: Optional[str] = 'default'
+
+@app.post('/api/auth/login')
+async def login(request: LoginRequest):
+    """
+    用户登录接口
+    """
+    try:
+        phone = request.phone
+        password = request.password
+        agent = request.agent
+        
+        logger.info(f"收到登录请求 - 手机号: {phone}")
+
+        # 验证必填字段
+        if not all([phone, password]):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '手机号和密码不能为空'
+                }
+            )
+
+        # 验证手机号格式
+        if not phone.isdigit() or len(phone) != 11:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '无效的手机号格式'
+                }
+            )
+        device_uuid = get_device_uuid()
+        if device_uuid is None:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '无法获取设备UUID'
+                }
+            )
+        # 调用认证服务器登录
+        success, message, auth_data = call_external_auth_server(phone, password, device_uuid)
+        
+        if success:
+            logger.info(f"用户登录成功 - 手机号: {phone}")
+            return JSONResponse(
+                content={
+                    'success': True,
+                    'message': '登录成功',
+                    'data': auth_data
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': message or '登录失败'
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"处理登录请求时发生异常: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'message': '系统异常，请稍后重试'
+            }
+        )
+
+class LogoutRequest(BaseModel):
+    auth_token: str
+
+@app.post('/api/auth/logout')
+async def logout(request: LogoutRequest):
+    """
+    用户登出接口
+    """
+    try:
+        auth_token = request.auth_token
+
+        if not auth_token:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': '认证信息不存在'
+                }
+            )
+
+        # 调用 perseids_server 的登出接口
+        success, message, response_data = make_perseids_request(
+            endpoint='auth/logout',
+            method='POST',
+            headers={'Authorization': f"Bearer {auth_token}"}
+        )
+
+        if success:
+            return JSONResponse(
+                content={
+                    'success': True,
+                    'message': '登出成功'
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'message': message or '登出失败'
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"登出失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'message': '登出失败'
+            }
+        )
 
 
 # Serve upload directory for static file access

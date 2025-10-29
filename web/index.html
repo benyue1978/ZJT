@@ -87,6 +87,88 @@
 
     .status { padding: 10px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
     .danger { color: #fca5a5; }
+
+    /* Login Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    }
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-tab {
+      flex: 1;
+      padding: 10px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .modal-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    .modal-tab:hover { color: var(--text); }
+    .code-btn {
+      background: var(--primary);
+      color: #051b0d;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: filter 0.2s;
+    }
+    .code-btn:hover { filter: brightness(1.05); }
+    .code-btn:disabled {
+      background: #374151;
+      color: #9ca3af;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -95,10 +177,84 @@
       <header>
         <div class="title">{{ pageTitle }}</div>
         <div class="muted" v-if="route.name==='list'">共 {{ tools.length }} 个工具</div>
-        <button class="btn secondary" v-if="route.name!=='list'" @click="goHome">返回</button>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button class="btn secondary" v-if="route.name!=='list'" @click="goHome">返回</button>
+          <template v-if="isLoggedIn">
+            <span class="muted" style="font-size: 14px;">{{ maskedPhone }}</span>
+            <button class="btn secondary" @click="handleLogout">登出</button>
+          </template>
+          <button class="btn" v-else @click="showLoginModal = true">登录</button>
+        </div>
       </header>
 
       <router-view />
+    </div>
+
+    <!-- Login/Register Modal -->
+    <div class="modal-overlay" v-if="showLoginModal" @click.self="closeModal">
+      <div class="modal" style="position: relative;">
+        <button class="modal-close" @click="closeModal">×</button>
+        <div class="modal-title">{{ authMode === 'login' ? '用户登录' : '用户注册' }}</div>
+        
+        <!-- Tab Switcher -->
+        <div class="modal-tabs">
+          <button class="modal-tab" :class="{active: authMode === 'login'}" @click="switchAuthMode('login')">
+            登录
+          </button>
+          <button class="modal-tab" :class="{active: authMode === 'register'}" @click="switchAuthMode('register')">
+            注册
+          </button>
+        </div>
+
+        <!-- Login Form -->
+        <div v-if="authMode === 'login'">
+          <div class="field">
+            <label class="label">手机号</label>
+            <input class="input" type="tel" v-model="loginForm.phone" placeholder="请输入手机号" maxlength="11" />
+          </div>
+          <div class="field">
+            <label class="label">密码</label>
+            <input class="input" type="password" v-model="loginForm.password" placeholder="请输入密码" @keyup.enter="handleLogin" />
+          </div>
+          <div class="field" style="margin-top: 20px;">
+            <button class="btn" style="width: 100%;" @click="handleLogin" :disabled="loginLoading">
+              {{ loginLoading ? '登录中...' : '登录' }}
+            </button>
+          </div>
+          <div class="status danger" v-if="loginError" style="text-align: center; margin-top: 10px;">{{ loginError }}</div>
+        </div>
+
+        <!-- Register Form -->
+        <div v-if="authMode === 'register'">
+          <div class="field">
+            <label class="label">手机号</label>
+            <input class="input" type="tel" v-model="registerForm.phone" placeholder="请输入手机号" maxlength="11" />
+          </div>
+          <div class="field">
+            <label class="label">验证码</label>
+            <div class="row">
+              <input class="input" type="text" v-model="registerForm.code" placeholder="请输入验证码" maxlength="6" />
+              <button class="code-btn" @click="sendVerificationCode" :disabled="codeSending || codeCountdown > 0">
+                {{ codeCountdown > 0 ? `${codeCountdown}秒后重试` : (codeSending ? '发送中...' : '发送验证码') }}
+              </button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">密码</label>
+            <input class="input" type="password" v-model="registerForm.password" placeholder="请输入密码" />
+          </div>
+          <div class="field">
+            <label class="label">确认密码</label>
+            <input class="input" type="password" v-model="registerForm.confirmPassword" placeholder="请再次输入密码" @keyup.enter="handleRegister" />
+          </div>
+          <div class="field" style="margin-top: 20px;">
+            <button class="btn" style="width: 100%;" @click="handleRegister" :disabled="registerLoading">
+              {{ registerLoading ? '注册中...' : '注册' }}
+            </button>
+          </div>
+          <div class="status danger" v-if="registerError" style="text-align: center; margin-top: 10px;">{{ registerError }}</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -619,7 +775,27 @@
         {name:'AI视频生成', path:'/ai-video-gen'},
         {name:'小红书笔记修改', path:'http://ssh.perseids.cn:15678/form/8cd1955c-5cf6-4111-a3a4-406001d7e3b2'}
       ],
-      authToken: ''
+      authToken: '',
+      userPhone: '',
+      showLoginModal: false,
+      authMode: 'login', // 'login' or 'register'
+      loginForm: {
+        phone: '',
+        password: ''
+      },
+      loginLoading: false,
+      loginError: '',
+      registerForm: {
+        phone: '',
+        code: '',
+        password: '',
+        confirmPassword: ''
+      },
+      registerLoading: false,
+      registerError: '',
+      codeSending: false,
+      codeCountdown: 0,
+      countdownTimer: null
     } },
     mounted() {
       // Extract auth_token from URL query parameters at app level
@@ -632,6 +808,9 @@
         // Try to restore from sessionStorage
         this.authToken = sessionStorage.getItem('auth_token') || '';
       }
+      
+      // Restore user phone from sessionStorage
+      this.userPhone = sessionStorage.getItem('phone') || '';
     },
     computed: {
       route(){ return this.$route },
@@ -641,10 +820,241 @@
         if (this.route.name === 'nanobanana-edit') return 'nano banano图片编辑';
         if (this.route.name === 'ai-video-gen') return 'AI 视频生成';
         return 'AI 工具';
+      },
+      isLoggedIn() {
+        return !!(this.authToken && this.userPhone);
+      },
+      maskedPhone() {
+        if (!this.userPhone || this.userPhone.length !== 11) {
+          return this.userPhone;
+        }
+        // 隐藏中间4位：138****5678
+        return this.userPhone.substring(0, 3) + '****' + this.userPhone.substring(7);
       }
     },
     methods: {
-      goHome(){ this.$router.push({name:'list'}); }
+      goHome(){ this.$router.push({name:'list'}); },
+      
+      switchAuthMode(mode) {
+        this.authMode = mode;
+        this.loginError = '';
+        this.registerError = '';
+      },
+      
+      closeModal() {
+        this.showLoginModal = false;
+        this.authMode = 'login';
+        this.loginError = '';
+        this.registerError = '';
+        this.loginForm.phone = '';
+        this.loginForm.password = '';
+        this.registerForm.phone = '';
+        this.registerForm.code = '';
+        this.registerForm.password = '';
+        this.registerForm.confirmPassword = '';
+      },
+      
+      async handleLogin() {
+        this.loginError = '';
+        this.loginLoading = true;
+        
+        try {
+          // 验证输入
+          if (!this.loginForm.phone || !this.loginForm.password) {
+            this.loginError = '请输入手机号和密码';
+            this.loginLoading = false;
+            return;
+          }
+          
+          // 验证手机号格式
+          if (!/^1[3-9]\d{9}$/.test(this.loginForm.phone)) {
+            this.loginError = '请输入正确的手机号';
+            this.loginLoading = false;
+            return;
+          }
+          
+          // 调用登录 API
+          const response = await axios.post('/api/auth/login', {
+            phone: this.loginForm.phone,
+            password: this.loginForm.password,
+            agent: 'default'
+          });
+          
+          if (response.data.success) {
+            // 登录成功，保存 token
+            if (response.data.data && response.data.data.token) {
+              this.authToken = response.data.data.token;
+              this.userPhone = response.data.data.phone || this.loginForm.phone;
+              sessionStorage.setItem('auth_token', this.authToken);
+              sessionStorage.setItem('phone', this.userPhone);
+            }
+            
+            // 关闭模态框并清空表单
+            this.closeModal();
+            
+          } else {
+            this.loginError = response.data.message || '登录失败';
+          }
+          
+        } catch (error) {
+          console.error('Login error:', error);
+          this.loginError = error?.response?.data?.message || '登录失败，请重试';
+        } finally {
+          this.loginLoading = false;
+        }
+      },
+      
+      async sendVerificationCode() {
+        this.registerError = '';
+        
+        // 验证手机号
+        if (!this.registerForm.phone) {
+          this.registerError = '请输入手机号';
+          return;
+        }
+        
+        if (!/^1[3-9]\d{9}$/.test(this.registerForm.phone)) {
+          this.registerError = '请输入正确的手机号';
+          return;
+        }
+        
+        this.codeSending = true;
+        
+        try {
+          // 调用发送验证码 API
+          const response = await axios.post('/api/auth/send_verify_code', {
+            phone: this.registerForm.phone,
+            type: 'register',
+            agent: 'default'
+          });
+          
+          if (response.data.success) {
+            // 开始倒计时
+            this.codeCountdown = 60;
+            this.countdownTimer = setInterval(() => {
+              this.codeCountdown--;
+              if (this.codeCountdown <= 0) {
+                clearInterval(this.countdownTimer);
+                this.countdownTimer = null;
+              }
+            }, 1000);
+          } else {
+            this.registerError = response.data.message || '发送验证码失败';
+          }
+          
+        } catch (error) {
+          console.error('Send code error:', error);
+          this.registerError = error?.response?.data?.message || '发送验证码失败，请重试';
+        } finally {
+          this.codeSending = false;
+        }
+      },
+      
+      async handleRegister() {
+        this.registerError = '';
+        this.registerLoading = true;
+        
+        try {
+          // 验证输入
+          if (!this.registerForm.phone || !this.registerForm.code || 
+              !this.registerForm.password || !this.registerForm.confirmPassword) {
+            this.registerError = '请填写完整信息';
+            this.registerLoading = false;
+            return;
+          }
+          
+          // 验证手机号格式
+          if (!/^1[3-9]\d{9}$/.test(this.registerForm.phone)) {
+            this.registerError = '请输入正确的手机号';
+            this.registerLoading = false;
+            return;
+          }
+          
+          // 验证密码长度
+          if (this.registerForm.password.length < 6) {
+            this.registerError = '密码长度不能少于6位';
+            this.registerLoading = false;
+            return;
+          }
+          
+          // 验证两次密码是否一致
+          if (this.registerForm.password !== this.registerForm.confirmPassword) {
+            this.registerError = '两次输入的密码不一致';
+            this.registerLoading = false;
+            return;
+          }
+          
+          // 调用注册 API
+          const response = await axios.post('/api/auth/register', {
+            phone: this.registerForm.phone,
+            code: this.registerForm.code,
+            password: this.registerForm.password,
+            agent: 'default'
+          });
+          
+          if (response.data.success) {
+            // 注册成功，保存 token（如果有）
+            if (response.data.data && response.data.data.token) {
+              this.authToken = response.data.data.token;
+              this.userPhone = response.data.data.phone || this.registerForm.phone;
+              sessionStorage.setItem('auth_token', this.authToken);
+              sessionStorage.setItem('phone', this.userPhone);
+            }
+            
+            // 关闭模态框并清空表单
+            this.closeModal();
+            
+            // 提示用户注册成功
+            alert('注册成功！');
+          } else {
+            this.registerError = response.data.message || '注册失败';
+          }
+          
+        } catch (error) {
+          console.error('Register error:', error);
+          this.registerError = error?.response?.data?.message || '注册失败，请重试';
+        } finally {
+          this.registerLoading = false;
+        }
+      },
+      
+      async handleLogout() {
+        try {
+          // 调用后端登出API
+          const response = await axios.post('/api/auth/logout', {
+            auth_token: this.authToken
+          });
+          
+          if (response.data.success) {
+            // 登出成功，清除登录状态
+            this.authToken = '';
+            this.userPhone = '';
+            sessionStorage.removeItem('auth_token');
+            sessionStorage.removeItem('phone');
+          } else {
+            // 即使后端登出失败，也清除本地状态
+            console.error('Logout error:', response.data.message);
+            this.authToken = '';
+            this.userPhone = '';
+            sessionStorage.removeItem('auth_token');
+            sessionStorage.removeItem('phone');
+          }
+        } catch (error) {
+          console.error('Logout error:', error);
+          // 发生错误时也清除本地状态
+          this.authToken = '';
+          this.userPhone = '';
+          sessionStorage.removeItem('auth_token');
+          sessionStorage.removeItem('phone');
+        }
+      }
+    },
+    
+    beforeUnmount() {
+      // 清理倒计时定时器
+      if (this.countdownTimer) {
+        clearInterval(this.countdownTimer);
+      }
     }
   };
 
