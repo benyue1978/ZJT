@@ -486,8 +486,12 @@
         return `/api/proxy-image?url=${encodeURIComponent(url)}`;
       },
 
+      isWechatBrowser() {
+        const ua = navigator.userAgent.toLowerCase();
+        return /micromessenger/.test(ua);
+      },
+      
       downloadImage(url, index) {
-        // Use backend proxy download API for better compatibility
         const now = new Date();
         const dateStr = now.getFullYear().toString() + 
                        (now.getMonth() + 1).toString().padStart(2, '0') + 
@@ -497,13 +501,23 @@
         const filename = `qwen_image_${dateStr}_${timeStr}_${index + 1}.png`;
         const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
         
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // 微信浏览器中直接打开图片，用户可以长按保存
+        if (this.isWechatBrowser()) {
+          window.open(downloadUrl, '_blank');
+          // 提示用户如何保存
+          setTimeout(() => {
+            alert('请长按图片，然后选择“保存图片”');
+          }, 500);
+        } else {
+          // 非微信浏览器使用标准下载方式
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
       }
     },
     
@@ -653,8 +667,12 @@
         }
       },
       
+      isWechatBrowser() {
+        const ua = navigator.userAgent.toLowerCase();
+        return /micromessenger/.test(ua);
+      },
+      
       downloadImage(url, index) {
-        // Use backend proxy download API for better compatibility
         const now = new Date();
         const dateStr = now.getFullYear().toString() + 
                        (now.getMonth() + 1).toString().padStart(2, '0') + 
@@ -664,13 +682,23 @@
         const filename = `nanobanana_image_${dateStr}_${timeStr}_${index + 1}.png`;
         const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
         
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // 微信浏览器中直接打开图片，用户可以长按保存
+        if (this.isWechatBrowser()) {
+          window.open(downloadUrl, '_blank');
+          // 提示用户如何保存
+          setTimeout(() => {
+            alert('请长按图片，然后选择“保存图片”');
+          }, 500);
+        } else {
+          // 非微信浏览器使用标准下载方式
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = filename;
+          link.target = '_blank';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
       }
     },
     
