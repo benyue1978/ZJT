@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync
 from config_util import get_config_path, is_dev_environment
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
+from model import AIToolsModel
 import uuid
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -373,6 +374,7 @@ def _save_uploaded_image(upload_file: UploadFile) -> str:
 async def nanobanana_edit(
     image: UploadFile = File(...),
     prompt: str = Form(...),
+    user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
     """
@@ -387,6 +389,7 @@ async def nanobanana_edit(
 
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
+        
         if CHECK_AUTH_TOKEN:
             computing_power = 2
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -440,6 +443,21 @@ async def nanobanana_edit(
         response = client.run_task(nodes,transaction_id)
         task_id = response["data"]["taskId"]
         
+        # Create database record
+        if user_id:
+            try:
+                AIToolsModel.create(
+                    prompt=prompt,
+                    user_id=user_id,
+                    type=1,  # 1-图片编辑
+                    image_path=image_url,
+                    task_id=task_id,
+                    transaction_id=transaction_id
+                )
+            except Exception as db_error:
+                logger.error(f"Failed to create database record: {db_error}")
+                # Don't fail the request if database insert fails
+        
         return JSONResponse({
             "task_id": task_id,
             "status": "submitted",
@@ -462,6 +480,18 @@ async def nanobanana_status(task_id: str):
         if status == TaskStatus.SUCCESS:
             # Get results
             results = client.get_outputs(task_id)
+            
+            # Update database record with result_url
+            if results:
+                try:
+                    result_url = results[0].file_url
+                    AIToolsModel.update_by_task_id(
+                        task_id=task_id,
+                        result_url=result_url
+                    )
+                except Exception as db_error:
+                    logger.error(f"Failed to update database record: {db_error}")
+            
             return JSONResponse({
                 "status": status.value,
                 "results": [
@@ -1204,6 +1234,51 @@ async def reset_password(request: ResetPasswordRequest):
 
     except Exception as e:
         logger.error(f'重置密码失败: {str(e)}')
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'message': '服务器错误'
+            }
+        )
+
+
+@app.get('/api/ai-tools/history')
+async def get_ai_tools_history(
+    user_id: int = Query(..., description="User ID"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Page size"),
+    type: Optional[int] = Query(None, description="Tool type filter (1-图片编辑, 2-AI视频生成, 3-图片生成视频)")
+):
+    """
+    获取用户的 AI 工具历史记录
+    """
+    try:
+        # 查询历史记录
+        result = AIToolsModel.list_by_user(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+            order_by='create_time',
+            order_direction='DESC'
+        )
+        
+        # 如果指定了 type，过滤结果
+        if type is not None:
+            result['data'] = [item for item in result['data'] if item.get('type') == type]
+            result['total'] = len(result['data'])
+        
+        return JSONResponse(
+            content={
+                'success': True,
+                'message': '查询成功',
+                'data': result
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f'查询历史记录失败: {str(e)}')
         logger.error(traceback.format_exc())
         return JSONResponse(
             status_code=500,
