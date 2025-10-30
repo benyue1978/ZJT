@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -1219,11 +1219,32 @@ if not os.path.exists(upload_dir):
     os.makedirs(upload_dir, exist_ok=True)
 app.mount("/upload", StaticFiles(directory=upload_dir), name="uploads")
 
-# Serve frontend - MUST be after API routes
+# Serve frontend static files
 static_dir = os.path.join(APP_DIR, "web")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir, exist_ok=True)
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+# Catch-all route for SPA - returns index.html for all unmatched routes
+# This supports Vue Router history mode
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """
+    Serve index.html for all routes to support Vue Router history mode.
+    This allows refreshing on routes like /nanobanana-edit, /ai-video-gen, etc.
+    
+    First tries to serve a static file if it exists, otherwise returns index.html.
+    """
+    # Try to serve static file first
+    file_path = os.path.join(static_dir, full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    
+    # Otherwise return index.html for SPA routing
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    
+    raise HTTPException(status_code=404, detail="Frontend not found")
 
 
 if __name__ == "__main__":
