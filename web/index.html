@@ -592,6 +592,26 @@
       closeHistory() {
         this.showHistory = false;
         this.historyPage = 1;
+      },
+      
+      getStatusText(status) {
+        const statusMap = {
+          0: '未处理',
+          1: '处理中',
+          2: '处理完成',
+          '-1': '处理失败'
+        };
+        return statusMap[status] || '未知';
+      },
+      
+      getStatusColor(status) {
+        const colorMap = {
+          0: '#888',
+          1: '#3b82f6',
+          2: '#10b981',
+          '-1': '#ef4444'
+        };
+        return colorMap[status] || '#888';
       }
     },
     
@@ -652,8 +672,13 @@
             
             <div v-else style="padding: 16px;">
               <div v-for="item in historyList" :key="item.id" style="margin-bottom: 16px; padding: 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 8px;">
-                <div style="margin-bottom: 8px;">
-                  <strong>提示词:</strong> {{ item.prompt }}
+                <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>提示词:</strong> {{ item.prompt }}
+                  </div>
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                    {{ getStatusText(item.status) }}
+                  </span>
                 </div>
                 <div style="display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px;">
                   <span>创建时间: {{ item.create_time ? new Date(item.create_time).toLocaleString('zh-CN') : '未知' }}</span>
@@ -889,6 +914,26 @@
       closeHistory() {
         this.showHistory = false;
         this.historyPage = 1;
+      },
+      
+      getStatusText(status) {
+        const statusMap = {
+          0: '未处理',
+          1: '处理中',
+          2: '处理完成',
+          '-1': '处理失败'
+        };
+        return statusMap[status] || '未知';
+      },
+      
+      getStatusColor(status) {
+        const colorMap = {
+          0: '#888',
+          1: '#3b82f6',
+          2: '#10b981',
+          '-1': '#ef4444'
+        };
+        return colorMap[status] || '#888';
       }
     },
     
@@ -944,8 +989,13 @@
             
             <div v-else style="padding: 16px;">
               <div v-for="item in historyList" :key="item.id" style="margin-bottom: 16px; padding: 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 8px;">
-                <div style="margin-bottom: 8px;">
-                  <strong>提示词:</strong> {{ item.prompt }}
+                <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>提示词:</strong> {{ item.prompt }}
+                  </div>
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                    {{ getStatusText(item.status) }}
+                  </span>
                 </div>
                 <div style="display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px;">
                   <span>创建时间: {{ item.create_time ? new Date(item.create_time).toLocaleString('zh-CN') : '未知' }}</span>
@@ -1121,11 +1171,16 @@
         document.body.removeChild(link);
       },
       
-      async fetchHistory() {
+      async fetchHistory(append = false) {
         const userId = localStorage.getItem('user_id');
         if (!userId) {
           alert('请先登录');
           return;
+        }
+        
+        if (!append) {
+          this.historyPage = 1;
+          this.historyList = [];
         }
         
         this.historyLoading = true;
@@ -1140,7 +1195,12 @@
           });
           
           if (response.data.success) {
-            this.historyList = response.data.data.data || [];
+            const newData = response.data.data.data || [];
+            if (append) {
+              this.historyList = [...this.historyList, ...newData];
+            } else {
+              this.historyList = newData;
+            }
             this.historyTotal = response.data.data.total || 0;
             this.showHistory = true;
           } else {
@@ -1154,8 +1214,45 @@
         }
       },
       
+      async loadMoreHistory() {
+        if (this.historyLoading || this.historyList.length >= this.historyTotal) {
+          return;
+        }
+        this.historyPage++;
+        await this.fetchHistory(true);
+      },
+      
+      handleHistoryScroll(event) {
+        const element = event.target;
+        const scrollBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+        if (scrollBottom < 100) {
+          this.loadMoreHistory();
+        }
+      },
+      
       closeHistory() {
         this.showHistory = false;
+        this.historyPage = 1;
+      },
+      
+      getStatusText(status) {
+        const statusMap = {
+          0: '未处理',
+          1: '处理中',
+          2: '处理完成',
+          '-1': '处理失败'
+        };
+        return statusMap[status] || '未知';
+      },
+      
+      getStatusColor(status) {
+        const colorMap = {
+          0: '#888',
+          1: '#3b82f6',
+          2: '#10b981',
+          '-1': '#ef4444'
+        };
+        return colorMap[status] || '#888';
       },
       
       getModelLabel(value) {
@@ -1241,8 +1338,13 @@
             
             <div v-else style="padding: 16px;">
               <div v-for="item in historyList" :key="item.id" style="margin-bottom: 16px; padding: 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 8px;">
-                <div style="margin-bottom: 8px;">
-                  <strong>提示词:</strong> {{ item.prompt }}
+                <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>提示词:</strong> {{ item.prompt }}
+                  </div>
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                    {{ getStatusText(item.status) }}
+                  </span>
                 </div>
                 <div style="display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px;">
                   <span>模式: {{ getModelLabel(item.video_mode) }}</span>
@@ -1412,11 +1514,16 @@
         document.body.removeChild(link);
       },
       
-      async fetchHistory() {
+      async fetchHistory(append = false) {
         const userId = localStorage.getItem('user_id');
         if (!userId) {
           alert('请先登录');
           return;
+        }
+        
+        if (!append) {
+          this.historyPage = 1;
+          this.historyList = [];
         }
         
         this.historyLoading = true;
@@ -1431,7 +1538,12 @@
           });
           
           if (response.data.success) {
-            this.historyList = response.data.data.data || [];
+            const newData = response.data.data.data || [];
+            if (append) {
+              this.historyList = [...this.historyList, ...newData];
+            } else {
+              this.historyList = newData;
+            }
             this.historyTotal = response.data.data.total || 0;
             this.showHistory = true;
           } else {
@@ -1445,8 +1557,45 @@
         }
       },
       
+      async loadMoreHistory() {
+        if (this.historyLoading || this.historyList.length >= this.historyTotal) {
+          return;
+        }
+        this.historyPage++;
+        await this.fetchHistory(true);
+      },
+      
+      handleHistoryScroll(event) {
+        const element = event.target;
+        const scrollBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+        if (scrollBottom < 100) {
+          this.loadMoreHistory();
+        }
+      },
+      
       closeHistory() {
         this.showHistory = false;
+        this.historyPage = 1;
+      },
+      
+      getStatusText(status) {
+        const statusMap = {
+          0: '未处理',
+          1: '处理中',
+          2: '处理完成',
+          '-1': '处理失败'
+        };
+        return statusMap[status] || '未知';
+      },
+      
+      getStatusColor(status) {
+        const colorMap = {
+          0: '#888',
+          1: '#3b82f6',
+          2: '#10b981',
+          '-1': '#ef4444'
+        };
+        return colorMap[status] || '#888';
       },
       
       getModelLabel(value) {
@@ -1517,8 +1666,13 @@
             
             <div v-else style="padding: 16px;">
               <div v-for="item in historyList" :key="item.id" style="margin-bottom: 16px; padding: 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 8px;">
-                <div style="margin-bottom: 8px;">
-                  <strong>提示词:</strong> {{ item.prompt }}
+                <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>提示词:</strong> {{ item.prompt }}
+                  </div>
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                    {{ getStatusText(item.status) }}
+                  </span>
                 </div>
                 <div style="display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-bottom: 8px;">
                   <span>模式: {{ getModelLabel(item.video_mode) }}</span>
