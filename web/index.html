@@ -487,7 +487,7 @@
             this.loading = false;
             this.clearStatusCheck();
           } else if (res.data.status === 'FAILED') {
-            this.error = '任务处理失败';
+            this.error = res.data.reason || '任务处理失败';
             this.loading = false;
             this.clearStatusCheck();
           }
@@ -703,7 +703,7 @@
                   <div>
                     <strong>提示词:</strong> {{ item.prompt }}
                   </div>
-                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status), cursor: item.status == -1 && item.message ? 'help' : 'default' }" :title="item.status == -1 && item.message ? item.message : ''">
                     {{ getStatusText(item.status) }}
                   </span>
                 </div>
@@ -838,7 +838,7 @@
             this.loading = false;
             this.clearStatusCheck();
           } else if (this.status === 'FAILED') {
-            this.error = '任务失败';
+            this.error = res.data.reason || '任务失败';
             this.loading = false;
             this.clearStatusCheck();
           } else {
@@ -1049,7 +1049,7 @@
                   <div>
                     <strong>提示词:</strong> {{ item.prompt }}
                   </div>
-                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status), cursor: item.status == -1 && item.message ? 'help' : 'default' }" :title="item.status == -1 && item.message ? item.message : ''">
                     {{ getStatusText(item.status) }}
                   </span>
                 </div>
@@ -1186,7 +1186,7 @@
               // Database is already updated by the status endpoint
             }
           } else if (this.status === 'FAILED') {
-            this.error = '任务失败';
+            this.error = res.data.reason || '任务失败';
             this.loading = false;
             this.clearStatusCheck();
           } else {
@@ -1390,7 +1390,7 @@
                   <div>
                     <strong>提示词:</strong> {{ item.prompt }}
                   </div>
-                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status) }">
+                  <span :style="{ padding: '4px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: getStatusColor(item.status) + '20', color: getStatusColor(item.status), border: '1px solid ' + getStatusColor(item.status), cursor: item.status == -1 && item.message ? 'help' : 'default' }" :title="item.status == -1 && item.message ? item.message : ''">
                     {{ getStatusText(item.status) }}
                   </span>
                 </div>
