@@ -26,6 +26,7 @@ class AITool:
         self.user_id = kwargs.get('user_id')
         self.type = kwargs.get('type')
         self.status = kwargs.get('status')
+        self.message = kwargs.get('message')
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -42,7 +43,8 @@ class AITool:
             'result_url': self.result_url,
             'user_id': self.user_id,
             'type': self.type,
-            'status': self.status
+            'status': self.status,
+            'message': self.message
         }
 
 
@@ -60,7 +62,8 @@ class AIToolsModel:
         project_id: Optional[str] = None,
         transaction_id: Optional[str] = None,
         result_url: Optional[str] = None,
-        status: Optional[int] = 0
+        status: Optional[int] = 0,
+        message: Optional[str] = None
     ) -> int:
         """
         Create a new AI tool record
@@ -76,16 +79,17 @@ class AIToolsModel:
             transaction_id: Transaction ID (optional)
             result_url: Result URL (optional)
             status: Status (0-未处理, 1-正在处理, -1-处理失败, 2-处理完成, default: 0)
+            message: Error message (optional)
         
         Returns:
             Inserted record ID
         """
         sql = """
             INSERT INTO ai_tools 
-            (prompt, user_id, type, image_path, duration, ratio, project_id, transaction_id, result_url, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (prompt, user_id, type, image_path, duration, ratio, project_id, transaction_id, result_url, status, message)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        params = (prompt, user_id, type, image_path, duration, ratio, project_id, transaction_id, result_url, status)
+        params = (prompt, user_id, type, image_path, duration, ratio, project_id, transaction_id, result_url, status, message)
         
         try:
             record_id = execute_insert(sql, params)
@@ -255,7 +259,7 @@ class AIToolsModel:
         # Build update fields
         allowed_fields = [
             'prompt', 'type', 'image_path', 'duration', 'ratio',
-            'project_id', 'transaction_id', 'result_url', 'user_id', 'status'
+            'project_id', 'transaction_id', 'result_url', 'user_id', 'status', 'message'
         ]
         
         update_fields = []
@@ -298,7 +302,7 @@ class AIToolsModel:
         """
         allowed_fields = [
             'prompt', 'type', 'image_path', 'duration', 'ratio',
-            'transaction_id', 'result_url', 'user_id', 'status'
+            'transaction_id', 'result_url', 'user_id', 'status', 'message'
         ]
         
         update_fields = []

@@ -517,10 +517,14 @@ async def get_status(project_id: str):
                 ] if media_url else []
             })
         elif task_status == 2:  # Failed
+            logger.info(f"Task failed: {reason}")
+            if reason and "We currently do not support uploads of images containing photorealistic people" in reason:
+                reason = "图片包含真人，无法处理"
             try:
                 AIToolsModel.update_by_project_id(
                     project_id=project_id,
-                    status=-1  # -1-处理失败
+                    status=-1,  # -1-处理失败
+                    message=reason
                 )
             except Exception as db_error:
                 logger.error(f"Failed to update database record: {db_error}")
@@ -546,7 +550,6 @@ async def get_status(project_id: str):
 async def ai_app_run(
     prompt: str = Form(..., description="Text prompt for the AI app"),
     ratio: str = Form("9:16", description="Model type: 9:16, 16:9"),
-    timeout: int = Form(300, description="Maximum wait time in seconds"),
     duration_seconds: int = Form(15, description="Duration in seconds"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
@@ -1205,6 +1208,7 @@ async def get_ai_tools_history(
                     data = result.get("data", {})
                     task_status = data.get("status")  # 0-进行中 1-成功 2-失败
                     media_url = data.get("mediaUrl")
+                    reason = data.get("reason")
                     
                     if task_status == 1:  # Success
                         AIToolsModel.update_by_project_id(
@@ -1216,13 +1220,16 @@ async def get_ai_tools_history(
                         logger.info(f"Task {task.project_id} completed successfully")
                             
                     elif task_status == 2:  # Failed
+                        if reason and "We currently do not support uploads of images containing photorealistic people" in reason:
+                            reason = "图片包含真人，无法处理"
                         # Update status to failed
                         AIToolsModel.update_by_project_id(
                             project_id=task.project_id,
-                            status=-1  # 处理失败
+                            status=-1,  # 处理失败
+                            message=reason
                         )
                         updated_count += 1
-                        logger.info(f"Task {task.project_id} failed")
+                        logger.info(f"Task {task.project_id} failed: {reason}")
                         
                     # If task_status == 0 (in progress), keep status as 1 (processing)
                     
