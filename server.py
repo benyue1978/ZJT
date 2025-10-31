@@ -18,6 +18,7 @@ from config_util import get_config_path, is_dev_environment
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
 from model import AIToolsModel
 import uuid
+from api_requset import create_image_to_video, get_ai_task_result, create_ai_image
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -374,6 +375,7 @@ def _save_uploaded_image(upload_file: UploadFile) -> str:
 async def nanobanana_edit(
     image: UploadFile = File(...),
     prompt: str = Form(...),
+    ratio: str = Form("9:16", description="Model type: 9:16, 16:9, 1:1 ,3:4, 4:3"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
@@ -433,15 +435,10 @@ async def nanobanana_edit(
         # Save uploaded image to upload directory
         image_url = _save_uploaded_image(image)
         
-        # Initialize RunningHub client
-        client = RunningHubClient()
-        
-        # Create nodes for the workflow
-        nodes = create_image_edit_nodes(image_url, prompt)
         
         # Submit task
-        response = client.run_task(nodes,transaction_id)
-        task_id = response["data"]["taskId"]
+        response = create_ai_image(prompt, ratio, image_url)
+        project_id = response["data"]["projectId"]
         
         # Create database record
         if user_id:
@@ -451,7 +448,8 @@ async def nanobanana_edit(
                     user_id=user_id,
                     type=1,  # 1-图片编辑
                     image_path=image_url,
-                    task_id=task_id,
+                    ratio=ratio,
+                    project_id=project_id,
                     transaction_id=transaction_id,
                     status=1
                 )
@@ -460,7 +458,7 @@ async def nanobanana_edit(
                 # Don't fail the request if database insert fails
         
         return JSONResponse({
-            "task_id": task_id,
+            "project_id": project_id,
             "status": "submitted",
             "image_url": image_url
         })
@@ -469,25 +467,25 @@ async def nanobanana_edit(
         raise HTTPException(status_code=500, detail=f"Failed to submit nanobanana task: {str(e)}")
 
 
-@app.get("/api/nanobanana-status/{task_id}")
-async def nanobanana_status(task_id: str):
+@app.get("/api/nanobanana-status/{project_id}")
+async def nanobanana_status(project_id: str):
     """
     Check the status of a nanobanana task
     """
     try:
         client = RunningHubClient()
-        status = client.check_status(task_id)
+        status = client.check_status(project_id)
         
         if status == TaskStatus.SUCCESS:
             # Get results
-            results = client.get_outputs(task_id)
+            results = client.get_outputs(project_id)
             
             # Update database record with result_url
             if results:
                 try:
                     result_url = results[0].file_url
-                    AIToolsModel.update_by_task_id(
-                        task_id=task_id,
+                    AIToolsModel.update_by_project_id(
+                        project_id=project_id,
                         result_url=result_url,
                         status=2
                     )
@@ -507,8 +505,8 @@ async def nanobanana_status(task_id: str):
                 ]
             })
         elif status == TaskStatus.FAILED:
-            AIToolsModel.update_by_task_id(
-                task_id=task_id,
+            AIToolsModel.update_by_project_id(
+                project_id=project_id,
                 status=-1
             )
             return JSONResponse({
@@ -520,49 +518,10 @@ async def nanobanana_status(task_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to check nanobanana status: {str(e)}")
 
 
-@app.post("/api/runninghub-edit-sync")
-async def runninghub_edit_sync(
-    image_url: str = Form(..., description="URL of the image to edit"),
-    prompt: str = Form(..., description="Text prompt for editing")
-):
-    """
-    Submit image editing task to RunningHub and wait for completion.
-    Unlike nanobanana-edit, this endpoint accepts an image URL instead of uploaded file
-    and waits for the task to complete before returning results (with 3-minute timeout).
-    """
-    try:
-        print(image_url)
-        print(prompt)
-        # Run the image editing task and wait for completion (3-minute timeout)
-        task_id, results = run_image_edit_task(image_url, prompt, timeout=180)
-
-        return JSONResponse({
-            "task_id": task_id,
-            "status": "completed",
-            "image_url": image_url,
-            "results": [
-                {
-                    "file_url": result.file_url,
-                    "file_type": result.file_type,
-                    "task_cost_time": result.task_cost_time,
-                    "node_id": result.node_id
-                }
-                for result in results
-            ]
-        })
-
-    except TimeoutError as e:
-        raise HTTPException(status_code=408, detail=f"Task timed out: {str(e)}")
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=f"Task failed: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process image editing task: {str(e)}")
-
-
 @app.post("/api/ai-app-run")
 async def ai_app_run(
     prompt: str = Form(..., description="Text prompt for the AI app"),
-    model: str = Form("portrait", description="Model type: portrait, landscape, portrait-hd, landscape-hd"),
+    ratio: str = Form("9:16", description="Model type: 9:16, 16:9"),
     timeout: int = Form(300, description="Maximum wait time in seconds"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
@@ -577,47 +536,10 @@ async def ai_app_run(
                 status_code=400, 
                 detail="Authentication token is required"
             )
-        # Validate model parameter
-        valid_models = ["portrait", "landscape", "portrait-hd", "landscape-hd"]
-        if model not in valid_models:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid model. Must be one of: {', '.join(valid_models)}"
-            )
-        
-        # Model descriptions mapping
-        model_descriptions = {
-            "portrait": "竖屏",
-            "landscape": "横屏",
-            "portrait-hd": "高清竖屏",
-            "landscape-hd": "高清横屏"
-        }
-        
-        # Build node info list
-        node_info_list = [
-            {
-                "nodeId": "1",
-                "fieldName": "prompt",
-                "fieldValue": prompt,
-                "description": "Input text"
-            },
-            {
-                "nodeId": "1",
-                "fieldName": "model",
-                "fieldData": '[{"name":"portrait","index":"portrait","description":"竖屏","fastIndex":1.0,"descriptionEn":"Vertical screen"},{"name":"landscape","index":"landscape","description":"横屏","fastIndex":2.0,"descriptionEn":"Horizontal screen"},{"name":"portrait-hd","index":"portrait-hd","description":"高清竖屏","fastIndex":3.0,"descriptionEn":"High-definition vertical screen"},{"name":"landscape-hd","index":"landscape-hd","description":"高清横屏","fastIndex":4.0,"descriptionEn":"HD horizontal screen"}]',
-                "fieldValue": model,
-                "description": model_descriptions.get(model, "Horizontal and vertical mode")
-            }
-        ]
-        
-        # Get AI-app configuration from config file0
-        webapp_id = config["runninghub"].get("ai_app_webapp_id", "1973555977595301890")
-        api_key = config["runninghub"].get("ai_app_api_key", config["runninghub"]["api_key"])
-
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
+        computing_power = 20
         if CHECK_AUTH_TOKEN:
-            computing_power = 20
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
             success, message, response_data = make_perseids_request(
@@ -639,15 +561,26 @@ async def ai_app_run(
                     detail="您的算力不足，无法生成视频"
                 )
             
-
-            #发起请求，扣除算力
+            
+        # Submit task (async, return immediately)
+        result = create_image_to_video(prompt, ratio, None, duration)
+        # Check if task submission failed
+        if result.get("code") != 0:
+            error_msg = result.get("msg", "Unknown error")
+            raise HTTPException(status_code=500, detail=f"Task submission failed: {error_msg}")
+        
+        project_id = result.get("data", {}).get("projectId")
+        if not project_id:
+            raise HTTPException(status_code=500, detail="未获得任务id")
+        if CHECK_AUTH_TOKEN:
+            #发起请求，增加算力
             success, message, response_data = make_perseids_request(
-                endpoint='user/calculate_computing_power',
+                endpoint='user/increase_computing_power',
                 method='POST',
                 headers=headers,
                 data={
                     "computing_power": computing_power,
-                    "behavior": "deduct",
+                    "behavior": "increase",
                     "transaction_id": transaction_id
                 }
             )
@@ -656,24 +589,7 @@ async def ai_app_run(
                     status_code=400, 
                     detail=message
                 )
-            
-        # Submit task (async, return immediately)
-        result = run_ai_app_task(
-            webapp_id=webapp_id,
-            api_key=api_key,
-            node_info_list=node_info_list,
-            transaction_id=transaction_id
-        )
-        
-        # Check if task submission failed
-        if result.get("code") != 0:
-            error_msg = result.get("msg", "Unknown error")
-            raise HTTPException(status_code=500, detail=f"Task submission failed: {error_msg}")
-        
-        task_id = result.get("data", {}).get("taskId")
-        if not task_id:
-            raise HTTPException(status_code=500, detail="Failed to get task ID from response")
-        
+
         # Create database record
         if user_id:
             try:
@@ -681,8 +597,8 @@ async def ai_app_run(
                     prompt=prompt,
                     user_id=user_id,
                     type=2,  # 2-AI视频生成
-                    video_mode=model,
-                    task_id=task_id,
+                    ratio=ratio,
+                    project_id=project_id,
                     transaction_id=transaction_id,
                     status=1
                 )
@@ -692,7 +608,7 @@ async def ai_app_run(
         
         return JSONResponse({
             "success": True,
-            "task_id": task_id,
+            "project_id": project_id,
             "status": "submitted"
         })
         
@@ -705,9 +621,8 @@ async def ai_app_run(
 async def ai_app_run_image(
     prompt: str = Form(..., description="Text prompt for the AI app"),
     image: UploadFile = File(..., description="Image file for the AI app"),
-    model: str = Form("portrait", description="Model type: portrait, landscape, portrait-hd, landscape-hd"),
+    ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9"),
     duration_seconds: int = Form(10, description="Duration in seconds"),
-    timeout: int = Form(300, description="Maximum wait time in seconds"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
@@ -721,53 +636,13 @@ async def ai_app_run_image(
                 status_code=400, 
                 detail="Authentication token is required"
             )
-        # Validate model parameter
-        valid_models = ["portrait", "landscape", "portrait-hd", "landscape-hd"]
-        if model not in valid_models:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid model. Must be one of: {', '.join(valid_models)}"
-            )
         
         image_url = _save_uploaded_image(image)
-        # Build node info list
-        node_info_list = [
-            {
-                "nodeId": "3",
-                "fieldName": "text",
-                "fieldValue": prompt,
-                "description": "Prompt"
-            },
-            {
-                "nodeId": "4",
-                "fieldName": "image",
-                "fieldValue": image_url,
-                "description": "Upload image"
-            },
-            {
-                "nodeId": "14",
-                "fieldName": "model",
-                "fieldData": "[{\"name\":\"portrait\",\"index\":\"portrait\",\"description\":\"\",\"fastIndex\":1.0,\"descriptionEn\":\"Vertical version 704X1280\"},{\"name\":\"landscape\",\"index\":\"landscape\",\"description\":\"\",\"fastIndex\":2.0,\"descriptionEn\":\"Vertical 1024X1792\"},{\"name\":\"portrait-hd\",\"index\":\"portrait-hd\",\"description\":\"\",\"fastIndex\":3.0,\"descriptionEn\":\"Horizontal version 1280X704\"},{\"name\":\"landscape-hd\",\"index\":\"landscape-hd\",\"description\":\"\",\"fastIndex\":4.0,\"descriptionEn\":\"Landscape 1972X1024\"}]",
-                "fieldValue": model,
-                "description": "Model options, vertical screen, horizontal screen, HD vertical screen, HD horizontal screen"
-            },
-            {
-                "nodeId": "14",
-                "fieldName": "duration_seconds",
-                "fieldData": "[[10, 15], {\"default\": 10}]",
-                "fieldValue": duration_seconds,
-                "description": "Generation duration (0.2 yuan per 15 seconds per time)"
-            }
-        ]
-        
-        # Get AI-app configuration from config file0
-        webapp_id = config["runninghub"].get("ai_app_webapp_img_id", "1976487269899046914")
-        api_key = config["runninghub"].get("ai_app_api_key", config["runninghub"]["api_key"])
 
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
+        computing_power = 20
         if CHECK_AUTH_TOKEN:
-            computing_power = 20
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
             success, message, response_data = make_perseids_request(
@@ -789,15 +664,26 @@ async def ai_app_run_image(
                     detail="您的算力不足，无法生成视频"
                 )
             
-
-            #发起请求，扣除算力
+        # Submit task (async, return immediately)
+        result = create_image_to_video(prompt, ratio, image_url, duration_seconds)
+        
+        # Check if task submission failed
+        if result.get("code") != 0:
+            error_msg = result.get("msg", "Unknown error")
+            raise HTTPException(status_code=500, detail=f"Task submission failed: {error_msg}")
+        
+        project_id = result.get("data", {}).get("projectId")
+        if not project_id:
+            raise HTTPException(status_code=500, detail="未获得任务id")
+        if CHECK_AUTH_TOKEN:
+            #发起请求，增加算力
             success, message, response_data = make_perseids_request(
-                endpoint='user/calculate_computing_power',
+                endpoint='user/increase_computing_power',
                 method='POST',
                 headers=headers,
                 data={
                     "computing_power": computing_power,
-                    "behavior": "deduct",
+                    "behavior": "increase",
                     "transaction_id": transaction_id
                 }
             )
@@ -806,24 +692,6 @@ async def ai_app_run_image(
                     status_code=400, 
                     detail=message
                 )
-            
-        # Submit task (async, return immediately)
-        result = run_ai_app_task(
-            webapp_id=webapp_id,
-            api_key=api_key,
-            node_info_list=node_info_list,
-            transaction_id=transaction_id
-        )
-        
-        # Check if task submission failed
-        if result.get("code") != 0:
-            error_msg = result.get("msg", "Unknown error")
-            raise HTTPException(status_code=500, detail=f"Task submission failed: {error_msg}")
-        
-        task_id = result.get("data", {}).get("taskId")
-        if not task_id:
-            raise HTTPException(status_code=500, detail="Failed to get task ID from response")
-        
         # Create database record
         if user_id:
             try:
@@ -832,9 +700,9 @@ async def ai_app_run_image(
                     user_id=user_id,
                     type=3,  # 3-图片生成视频
                     image_path=image_url,
-                    video_mode=model,
+                    ratio=ratio,
                     duration=duration_seconds,
-                    task_id=task_id,
+                    project_id=project_id,
                     transaction_id=transaction_id,
                     status=1
                 )
@@ -844,7 +712,7 @@ async def ai_app_run_image(
         
         return JSONResponse({
             "success": True,
-            "task_id": task_id,
+            "project_id": project_id,
             "status": "submitted",
             "image_url": image_url
         })
@@ -1298,39 +1166,39 @@ async def get_ai_tools_history(
             
             # Check each task's status
             for task in processing_tasks:
-                if not task.task_id:
+                if not task.project_id:
                     continue
                     
                 try:
-                    status = client.check_status(task.task_id)
+                    status = client.check_status(task.project_id)
                     
                     if status == TaskStatus.SUCCESS:
                         # Get results and update database
-                        results = client.get_outputs(task.task_id)
+                        results = client.get_outputs(task.project_id)
                         if results:
                             print(results)
                             result_url = results[0].file_url
-                            AIToolsModel.update_by_task_id(
-                                task_id=task.task_id,
+                            AIToolsModel.update_by_project_id(
+                                project_id=task.project_id,
                                 result_url=result_url,
                                 status=2  # 处理完成
                             )
                             updated_count += 1
-                            logger.info(f"Task {task.task_id} completed successfully")
+                            logger.info(f"Task {task.project_id} completed successfully")
                             
                     elif status == TaskStatus.FAILED:
                         # Update status to failed
-                        AIToolsModel.update_by_task_id(
-                            task_id=task.task_id,
+                        AIToolsModel.update_by_project_id(
+                            project_id=task.project_id,
                             status=-1  # 处理失败
                         )
                         updated_count += 1
-                        logger.info(f"Task {task.task_id} failed")
+                        logger.info(f"Task {task.project_id} failed")
                         
                     # If status is QUEUED or RUNNING, keep status as 1 (processing)
                     
                 except Exception as task_error:
-                    logger.error(f"Failed to check status for task {task.task_id}: {task_error}")
+                    logger.error(f"Failed to check status for task {task.project_id}: {task_error}")
                     continue
             
             logger.info(f"Checked {len(processing_tasks)} processing tasks, updated {updated_count}")

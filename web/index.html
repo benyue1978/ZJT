@@ -713,7 +713,7 @@
         loading: false,
         error: '',
         results: [],
-        taskId: '',
+        projectId: '',
         status: '',
         statusInterval: null,
         authToken: '',
@@ -746,7 +746,7 @@
       
       async submit(){
         if(!this.canSubmit) return;
-        this.loading = true; this.error=''; this.results=[]; this.taskId=''; this.status='';
+        this.loading = true; this.error=''; this.results=[]; this.projectId=''; this.status='';
         this.clearStatusCheck();
         
         try {
@@ -769,7 +769,7 @@
             headers: { 'Content-Type': 'multipart/form-data' },
           });
           
-          this.taskId = res.data.task_id || '';
+          this.projectId = res.data.project_id || '';
           this.status = res.data.status || 'submitted';
           
           // Start polling for status
@@ -783,10 +783,10 @@
       },
       
       async checkStatus() {
-        if (!this.taskId) return;
+        if (!this.projectId) return;
         
         try {
-          const res = await axios.get(`/api/nanobanana-status/${this.taskId}`);
+          const res = await axios.get(`/api/nanobanana-status/${this.projectId}`);
           
           this.status = res.data.status;
           
@@ -961,7 +961,7 @@
           </div>
         </div>
 
-        <div class="status" v-if="taskId">任务 ID：{{ taskId }}</div>
+        <div class="status" v-if="projectId">任务 ID：{{ projectId }}</div>
         <div class="status" v-if="statusText">{{ statusText }}</div>
         <div class="status danger" v-if="error">{{ error }}</div>
 
@@ -1033,7 +1033,7 @@
         loading: false,
         error: '',
         results: [],
-        taskId: '',
+        projectId: '',
         status: '',
         authToken: '',
         showHistory: false,
@@ -1057,9 +1057,7 @@
       modelOptions() {
         return [
           { value: 'portrait', label: '竖屏' },
-          { value: 'landscape', label: '横屏' },
-          { value: 'portrait-hd', label: '高清竖屏' },
-          { value: 'landscape-hd', label: '高清横屏' }
+          { value: 'landscape', label: '横屏' }
         ];
       },
       durationOptions() {
@@ -1077,7 +1075,7 @@
         this.loading = true; 
         this.error=''; 
         this.results=[]; 
-        this.taskId=''; 
+        this.projectId=''; 
         this.status='';
         
         try {
@@ -1086,7 +1084,6 @@
           form.append('prompt', this.prompt);
           form.append('model', this.model);
           form.append('duration_seconds', this.durationSeconds);
-          form.append('timeout', '900'); // 15 minutes timeout
           
           // Add user_id from localStorage
           const userId = localStorage.getItem('user_id');
@@ -1103,11 +1100,11 @@
             headers: { 'Content-Type': 'multipart/form-data' },
           });
           
-          this.taskId = res.data.task_id || '';
+          this.projectId = res.data.project_id || '';
           this.status = res.data.status || '';
           
           // Start polling for status
-          if (this.taskId) {
+          if (this.projectId) {
             this.checkStatus();
           }
           
@@ -1119,10 +1116,10 @@
       },
       
       async checkStatus() {
-        if (!this.taskId) return;
+        if (!this.projectId) return;
         
         try {
-          const res = await axios.get(`/api/nanobanana-status/${this.taskId}`);
+          const res = await axios.get(`/api/nanobanana-status/${this.projectId}`);
           this.status = res.data.status || '';
           
           if (this.status === 'SUCCESS') {
@@ -1258,9 +1255,7 @@
       getModelLabel(value) {
         const modelMap = {
           'portrait': '竖屏',
-          'landscape': '横屏',
-          'portrait-hd': '高清竖屏',
-          'landscape-hd': '高清横屏'
+          'landscape': '横屏'
         };
         return modelMap[value] || value || '未知';
       }
@@ -1310,7 +1305,7 @@
           </div>
         </div>
 
-        <div class="status" v-if="taskId">任务 ID：{{ taskId }}</div>
+        <div class="status" v-if="projectId">任务 ID：{{ projectId }}</div>
         <div class="status" v-if="statusText">{{ statusText }}</div>
         <div class="status danger" v-if="error">{{ error }}</div>
 
@@ -1381,7 +1376,7 @@
         loading: false,
         error: '',
         results: [],
-        taskId: '',
+        projectId: '',
         status: '',
         authToken: '',
         showHistory: false,
@@ -1405,9 +1400,7 @@
       modelOptions() {
         return [
           { value: 'portrait', label: '竖屏' },
-          { value: 'landscape', label: '横屏' },
-          { value: 'portrait-hd', label: '高清竖屏' },
-          { value: 'landscape-hd', label: '高清横屏' }
+          { value: 'landscape', label: '横屏' }
         ];
       }
     },
@@ -1417,7 +1410,7 @@
         this.loading = true; 
         this.error=''; 
         this.results=[]; 
-        this.taskId=''; 
+        this.projectId=''; 
         this.status='';
         
         try {
@@ -1441,11 +1434,11 @@
             headers: { 'Content-Type': 'multipart/form-data' },
           });
           
-          this.taskId = res.data.task_id || '';
+          this.projectId = res.data.project_id || '';
           this.status = res.data.status || '';
           
           // Start polling for status
-          if (this.taskId) {
+          if (this.projectId) {
             this.checkStatus();
           }
           
@@ -1457,10 +1450,10 @@
       },
       
       async checkStatus() {
-        if (!this.taskId) return;
+        if (!this.projectId) return;
         
         try {
-          const res = await axios.get(`/api/nanobanana-status/${this.taskId}`);
+          const res = await axios.get(`/api/nanobanana-status/${this.projectId}`);
           this.status = res.data.status || '';
           
           if (this.status === 'SUCCESS') {
@@ -1601,9 +1594,7 @@
       getModelLabel(value) {
         const modelMap = {
           'portrait': '竖屏',
-          'landscape': '横屏',
-          'portrait-hd': '高清竖屏',
-          'landscape-hd': '高清横屏'
+          'landscape': '横屏'
         };
         return modelMap[value] || value || '未知';
       }
@@ -1638,7 +1629,7 @@
           </div>
         </div>
 
-        <div class="status" v-if="taskId">任务 ID：{{ taskId }}</div>
+        <div class="status" v-if="projectId">任务 ID：{{ projectId }}</div>
         <div class="status" v-if="statusText">{{ statusText }}</div>
         <div class="status danger" v-if="error">{{ error }}</div>
 
