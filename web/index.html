@@ -1713,8 +1713,8 @@
               localStorage.setItem('phone', this.userPhone);
               localStorage.setItem('user_id', this.userId);
               
-              // 获取算力
-              this.fetchComputingPower();
+              // 刷新页面以使用新的登录信息
+              window.location.reload();
             }
             
             // 关闭模态框并清空表单
