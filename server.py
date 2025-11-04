@@ -37,6 +37,15 @@ API_KEY = config["runninghub"]["api_key"]
 # Default ComfyUI server address; can be overridden by request field
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
 
+# Type to computing power mapping
+# 1: 图片编辑, 2: AI视频生成, 3: 图片生成视频, 4: 高清放大
+TYPE_COMPUTING_POWER = {
+    1: 2,
+    2: 20,
+    3: 20,
+    4: 1
+}
+
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
 
 # Setup logging
@@ -392,9 +401,8 @@ async def image_edit(
 
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
-        
+        computing_power = TASK_COMPUTING_POWER[1]
         if CHECK_AUTH_TOKEN:
-            computing_power = 2
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
             success, message, response_data = make_perseids_request(
@@ -415,8 +423,14 @@ async def image_edit(
                     status_code=400, 
                     detail="您的算力不足，无法生成视频"
                 )
-            
 
+        # Save uploaded image to upload directory
+        image_url = _save_uploaded_image(image)
+        
+        # Submit task
+        response = create_ai_image(prompt, ratio, image_url)
+        project_id = response["data"]["projectId"]
+        if project_id and CHECK_AUTH_TOKEN:
             #发起请求，扣除算力
             success, message, response_data = make_perseids_request(
                 endpoint='user/calculate_computing_power',
@@ -433,14 +447,7 @@ async def image_edit(
                     status_code=400, 
                     detail=message
                 )
-        # Save uploaded image to upload directory
-        image_url = _save_uploaded_image(image)
-        
-        
-        # Submit task
-        response = create_ai_image(prompt, ratio, image_url)
-        project_id = response["data"]["projectId"]
-        
+            
         # Create database record
         if user_id:
             try:
@@ -473,6 +480,9 @@ async def runninghub_status(project_id: str):
     Check the status of a runninghub task
     """
     try:
+        task_record = AIToolsModel.get_by_project_id(project_id)
+        if task_record is None:
+            raise HTTPException(status_code=404, detail="未找到对应的图片记录")
         client = RunningHubClient()
         status = client.check_status(project_id)
         
@@ -509,6 +519,25 @@ async def runninghub_status(project_id: str):
                 project_id=project_id,
                 status=-1
             )
+            if CHECK_AUTH_TOKEN:
+                #发起请求，扣除算力
+                type = task_record.type
+                computing_power = TASK_COMPUTING_POWER[type]
+                success, message, response_data = make_perseids_request(
+                    endpoint='user/calculate_computing_power',
+                    method='POST',
+                    headers=headers,
+                    data={
+                        "computing_power": computing_power,
+                        "behavior": "increase",
+                        "transaction_id": transaction_id
+                    }
+                )
+                if not success:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=message
+                    )
             return JSONResponse({
                 "status": status.value,
                 "results": []
@@ -571,6 +600,8 @@ async def get_status(project_id: str):
             logger.info(f"Task failed: {reason}")
             if reason and "We currently do not support uploads of images containing photorealistic people" in reason:
                 reason = "图片包含真人，无法处理"
+            elif reason and "This content may violate our guardrails concerning similarity to third-party content. " in reason:
+                reason = "此内容可能违反了我们关于与第三方内容相似性的规定"
             try:
                 AIToolsModel.update_by_project_id(
                     project_id=project_id,
@@ -579,7 +610,25 @@ async def get_status(project_id: str):
                 )
             except Exception as db_error:
                 logger.error(f"Failed to update database record: {db_error}")
-            
+            if CHECK_AUTH_TOKEN:
+                #发起请求，扣除算力
+                type = task_record.type
+                computing_power = TASK_COMPUTING_POWER[type]
+                success, message, response_data = make_perseids_request(
+                    endpoint='user/calculate_computing_power',
+                    method='POST',
+                    headers=headers,
+                    data={
+                        "computing_power": computing_power,
+                        "behavior": "increase",
+                        "transaction_id": transaction_id
+                    }
+                )
+                if not success:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=message
+                    )
             return JSONResponse({
                 "status": "FAILED",
                 "reason": reason,
@@ -617,7 +666,7 @@ async def ai_app_run(
             )
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
-        computing_power = 20
+        computing_power = TASK_COMPUTING_POWER[2]
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
@@ -720,7 +769,7 @@ async def ai_app_run_image(
 
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
-        computing_power = 20
+        computing_power = TASK_COMPUTING_POWER[3]
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
@@ -1301,6 +1350,8 @@ async def get_ai_tools_history(
                         elif task_status == 2:  # Failed
                             if reason and "We currently do not support uploads of images containing photorealistic people" in reason:
                                 reason = "图片包含真人，无法处理"
+                            elif reason and "This content may violate our guardrails concerning similarity to third-party content. " in reason:
+                                reason = "此内容可能违反了我们关于与第三方内容相似性的规定"
                             # Update status to failed
                             AIToolsModel.update_by_project_id(
                                 project_id=task.project_id,
@@ -1386,11 +1437,9 @@ async def image_upscale(
         
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
-        
+        computing_power = TASK_COMPUTING_POWER[4]
         if CHECK_AUTH_TOKEN:
-            computing_power = 1  # 高清放大需要1算力
             headers = {'Authorization': f'Bearer {auth_token}'}
-            
             # Check if computing power is sufficient
             success, message, response_data = make_perseids_request(
                 endpoint='user/check_computing_power',
@@ -1409,24 +1458,7 @@ async def image_upscale(
                     status_code=400, 
                     detail="您的算力不足，无法进行高清放大"
                 )
-            
-            # Deduct computing power
-            success, message, response_data = make_perseids_request(
-                endpoint='user/calculate_computing_power',
-                method='POST',
-                headers=headers,
-                data={
-                    "computing_power": computing_power,
-                    "behavior": "deduct",
-                    "transaction_id": transaction_id
-                }
-            )
-            if not success:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=message
-                )
-        
+                  
         # 1. Get the original image record from database using project_id
         original_record = AIToolsModel.get_by_project_id(project_id)
         
@@ -1456,7 +1488,24 @@ async def image_upscale(
             raise RuntimeError("创建任务失败")
         
         logger.info(f"Upscale task created with task_id: {task_id}")
-        
+        if CHECK_AUTH_TOKEN:
+            # Deduct computing power
+            success, message, response_data = make_perseids_request(
+                endpoint='user/calculate_computing_power',
+                method='POST',
+                headers=headers,
+                data={
+                    "computing_power": computing_power,
+                    "behavior": "deduct",
+                    "transaction_id": transaction_id
+                }
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=message
+                )
+
         # Create new database record for upscale task (type=4)
         new_record_id = AIToolsModel.create(
             prompt=f"高清放大: {original_record.prompt or '原始图片'}",
