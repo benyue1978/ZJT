@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AI 工具列表</title>
-  <link rel="icon" type="image/svg+xml" href="/files/logo.svg" />
+  <link rel="icon" href="/files/logo.ico" type="image/vnd.microsoft.icon"/>
   <style>
     :root {
       --bg: #0f172a;
@@ -482,7 +482,9 @@
         if (!this.projectId) return;
         
         try {
-          const res = await axios.get(`/api/get-status/${this.projectId}`);
+          const authToken = localStorage.getItem('auth_token');
+          const params = authToken ? { auth_token: authToken } : {};
+          const res = await axios.get(`/api/get-status/${this.projectId}`, { params });
           
           this.status = res.data.status;
           
@@ -562,12 +564,14 @@
         
         this.historyLoading = true;
         try {
+          const authToken = localStorage.getItem('auth_token');
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 1  // 1-图片编辑
+              type: 1,  // 1-图片编辑
+              auth_token: authToken || undefined
             }
           });
           
@@ -680,7 +684,9 @@
         if (!this.upscaleProjectId) return;
         
         try {
-          const res = await axios.get(`/api/runninghub-status/${this.upscaleProjectId}`);
+          const authToken = localStorage.getItem('auth_token');
+          const params = authToken ? { auth_token: authToken } : {};
+          const res = await axios.get(`/api/runninghub-status/${this.upscaleProjectId}`, { params });
           
           if (res.data.status === 'SUCCESS') {
             this.upscaleResults = res.data.results || [];
@@ -945,7 +951,9 @@
         if (!this.projectId) return;
         
         try {
-          const res = await axios.get(`/api/get-status/${this.projectId}`);
+          const authToken = localStorage.getItem('auth_token');
+          const params = authToken ? { auth_token: authToken } : {};
+          const res = await axios.get(`/api/get-status/${this.projectId}`, { params });
           this.status = res.data.status || '';
           
           if (this.status === 'SUCCESS') {
@@ -1008,12 +1016,14 @@
         
         this.historyLoading = true;
         try {
+          const authToken = localStorage.getItem('auth_token');
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 3  // 3-图片生成视频
+              type: 3,  // 3-图片生成视频
+              auth_token: authToken || undefined
             }
           });
           
@@ -1294,7 +1304,9 @@
         if (!this.projectId) return;
         
         try {
-          const res = await axios.get(`/api/get-status/${this.projectId}`);
+          const authToken = localStorage.getItem('auth_token');
+          const params = authToken ? { auth_token: authToken } : {};
+          const res = await axios.get(`/api/get-status/${this.projectId}`, { params });
           this.status = res.data.status || '';
           
           if (this.status === 'SUCCESS') {
@@ -1362,12 +1374,14 @@
         
         this.historyLoading = true;
         try {
+          const authToken = localStorage.getItem('auth_token');
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 2  // 2-AI视频生成
+              type: 2,  // 2-AI视频生成
+              auth_token: authToken || undefined
             }
           });
           

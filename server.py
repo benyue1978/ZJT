@@ -39,7 +39,7 @@ DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188
 
 # Type to computing power mapping
 # 1: 图片编辑, 2: AI视频生成, 3: 图片生成视频, 4: 高清放大
-TYPE_COMPUTING_POWER = {
+TASK_COMPUTING_POWER = {
     1: 2,
     2: 20,
     3: 20,
@@ -475,9 +475,13 @@ async def image_edit(
         raise HTTPException(status_code=500, detail=f"Failed to submit nanobanana task: {str(e)}")
 
 @app.get("/api/runninghub-status/{project_id}")
-async def runninghub_status(project_id: str):
+async def runninghub_status(
+    project_id: str,
+    auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
+):
     """
     Check the status of a runninghub task
+    If task fails, will refund computing power
     """
     try:
         task_record = AIToolsModel.get_by_project_id(project_id)
@@ -519,8 +523,11 @@ async def runninghub_status(project_id: str):
                 project_id=project_id,
                 status=-1
             )
-            if CHECK_AUTH_TOKEN:
-                #发起请求，扣除算力
+            if CHECK_AUTH_TOKEN and auth_token:
+                # 生成交易ID
+                transaction_id = str(uuid.uuid4())
+                headers = {'Authorization': f'Bearer {auth_token}'}
+                #发起请求，增加算力
                 type = task_record.type
                 computing_power = TASK_COMPUTING_POWER[type]
                 success, message, response_data = make_perseids_request(
@@ -533,11 +540,10 @@ async def runninghub_status(project_id: str):
                         "transaction_id": transaction_id
                     }
                 )
-                if not success:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=message
-                    )
+                if success:
+                    logger.info(f"Successfully refunded {computing_power} computing power for failed task {project_id}, transaction_id: {transaction_id}")
+                else:
+                    logger.error(f"Failed to refund computing power for task {project_id}: {message}")
             return JSONResponse({
                 "status": status.value,
                 "results": []
@@ -548,9 +554,13 @@ async def runninghub_status(project_id: str):
 
 
 @app.get("/api/get-status/{project_id}")
-async def get_status(project_id: str):
+async def get_status(
+    project_id: str,
+    auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
+):
     """
     Check the status of an AI task
+    If task fails, will refund computing power
     """
     try:
         # Call get_ai_task_result to check status
@@ -610,8 +620,11 @@ async def get_status(project_id: str):
                 )
             except Exception as db_error:
                 logger.error(f"Failed to update database record: {db_error}")
-            if CHECK_AUTH_TOKEN:
-                #发起请求，扣除算力
+            if CHECK_AUTH_TOKEN and auth_token:
+                # 生成交易ID
+                transaction_id = str(uuid.uuid4())
+                headers = {'Authorization': f'Bearer {auth_token}'}
+                #发起请求，增加算力
                 type = task_record.type
                 computing_power = TASK_COMPUTING_POWER[type]
                 success, message, response_data = make_perseids_request(
@@ -624,11 +637,10 @@ async def get_status(project_id: str):
                         "transaction_id": transaction_id
                     }
                 )
-                if not success:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=message
-                    )
+                if success:
+                    logger.info(f"Successfully refunded {computing_power} computing power for failed task {project_id}, transaction_id: {transaction_id}")
+                else:
+                    logger.error(f"Failed to refund computing power for task {project_id}: {message}")
             return JSONResponse({
                 "status": "FAILED",
                 "reason": reason,
@@ -804,7 +816,7 @@ async def ai_app_run_image(
         if not project_id:
             raise HTTPException(status_code=500, detail="未获得任务id")
         if CHECK_AUTH_TOKEN:
-            #发起请求，增加算力
+            #发起请求，扣除算力
             success, message, response_data = make_perseids_request(
                 endpoint='user/calculate_computing_power',
                 method='POST',
@@ -1278,11 +1290,13 @@ async def get_ai_tools_history(
     user_id: int = Query(..., description="User ID"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Page size"),
-    type: Optional[int] = Query(None, description="Tool type filter (1-图片编辑, 2-AI视频生成, 3-图片生成视频)")
+    type: Optional[int] = Query(None, description="Tool type filter (1-图片编辑, 2-AI视频生成, 3-图片生成视频)"),
+    auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
 ):
     """
     获取用户的 AI 工具历史记录
     在查询前会先检查并更新所有正在处理的任务状态
+    如果任务失败，会自动补回算力
     """
     try:
         # First, check and update processing tasks
@@ -1290,6 +1304,7 @@ async def get_ai_tools_history(
         
         if processing_tasks:
             updated_count = 0
+            total_refund_power = 0  # 累计需要补回的算力
             
             # Check each task's status
             for task in processing_tasks:
@@ -1323,7 +1338,10 @@ async def get_ai_tools_history(
                                 message="高清放大失败"
                             )
                             updated_count += 1
-                            logger.info(f"Upscale task {task.project_id} failed")
+                            # 累计需要补回的算力
+                            computing_power = TASK_COMPUTING_POWER[task.type]
+                            total_refund_power += computing_power
+                            logger.info(f"Upscale task {task.project_id} failed, will refund {computing_power} computing power")
                     else:
                         # Use get_ai_task_result for other task types
                         result = get_ai_task_result(task.project_id)
@@ -1359,7 +1377,10 @@ async def get_ai_tools_history(
                                 message=reason
                             )
                             updated_count += 1
-                            logger.info(f"Task {task.project_id} failed: {reason}")
+                            # 累计需要补回的算力
+                            computing_power = TASK_COMPUTING_POWER[task.type]
+                            total_refund_power += computing_power
+                            logger.info(f"Task {task.project_id} failed: {reason}, will refund {computing_power} computing power")
                         
                         # If task_status == 0 (in progress), keep status as 1 (processing)
                     
@@ -1368,6 +1389,37 @@ async def get_ai_tools_history(
                     continue
             
             logger.info(f"Checked {len(processing_tasks)} processing tasks, updated {updated_count}")
+            
+            # 如果有需要补回的算力，统一进行补回
+            if total_refund_power > 0 and CHECK_AUTH_TOKEN:
+                try:
+                    if not auth_token:
+                        logger.warning(f"Need to refund {total_refund_power} computing power for user {user_id}, but auth_token is not provided")
+                    else:
+                        # 生成交易ID
+                        transaction_id = str(uuid.uuid4())
+                        headers = {'Authorization': f'Bearer {auth_token}'}
+                        
+                        # 发起请求，增加算力（补回）
+                        success, message, response_data = make_perseids_request(
+                            endpoint='user/calculate_computing_power',
+                            method='POST',
+                            headers=headers,
+                            data={
+                                "computing_power": total_refund_power,
+                                "behavior": "increase",
+                                "transaction_id": transaction_id
+                            }
+                        )
+                        
+                        if success:
+                            logger.info(f"Successfully refunded {total_refund_power} computing power for user {user_id}, transaction_id: {transaction_id}")
+                        else:
+                            logger.error(f"Failed to refund computing power for user {user_id}: {message}")
+                    
+                except Exception as refund_error:
+                    logger.error(f"Failed to refund computing power: {refund_error}")
+                    logger.error(traceback.format_exc())
         
         # 查询历史记录
         # If type=1, also include type=4 (图片高清放大)
@@ -1543,6 +1595,12 @@ upload_dir = os.path.join(APP_DIR, "upload")
 if not os.path.exists(upload_dir):
     os.makedirs(upload_dir, exist_ok=True)
 app.mount("/upload", StaticFiles(directory=upload_dir), name="uploads")
+
+# Serve files directory for static assets (logo, etc.)
+files_dir = os.path.join(APP_DIR, "files")
+if not os.path.exists(files_dir):
+    os.makedirs(files_dir, exist_ok=True)
+app.mount("/files", StaticFiles(directory=files_dir), name="files")
 
 # Serve frontend static files
 static_dir = os.path.join(APP_DIR, "web")
