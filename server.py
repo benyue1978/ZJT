@@ -1103,6 +1103,7 @@ class RegisterRequest(BaseModel):
     code: str
     password: str
     agent: Optional[str] = 'default'
+    invite_code: Optional[str] = None
 
 @app.post('/api/auth/register')
 async def register(request: RegisterRequest):
@@ -1152,7 +1153,7 @@ async def register(request: RegisterRequest):
             phone=phone,
             password=password,
             auth_type='register',
-            extra_data={'code': verify_code}  # 使用 code 而不是 verify_code
+            extra_data={'code': verify_code, 'invite_code': request.invite_code}  # 使用 code 而不是 verify_code
         )
         
         if success:
@@ -1728,5 +1729,5 @@ async def serve_spa(full_path: str):
 
 
 if __name__ == "__main__":
-    port = 9003 if is_dev_environment() else config["server"].get("port", 5174)
+    port = 9002 if is_dev_environment() else config["server"].get("port", 5173)
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
