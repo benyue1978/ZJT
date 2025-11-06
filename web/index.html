@@ -5,217 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AI 工具列表</title>
   <link rel="icon" href="/files/logo.ico" type="image/vnd.microsoft.icon"/>
-  <style>
-    :root {
-      --bg: #0f172a;
-      --panel: #111827;
-      --muted: #9ca3af;
-      --text: #e5e7eb;
-      --primary: #22c55e;
-      --primary-700: #15803d;
-      --border: #1f2937;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans,
-        Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      background: linear-gradient(180deg, #0b1020, #0f172a);
-      color: var(--text);
-      min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    .container {
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 24px 16px 48px;
-    }
-    .card {
-      background: rgba(17, 24, 39, 0.8);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03);
-    }
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 18px 20px; margin-bottom: 16px;
-    }
-    .title { font-size: 18px; font-weight: 700; letter-spacing: .4px; }
-    .muted { color: var(--muted); font-size: 13px; }
-    .list { padding: 10px; }
-    .list-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-top: 1px solid var(--border); }
-    .list-item:first-child { border-top: 0; }
-    .btn {
-      background: var(--primary);
-      color: #051b0d;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 10px;
-      padding: 10px 14px;
-      font-weight: 700;
-      letter-spacing: 0.3px;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.3);
-      transition: transform .06s ease, filter .2s ease;
-    }
-    .btn:hover { filter: brightness(1.05); }
-    .btn:active { transform: translateY(1px); }
-    .btn.secondary { background: #374151; color: #e5e7eb; box-shadow: inset 0 1px 0 rgba(255,255,255,0.12); }
-
-    .form { padding: 18px; border-top: 1px solid var(--border); }
-    .field { margin-bottom: 14px; }
-    .label { display:block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-    .input, .textarea {
-      width: 100%;
-      background: #0b1220;
-      color: var(--text);
-      border: 1px solid #1e293b;
-      border-radius: 10px;
-      padding: 10px 12px;
-      outline: none;
-      transition: border-color .15s ease, box-shadow .15s ease;
-    }
-    .input:focus, .textarea:focus { border-color: #334155; box-shadow: 0 0 0 3px rgba(51,65,85,0.35); }
-    .textarea { min-height: 90px; resize: vertical; }
-
-    .row { display: flex; gap: 10px; align-items: center; }
-    .row .input { flex: 1; }
-    .row .btn { flex: 1; }
-
-    .preview { padding: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-    .imgbox { background: #0b1220; border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; }
-    .imgbox img { width: 100%; display: block; }
-
-    .status { padding: 10px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
-    .danger { color: #fca5a5; }
-
-    /* Login Modal Styles */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-    .modal {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px;
-      width: 90%;
-      max-width: 400px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-    }
-    .modal-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 20px;
-      text-align: center;
-    }
-    .modal-close {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      background: transparent;
-      border: none;
-      color: var(--muted);
-      font-size: 24px;
-      cursor: pointer;
-      padding: 4px 8px;
-    }
-    .modal-close:hover { color: var(--text); }
-    .modal-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid var(--border);
-    }
-    .modal-tab {
-      flex: 1;
-      padding: 10px;
-      background: transparent;
-      border: none;
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 15px;
-      font-weight: 600;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
-    }
-    .modal-tab.active {
-      color: var(--primary);
-      border-bottom-color: var(--primary);
-    }
-    .modal-tab:hover { color: var(--text); }
-    .code-btn {
-      background: var(--primary);
-      color: #051b0d;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-weight: 600;
-      font-size: 13px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: filter 0.2s;
-    }
-    .code-btn:hover { filter: brightness(1.05); }
-    .code-btn:disabled {
-      background: #374151;
-      color: #9ca3af;
-      cursor: not-allowed;
-    }
-    
-    /* User Info Styles */
-    .user-info-wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
-    }
-    .user-phone {
-      font-size: 14px;
-      color: var(--muted);
-    }
-    .computing-power-display {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--text);
-    }
-    .computing-power-value {
-      color: var(--primary);
-      font-weight: 600;
-    }
-    .refresh-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 6px;
-      padding: 2px 6px;
-      cursor: pointer;
-      font-size: 14px;
-      line-height: 1;
-      transition: all 0.2s;
-    }
-    .refresh-btn:hover {
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text);
-      border-color: var(--primary);
-    }
-    .refresh-btn:active {
-      transform: rotate(180deg);
-    }
-  </style>
+  <link rel="stylesheet" href="/css/index.css" />
 </head>
 <body>
-  <div id="app" class="container">
+  <div id="app" class="container" v-cloak>
     <div class="card">
       <header>
         <div class="title">{{ pageTitle }}</div>
@@ -224,7 +17,7 @@
           <button class="btn secondary" v-if="route.name!=='list'" @click="goHome">返回</button>
           <template v-if="isLoggedIn">
             <div class="user-info-wrapper">
-              <span class="user-phone">{{ maskedPhone }}</span>
+              <span class="user-phone clickable" @click="showInviteModal = true" title="点击查看邀请码">{{ maskedPhone }}</span>
               <div class="computing-power-display">
                 <span>
                   算力: <span class="computing-power-value">{{ computingPower !== null ? computingPower : '加载中...' }}</span>
@@ -272,6 +65,12 @@
             <label class="label">密码</label>
             <input class="input" type="password" v-model="loginForm.password" placeholder="请输入密码" @keyup.enter="handleLogin" />
           </div>
+          <div class="terms-checkbox">
+            <input type="checkbox" id="login-terms" v-model="loginForm.termsAgreed" />
+            <label for="login-terms" style="cursor: pointer;">
+              我已阅读并同意 <span class="terms-link" @click.stop="showTermsModal = true">《AI工具服务使用条款》</span>
+            </label>
+          </div>
           <div class="field" style="margin-top: 20px;">
             <button class="btn" style="width: 100%;" @click="handleLogin" :disabled="loginLoading">
               {{ loginLoading ? '登录中...' : '登录' }}
@@ -301,7 +100,15 @@
           </div>
           <div class="field">
             <label class="label">确认密码</label>
-            <input class="input" type="password" v-model="registerForm.confirmPassword" placeholder="请再次输入密码" @keyup.enter="handleRegister" />
+            <input class="input" type="password" v-model="registerForm.confirmPassword" placeholder="请再次输入密码" />
+          </div>
+          <div class="field">
+            <label class="label">邀请码（选填）</label>
+            <input class="input" type="text" v-model="registerForm.inviteCode" placeholder="请输入邀请码" maxlength="10" @keyup.enter="handleRegister" />
+            <div class="invite-tip">
+              <span class="tip-icon">🎁</span>
+              <span class="tip-text">填写邀请码，额外赠送 <strong>50 算力</strong></span>
+            </div>
           </div>
           <div class="field" style="margin-top: 20px;">
             <button class="btn" style="width: 100%;" @click="handleRegister" :disabled="registerLoading">
@@ -340,6 +147,42 @@
             </button>
           </div>
           <div class="status danger" v-if="resetError" style="text-align: center; margin-top: 10px;">{{ resetError }}</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Terms of Service Modal -->
+    <div class="modal-overlay" v-if="showTermsModal" @click.self="showTermsModal = false">
+      <div class="modal terms-modal" style="position: relative;">
+        <button class="modal-close" @click="showTermsModal = false">×</button>
+        <div class="modal-title">AI工具服务使用条款</div>
+        <div class="terms-content" v-html="termsContent"></div>
+        <div style="padding: 16px; text-align: center;">
+          <button class="btn" style="width: 100%;" @click="showTermsModal = false">我已阅读</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Invite Code Modal -->
+    <div class="modal-overlay" v-if="showInviteModal" @click.self="showInviteModal = false">
+      <div class="modal" style="position: relative; max-width: 500px;">
+        <button class="modal-close" @click="showInviteModal = false">×</button>
+        <div class="modal-title">我的邀请码</div>
+        <div style="padding: 20px;">
+          <div class="invite-code-display">
+            <div class="invite-code-label">邀请码</div>
+            <div class="invite-code-value">{{ inviteCode || '加载中...' }}</div>
+          </div>
+          <div class="invite-description">
+            <div class="invite-icon">🎁</div>
+            <div class="invite-text">
+              <strong>邀请好友，赚取算力！</strong>
+              <p>每成功邀请一个用户注册并登录，您将获得 <span class="highlight">100 算力</span> 奖励</p>
+            </div>
+          </div>
+          <div style="margin-top: 20px;">
+            <button class="btn" style="width: 100%;" @click="copyInviteCode">复制邀请码</button>
+          </div>
         </div>
       </div>
     </div>
@@ -858,7 +701,7 @@
     name: 'ImageToVideo',
     data() {
       return {
-        file: null,
+        files: [],
         prompt: '',
         model: '9:16',
         durationSeconds: 10,
@@ -880,7 +723,7 @@
       this.authToken = localStorage.getItem('auth_token') || '';
     },
     computed: {
-      canSubmit() { return !!this.file && !!this.prompt.trim() && !this.loading },
+      canSubmit() { return this.files.length > 0 && this.files.length <= 5 && !!this.prompt.trim() && !this.loading },
       statusText() {
         if (this.status === 'completed') return '生成完成！';
         if (this.loading) return '正在生成视频，请稍候...';
@@ -900,7 +743,33 @@
       }
     },
     methods: {
-      onFile(e){ this.file = e.target.files[0] || null; },
+      onFile(e){ 
+        const selectedFiles = Array.from(e.target.files || []);
+        const remainingSlots = 5 - this.files.length;
+        
+        if (remainingSlots <= 0) {
+          alert('已达到最大数量5张图片，请先删除一些图片');
+          e.target.value = ''; // 清空input
+          return;
+        }
+        
+        if (selectedFiles.length > remainingSlots) {
+          alert(`最多还能添加${remainingSlots}张图片，已自动截取前${remainingSlots}张`);
+          this.files = [...this.files, ...selectedFiles.slice(0, remainingSlots)];
+        } else {
+          this.files = [...this.files, ...selectedFiles];
+        }
+        
+        e.target.value = ''; // 清空input，允许重复选择同一文件
+      },
+      
+      removeFile(index) {
+        this.files.splice(index, 1);
+      },
+      
+      clearAllFiles() {
+        this.files = [];
+      },
       
       async submit(){
         if(!this.canSubmit) return;
@@ -912,7 +781,10 @@
         
         try {
           const form = new FormData();
-          form.append('image', this.file);
+          // Append all images
+          this.files.forEach(file => {
+            form.append('images', file);
+          });
           form.append('prompt', this.prompt);
           form.append('model', this.model);
           form.append('duration_seconds', this.durationSeconds);
@@ -1106,9 +978,21 @@
       <div>
         <div class="form">
           <div class="field">
-            <label class="label">上传图片</label>
-            <input class="input" type="file" accept="image/*" @change="onFile" />
-            <div class="muted" style="margin-top:6px; color: #fca5a5;">⚠️ 注意：请勿上传真人图片</div>
+            <label class="label">上传图片 (最多5张，可多次选择累加)</label>
+            <input class="input" type="file" accept="image/*" multiple @change="onFile" />
+            <div class="muted" style="margin-top:6px; color: #fca5a5;">⚠️ 注意：请勿上传真人图片。多张图片将自动拼接成一张</div>
+            <div v-if="files.length > 0" style="margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 13px; color: var(--muted);">已选择 {{ files.length }}/5 张图片:</div>
+                <button @click="clearAllFiles" class="btn secondary" style="font-size: 12px; padding: 4px 10px;">清空全部</button>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <div v-for="(file, index) in files" :key="index" style="position: relative; display: inline-block; padding: 6px 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
+                  <span>{{ file.name }}</span>
+                  <button @click="removeFile(index)" style="margin-left: 8px; background: transparent; border: none; color: #ef4444; cursor: pointer; font-weight: bold;">×</button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="field">
@@ -1581,12 +1465,15 @@
       ],
       authToken: '',
       userPhone: '',
+      inviteCode: '',
       computingPower: null,
       showLoginModal: false,
+      showInviteModal: false,
       authMode: 'login', // 'login' or 'register'
       loginForm: {
         phone: '',
-        password: ''
+        password: '',
+        termsAgreed: false
       },
       loginLoading: false,
       loginError: '',
@@ -1594,7 +1481,8 @@
         phone: '',
         code: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        inviteCode: ''
       },
       registerLoading: false,
       registerError: '',
@@ -1611,7 +1499,9 @@
       resetError: '',
       resetCodeSending: false,
       resetCodeCountdown: 0,
-      resetCountdownTimer: null
+      resetCountdownTimer: null,
+      showTermsModal: false,
+      termsContent: ''
     } },
     mounted() {
       // Extract auth_token from URL query parameters at app level
@@ -1619,25 +1509,43 @@
       this.authToken = urlParams.get('auth_token') || '';
       this.userPhone = urlParams.get('phone') || '';
       this.userId = urlParams.get('user_id') || '';
+      this.inviteCode = urlParams.get('invite_code') || '';
       if (this.authToken) {
         localStorage.removeItem('auth_token');
         localStorage.removeItem('phone');
         localStorage.removeItem('user_id');
+        localStorage.removeItem('invite_code');
         // Store in localStorage for persistence across sessions
         localStorage.setItem('auth_token', this.authToken);
         localStorage.setItem('phone', this.userPhone);
         localStorage.setItem('user_id', this.userId);
+        localStorage.setItem('invite_code', this.inviteCode);
       } else {
         // Try to restore from localStorage
         this.authToken = localStorage.getItem('auth_token') || '';
         this.userPhone = localStorage.getItem('phone') || '';
         this.userId = localStorage.getItem('user_id') || '';
+        this.inviteCode = localStorage.getItem('invite_code') || '';
       }
       
       // Fetch computing power if logged in
       if (this.authToken) {
         this.fetchComputingPower();
       }
+      
+      // Load terms of service
+      this.loadTermsContent();
+      
+      // 设置 axios 响应拦截器，全局处理认证错误
+      axios.interceptors.response.use(
+        response => response,
+        error => {
+          // 调用认证错误处理方法
+          this.handleAuthError(error);
+          // 继续抛出错误，让各个接口的 catch 也能处理
+          return Promise.reject(error);
+        }
+      );
     },
     computed: {
       route(){ return this.$route },
@@ -1662,6 +1570,33 @@
     methods: {
       goHome(){ this.$router.push({name:'list'}); },
       
+      handleAuthError(error) {
+        // 检查错误响应中是否包含认证过期信息
+        const detail = error?.response?.data?.detail || '';
+        if (detail.includes('无效或已过期的认证信息')) {
+          // 清除本地存储的认证信息
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('phone');
+          localStorage.removeItem('user_id');
+          localStorage.removeItem('invite_code');
+          
+          // 清除当前状态
+          this.authToken = '';
+          this.userPhone = '';
+          this.userId = '';
+          this.inviteCode = '';
+          this.computingPower = null;
+          
+          // 设置错误信息并显示登录框
+          this.loginError = '登录已过期，请重新登录';
+          this.showLoginModal = true;
+          this.authMode = 'login';
+          
+          return true; // 表示已处理该错误
+        }
+        return false; // 表示不是认证错误
+      },
+      
       switchAuthMode(mode) {
         this.authMode = mode;
         this.loginError = '';
@@ -1677,10 +1612,12 @@
         this.resetError = '';
         this.loginForm.phone = '';
         this.loginForm.password = '';
+        this.loginForm.termsAgreed = false;
         this.registerForm.phone = '';
         this.registerForm.code = '';
         this.registerForm.password = '';
         this.registerForm.confirmPassword = '';
+        this.registerForm.inviteCode = '';
         this.resetForm.phone = '';
         this.resetForm.code = '';
         this.resetForm.newPassword = '';
@@ -1710,7 +1647,8 @@
           const response = await axios.post('/api/auth/login', {
             phone: this.loginForm.phone,
             password: this.loginForm.password,
-            agent: 'default'
+            agent: 'default',
+            terms_agreed: this.loginForm.termsAgreed ? 1 : 0
           });
           
           if (response.data.success) {
@@ -1720,13 +1658,16 @@
               localStorage.removeItem('auth_token');
               localStorage.removeItem('phone');
               localStorage.removeItem('user_id');
+              localStorage.removeItem('invite_code');
               
               this.authToken = response.data.data.token;
               this.userPhone = response.data.data.phone || this.loginForm.phone;
               this.userId = response.data.data.user_id;
+              this.inviteCode = response.data.data.invite_code;
               localStorage.setItem('auth_token', this.authToken);
               localStorage.setItem('phone', this.userPhone);
               localStorage.setItem('user_id', this.userId);
+              localStorage.setItem('invite_code', this.inviteCode);
               
               // 刷新页面以使用新的登录信息
               window.location.reload();
@@ -1832,7 +1773,8 @@
             phone: this.registerForm.phone,
             code: this.registerForm.code,
             password: this.registerForm.password,
-            agent: 'default'
+            agent: 'default',
+            invite_code: this.registerForm.inviteCode || undefined
           });
           
           if (response.data.success) {
@@ -1868,6 +1810,7 @@
             localStorage.removeItem('auth_token');
             localStorage.removeItem('phone');
             localStorage.removeItem('user_id');
+            localStorage.removeItem('invite_code');
           } else {
             // 即使后端登出失败，也清除本地状态
             console.error('Logout error:', response.data.message);
@@ -1877,6 +1820,7 @@
             localStorage.removeItem('auth_token');
             localStorage.removeItem('phone');
             localStorage.removeItem('user_id');
+            localStorage.removeItem('invite_code');
           }
         } catch (error) {
           console.error('Logout error:', error);
@@ -1887,6 +1831,7 @@
           localStorage.removeItem('auth_token');
           localStorage.removeItem('phone');
           localStorage.removeItem('user_id');
+          localStorage.removeItem('invite_code');
         }
       },
       
@@ -2017,6 +1962,61 @@
         } finally {
           this.resetLoading = false;
         }
+      },
+      
+      async loadTermsContent() {
+        try {
+          const response = await axios.get('/files/AI工具服务使用条款.txt');
+          // Convert markdown-like text to HTML
+          let html = response.data
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // Bold text
+            .replace(/^# (.*?)$/gm, '<h1>$1</h1>')  // H1 headers
+            .replace(/^## (.*?)$/gm, '<h2>$1</h2>')  // H2 headers
+            .replace(/\n\n/g, '</p><p>')  // Paragraphs
+            .replace(/\n/g, '<br>');  // Line breaks
+          
+          this.termsContent = '<p>' + html + '</p>';
+        } catch (error) {
+          console.error('Failed to load terms:', error);
+          this.termsContent = '<p>加载使用条款失败，请稍后重试。</p>';
+        }
+      },
+      
+      copyInviteCode() {
+        if (!this.inviteCode) {
+          alert('邀请码加载中，请稍后再试');
+          return;
+        }
+        
+        // 使用 Clipboard API 复制
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(this.inviteCode).then(() => {
+            console.log('邀请码已复制到剪贴板！');
+          }).catch(err => {
+            console.error('复制失败:', err);
+            this.fallbackCopy();
+          });
+        } else {
+          this.fallbackCopy();
+        }
+      },
+      
+      fallbackCopy() {
+        // 降级方案：创建临时 textarea 元素
+        const textarea = document.createElement('textarea');
+        textarea.value = this.inviteCode;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          console.log('邀请码已复制到剪贴板！');
+        } catch (err) {
+          console.error('复制失败:', err);
+          alert('复制失败，请手动复制邀请码：' + this.inviteCode);
+        }
+        document.body.removeChild(textarea);
       }
     },
     

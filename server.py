@@ -19,6 +19,7 @@ from perseids_client import make_perseids_request, call_external_auth_server, ge
 from model import AIToolsModel
 import uuid
 from api_requset import create_image_to_video, get_ai_task_result, create_ai_image
+from PIL import Image
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -381,6 +382,81 @@ def _save_uploaded_image(upload_file: UploadFile) -> str:
     return f"{SERVER_HOST}/upload/{filename}"
 
 
+def _concatenate_images(upload_files: List[UploadFile]) -> str:
+    """
+    Concatenate multiple images horizontally and save to upload directory.
+    All images will be resized to the same height while maintaining aspect ratio.
+    Returns the URL of the concatenated image.
+    """
+    if not upload_files or len(upload_files) == 0:
+        raise ValueError("No images provided")
+    
+    if len(upload_files) > 5:
+        raise ValueError("Maximum 5 images allowed")
+    
+    # Ensure upload directory exists
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    # Load all images
+    images = []
+    for upload_file in upload_files:
+        content = upload_file.file.read()
+        upload_file.file.seek(0)  # Reset file pointer for potential reuse
+        img = Image.open(upload_file.file)
+        # Convert to RGB if necessary (handles RGBA, grayscale, etc.)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        images.append(img)
+    
+    # Calculate target height - use the average height or a reasonable fixed height
+    # Using average height to balance between quality and consistency
+    avg_height = sum(img.height for img in images) // len(images)
+    target_height = avg_height
+    
+    # Alternatively, you can use a fixed height like 1024 or the minimum height
+    # target_height = 1024  # Fixed height option
+    # target_height = min(img.height for img in images)  # Minimum height option
+    
+    # Resize all images to the same height while maintaining aspect ratio
+    resized_images = []
+    for img in images:
+        # Calculate new width to maintain aspect ratio
+        aspect_ratio = img.width / img.height
+        new_width = int(target_height * aspect_ratio)
+        resized_img = img.resize((new_width, target_height), Image.LANCZOS)
+        resized_images.append(resized_img)
+    
+    # Define spacing between images (in pixels)
+    spacing = 10  # 10px white space between images
+    
+    # Calculate total width after resizing (including spacing)
+    total_width = sum(img.width for img in resized_images) + spacing * (len(resized_images) - 1)
+    
+    # Create new image with combined width
+    concatenated = Image.new('RGB', (total_width, target_height), (255, 255, 255))
+    
+    # Paste images horizontally with spacing
+    x_offset = 0
+    for i, img in enumerate(resized_images):
+        concatenated.paste(img, (x_offset, 0))
+        x_offset += img.width
+        # Add spacing after each image except the last one
+        if i < len(resized_images) - 1:
+            x_offset += spacing
+    
+    # Generate unique filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    filename = f"concat_{timestamp}_{unique_id}.jpg"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    
+    # Save concatenated image
+    concatenated.save(file_path, 'JPEG', quality=95)
+    
+    # Return URL
+    return f"{SERVER_HOST}/upload/{filename}"
+
+
 @app.post("/api/image-edit")
 async def image_edit(
     image: UploadFile = File(...),
@@ -470,9 +546,10 @@ async def image_edit(
             "status": "submitted",
             "image_url": image_url
         })
-        
+    except HTTPException:
+        raise    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit nanobanana task: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/runninghub-status/{project_id}")
 async def runninghub_status(
@@ -760,7 +837,7 @@ async def ai_app_run(
 @app.post("/api/ai-app-run-image")
 async def ai_app_run_image(
     prompt: str = Form(..., description="Text prompt for the AI app"),
-    image: UploadFile = File(..., description="Image file for the AI app"),
+    images: List[UploadFile] = File(..., description="Image files for the AI app (1-5 images)"),
     ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9"),
     duration_seconds: int = Form(15, description="Duration in seconds"),
     user_id: int = Form(None, description="User ID"),
@@ -768,6 +845,7 @@ async def ai_app_run_image(
 ):
     """
     Submit task to RunningHub AI-app/run endpoint and wait for completion.
+    Supports uploading 1-5 images which will be concatenated horizontally.
     Automatically polls task status and returns final video/image URLs.
     """
     try:
@@ -777,7 +855,24 @@ async def ai_app_run_image(
                 detail="Authentication token is required"
             )
         
-        image_url = _save_uploaded_image(image)
+        # Validate number of images
+        if not images or len(images) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one image is required"
+            )
+        
+        if len(images) > 5:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 5 images allowed"
+            )
+        
+        # If single image, save it directly; if multiple, concatenate them
+        if len(images) == 1:
+            image_url = _save_uploaded_image(images[0])
+        else:
+            image_url = _concatenate_images(images)
 
         #用uuid生成交易id
         transaction_id = str(uuid.uuid4())
@@ -1009,6 +1104,7 @@ class RegisterRequest(BaseModel):
     code: str
     password: str
     agent: Optional[str] = 'default'
+    invite_code: Optional[str] = None
 
 @app.post('/api/auth/register')
 async def register(request: RegisterRequest):
@@ -1058,7 +1154,7 @@ async def register(request: RegisterRequest):
             phone=phone,
             password=password,
             auth_type='register',
-            extra_data={'code': verify_code}  # 使用 code 而不是 verify_code
+            extra_data={'code': verify_code, 'invite_code': request.invite_code}  # 使用 code 而不是 verify_code
         )
         
         if success:
@@ -1094,6 +1190,7 @@ class LoginRequest(BaseModel):
     phone: str
     password: str
     agent: Optional[str] = 'default'
+    terms_agreed: Optional[int] = 0
 
 @app.post('/api/auth/login')
 async def login(request: LoginRequest):
@@ -1104,6 +1201,7 @@ async def login(request: LoginRequest):
         phone = request.phone
         password = request.password
         agent = request.agent
+        terms_agreed = request.terms_agreed
         
         logger.info(f"收到登录请求 - 手机号: {phone}")
 
@@ -1136,7 +1234,8 @@ async def login(request: LoginRequest):
                 }
             )
         # 调用认证服务器登录
-        success, message, auth_data = call_external_auth_server(phone, password, device_uuid)
+        extra_data={'terms_agreed': terms_agreed}
+        success, message, auth_data = call_external_auth_server(phone, password, device_uuid,'login', extra_data)
         
         if success:
             logger.info(f"用户登录成功 - 手机号: {phone}")
