@@ -26,7 +26,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
 COMFYUI_OUTPUT_PATH = '/mnt/disk/ComfyUI/server_output'
 UPLOAD_DIR = os.path.join(APP_DIR, "upload")
-CHECK_AUTH_TOKEN = False
+CHECK_AUTH_TOKEN = True
 
 # Load server configuration
 import yaml
