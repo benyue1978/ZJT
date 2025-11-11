@@ -1825,5 +1825,5 @@ async def serve_spa(full_path: str):
 
 
 if __name__ == "__main__":
-    port = 9007 if is_dev_environment() else config["server"].get("port", 5174)
+    port = 9002 if is_dev_environment() else config["server"].get("port", 5173)
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)

@@ -1726,10 +1726,7 @@
           form.append('prompt', sceneTexts || '根据上传图片生成视频');
           form.append('ratio', '9:16');
           
-          // Extract duration from script result
-          const durationMatch = (this.scriptResult && this.scriptResult.TotalDuration ? this.scriptResult.TotalDuration : '').match(/(\d+)/);
-          const durationSeconds = durationMatch ? parseInt(durationMatch[1], 10) : 15;
-          form.append('duration_seconds', durationSeconds);
+          form.append('duration_seconds', 15);
           
           const userId = localStorage.getItem('user_id');
           if (userId) form.append('user_id', userId);
