@@ -7,7 +7,7 @@ API_KEY = "bce-v3/ALTAK-RW7WrM9SbRGJBisQ6n41v/223a3bda9f1652f86d74d5d8b937201fc3
 QIANFAN_API_URL = "https://qianfan.baidubce.com/v2/chat/completions"
 
 # 基础默认提示词（不含动态参数部分）
-BASE_DEFAULT_PROMPT = """参考用户上传的图片，生成带货视频的ai脚本，脚本形式为Json格式，将每个场景中的Json字段的内容都接在Text字段中，不要省略字段，也不要概括内容，参照{
+BASE_DEFAULT_PROMPT = """参考用户上传的图片，生成ai脚本，脚本形式为Json格式，将每个场景中的Json字段的内容都接在Text字段中，不要省略字段，也不要概括内容，参照{
   "VideoTitle": "《扇影流年》",
   "VideoStyle": "用户生活分享 · 自然美学 · 动态场景融合",
   "TotalDuration": "5秒",
