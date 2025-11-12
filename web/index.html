@@ -655,12 +655,19 @@
         <div class="modal-overlay" v-if="showHistory" @click.self="closeHistory">
           <div class="modal" style="max-width: 800px; max-height: 80vh; overflow-y: auto;" @scroll="handleHistoryScroll">
             <div style="position: relative;">
-              <button class="modal-close" @click="closeHistory">×</button>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 40px;">
-                <div class="modal-title">历史记录 (共 {{ historyTotal }} 条)</div>
-                <button class="btn secondary" @click="fetchHistory(false)" :disabled="historyLoading" style="font-size: 12px; padding: 4px 12px;">
-                  {{ historyLoading ? '刷新中...' : '刷新' }}
-                </button>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-right: 40px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                  <div class="modal-title">历史记录 (共 {{ historyTotal }} 条)</div>
+                  <button
+                    class="btn secondary"
+                    @click="fetchHistory(false)"
+                    :disabled="historyLoading"
+                    style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 12px; font-size: 12px;"
+                  >
+                    {{ historyLoading ? '刷新中...' : '刷新' }}
+                  </button>
+                </div>
+                <button class="modal-close" @click="closeHistory">×</button>
               </div>
             </div>
             
@@ -1055,12 +1062,14 @@
         <div class="modal-overlay" v-if="showHistory" @click.self="closeHistory">
           <div class="modal" style="max-width: 800px; max-height: 80vh; overflow-y: auto;" @scroll="handleHistoryScroll">
             <div style="position: relative;">
-              <button class="modal-close" @click="closeHistory">×</button>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 40px;">
-                <div class="modal-title">历史记录 (共 {{ historyTotal }} 条)</div>
-                <button class="btn secondary" @click="fetchHistory(false)" :disabled="historyLoading" style="font-size: 12px; padding: 4px 12px;">
-                  {{ historyLoading ? '刷新中...' : '刷新' }}
-                </button>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-right: 40px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                  <div class="modal-title">历史记录 (共 {{ historyTotal }} 条)</div>
+                  <button class="btn secondary" @click="fetchHistory(false)" :disabled="historyLoading" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 12px; font-size: 12px;">
+                    {{ historyLoading ? '刷新中...' : '刷新' }}
+                  </button>
+                </div>
+                <button class="modal-close" @click="closeHistory">×</button>
               </div>
             </div>
             
@@ -1406,12 +1415,14 @@
         <div class="modal-overlay" v-if="showHistory" @click.self="closeHistory">
           <div class="modal" style="max-width: 800px; max-height: 80vh; overflow-y: auto;" @scroll="handleHistoryScroll">
             <div style="position: relative;">
-              <button class="modal-close" @click="closeHistory">×</button>
-              <div style="display: flex; justify-content: space-between; align-items: center; padding-right: 40px;">
-                <div class="modal-title">历史记录 (共 {{ historyTotal }} 条)</div>
-                <button class="btn secondary" @click="fetchHistory(false)" :disabled="historyLoading" style="font-size: 12px; padding: 4px 12px;">
-                  {{ historyLoading ? '刷新中...' : '刷新' }}
-                </button>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-right: 40px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                  <div class="modal-title">历史记录 (共 {{ historyTotal }} 条)</div>
+                  <button class="btn secondary" @click="fetchHistory(false)" :disabled="historyLoading" style="display: inline-flex; align-items: center; justify-content: center; padding: 4px 12px; font-size: 12px;">
+                    {{ historyLoading ? '刷新中...' : '刷新' }}
+                  </button>
+                </div>
+                <button class="modal-close" @click="closeHistory">×</button>
               </div>
             </div>
             

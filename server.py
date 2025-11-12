@@ -1582,7 +1582,7 @@ async def ai_script_generate(
         if CHECK_AUTH_TOKEN and auth_token is None:
             raise HTTPException(
                 status_code=400, 
-                detail="Authentication token is required"
+                detail="请登录"
             )
         # 保存上传的图片并获取URL
         image_url1 = _save_uploaded_image(image1)
