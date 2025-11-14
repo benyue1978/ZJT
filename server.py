@@ -20,7 +20,6 @@ from model import AIToolsModel
 import uuid
 from api_requset import create_image_to_video, get_ai_task_result, create_ai_image
 from PIL import Image
-from baidu import call_ernie_vl_api
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -45,12 +44,13 @@ API_KEY = config["runninghub"]["api_key"]
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
 
 # Type to computing power mapping
-# 1: 图片编辑, 2: AI视频生成, 3: 图片生成视频, 4: 高清放大
+# 1: 图片编辑, 2: AI视频生成, 3: 图片生成视频, 4: 高清放大, 5: 视频高清修复
 TASK_COMPUTING_POWER = {
     1: 2,
     2: 20,
     3: 20,
-    4: 1
+    4: 1,
+    5: 10
 }
 
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
@@ -1418,7 +1418,7 @@ async def get_ai_tools_history(
                     
                 try:
                     # Type 4 (图片高清放大) uses RunningHub, others use get_ai_task_result
-                    if task.type == 4:
+                    if task.type in [4,5,6]:
                         # Use RunningHub client for upscale tasks
                         client = RunningHubClient()
                         status = client.check_status(task.project_id)
@@ -1450,6 +1450,11 @@ async def get_ai_tools_history(
                     else:
                         # Use get_ai_task_result for other task types
                         result = get_ai_task_result(task.project_id)
+                        
+                        # Ensure we received a valid response
+                        if not result or not isinstance(result, dict):
+                            logger.error(f"Failed to get task result for {task.project_id}: invalid response type {type(result).__name__}")
+                            continue
                         
                         # Check if API call was successful
                         if result.get("code") != 0:
@@ -1527,15 +1532,20 @@ async def get_ai_tools_history(
                     logger.error(traceback.format_exc())
         
         # 查询历史记录
-        # If type=1, also include type=4 (图片高清放大)
-        if type == 1:
+        type_mapping = {
+            1: [1, 4],  # 图片编辑 + 图片高清放大
+            2: [2, 5],  # AI视频生成 + 高清修复
+            3: [3, 6],  # 图片生成视频/图生视频智能体 + 高清修复
+        }
+
+        if type in type_mapping:
             result = AIToolsModel.list_by_user(
                 user_id=user_id,
                 page=page,
                 page_size=page_size,
                 order_by='create_time',
                 order_direction='DESC',
-                type_list=[1, 4]  # 1-图片编辑, 4-图片高清放大
+                type_list=type_mapping[type]
             )
         else:
             result = AIToolsModel.list_by_user(
@@ -1787,6 +1797,160 @@ async def image_upscale(
         logger.error(f"Image upscale failed: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"图片高清放大失败: {str(e)}")
+        
+@app.post("/api/video-enhance")
+async def video_enhance(
+    video: UploadFile = File(None, description="需要修复的视频文件"),
+    video_url: str = Form(None, description="视频URL（如果提供则不需要上传文件）"),
+    user_id: int = Form(None, description="User ID"),
+    auth_token: str = Form(None, description="Authentication token"),
+    enhance_type: int = Form(5, description="增强类型：5-视频高清修复，6-从其他任务生成高清视频")
+):
+    """
+    Video enhancement endpoint - Enhance blurry video to higher quality
+    Args:
+    video: The video file to enhance (optional if video_url provided)
+    video_url: Direct video URL to enhance (optional if video file provided)
+    user_id: User ID for tracking
+    auth_token: Authentication token
+    enhance_type: Type for database record (5 for direct upload, 6 for history enhancement)
+    Returns:
+    JSON response with enhancement task information
+    """
+    try:
+        logger.info(f"Video enhancement request received from user: {user_id}")
+        # Check authentication
+        if CHECK_AUTH_TOKEN and auth_token is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Authentication token is required"
+            )
+        # Generate transaction ID
+        transaction_id = str(uuid.uuid4())
+        computing_power = TASK_COMPUTING_POWER[5]
+        if CHECK_AUTH_TOKEN:
+            headers = {'Authorization': f'Bearer {auth_token}'}
+            # Check if computing power is sufficient
+            success, message, response_data = make_perseids_request(
+                endpoint='user/check_computing_power',
+                method='GET',
+                headers=headers
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400,
+                    detail=message
+                )
+            user_computing_power = response_data.get('computing_power', 0)
+            if user_computing_power < computing_power:
+                raise HTTPException(
+                    status_code=400,
+                    detail="您的算力不足，无法进行视频修复"
+                )
+        
+        # Determine video URL - either from upload or from parameter
+        if video_url:
+            # Use provided video URL directly
+            final_video_url = video_url
+            logger.info(f"Using provided video URL: {video_url}")
+        elif video:
+            # Save uploaded video and get URL
+            file_bytes = await video.read()
+            
+            # Save video to upload directory
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            video_filename = f"{uuid.uuid4()}_{video.filename}"
+            local_video_path = os.path.join(UPLOAD_DIR, video_filename)
+            with open(local_video_path, "wb") as f:
+                f.write(file_bytes)
+            
+            # Create accessible URL for frontend
+            final_video_url = f"{SERVER_HOST}/upload/{video_filename}"
+            logger.info(f"Uploaded video saved to: {final_video_url}")
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="必须提供视频文件或视频URL"
+            )
+        
+        # Submit video enhancement task using runninghub_request module
+        try:
+            from runninghub_request import run_ai_app_task
+            
+            node_info_list = [{
+                "nodeId": "6",
+                "fieldName": "video",
+                "fieldValue": final_video_url,
+                "description": "video"
+            }]
+            
+            result = run_ai_app_task(
+                "1989206149524238338",  # webappId for video enhancement
+                "9549532f3c3d435ebe5e1ca78dcac1e8",  # apiKey
+                node_info_list,
+                None,
+            )
+            
+            if result.get("code") != 0:
+                error_msg = result.get("msg", "Unknown error")
+                raise RuntimeError(f"Task submission failed: {error_msg}")
+            
+            project_id = result.get("data", {}).get("taskId")
+            if not project_id:
+                raise HTTPException(status_code=500, detail="提交任务失败，未返回 taskId")
+            
+            logger.info(f"Video enhancement task created with project_id: {project_id}")
+            
+        except Exception as task_error:
+            logger.error(f"Failed to submit video enhancement task: {task_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"任务提交失败: {str(task_error)}"
+            )
+        
+        # Deduct computing power
+        if CHECK_AUTH_TOKEN:
+            success, message, response_data = make_perseids_request(
+                endpoint='user/calculate_computing_power',
+                method='POST',
+                headers=headers,
+                data={
+                    "computing_power": computing_power,
+                    "behavior": "deduct",
+                    "transaction_id": transaction_id
+                }
+            )
+            if not success:
+                logger.error(f"Failed to deduct computing power: {message}")
+                # Don't fail the request, just log the error
+        
+        # Create database record
+        if user_id:
+            try:
+                AIToolsModel.create(
+                    prompt="视频高清修复",
+                    user_id=user_id,
+                    type=enhance_type,  # Use provided enhance_type
+                    image_path=final_video_url,
+                    project_id=project_id,
+                    transaction_id=transaction_id,
+                    status=1
+                )
+            except Exception as db_error:
+                logger.error(f"Failed to create database record: {db_error}")
+        
+        return JSONResponse({
+            "project_id": project_id,
+            "status": "submitted",
+            "video_url": final_video_url
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Video enhancement failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"视频高清修复失败: {str(e)}")
 
 
 # Serve upload directory for static file access
