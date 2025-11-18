@@ -20,6 +20,7 @@ from model import AIToolsModel
 import uuid
 from api_requset import create_image_to_video, get_ai_task_result, create_ai_image
 from PIL import Image
+from baidu import call_ernie_vl_api
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -50,7 +51,8 @@ TASK_COMPUTING_POWER = {
     2: 20,
     3: 20,
     4: 1,
-    5: 10
+    5: 10,
+    6: 10
 }
 
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
