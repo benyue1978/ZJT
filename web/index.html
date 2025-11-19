@@ -367,7 +367,7 @@
       startStatusCheck() {
         this.statusInterval = setInterval(() => {
           this.checkStatus();
-        }, 5000);
+        }, 10000);
       },
       
       clearStatusCheck() {
@@ -2345,6 +2345,7 @@
         videoRatio: '9:16',
         enhancingVideos: {}, 
         enhanceTaskIds: {},
+        oneClickLoading: false,
       };
     },
     computed: {
@@ -2418,6 +2419,115 @@
           this.stopProgress();
         } finally {
           this.loading = false;
+        }
+      },
+      
+      async oneClickGenerateVideo() {
+        if (!this.canSubmit) {
+          if (!this.image1) {
+            alert('请上传图片');
+          }
+          return;
+        }
+        
+        this.oneClickLoading = true;
+        this.loading = true;
+        this.error = '';
+        this.videoError = '';
+        this.scriptResult = null;
+        this.scenes = [];
+        this.sceneJsons = [];
+        this.videoResults = [];
+        this.videoStatus = '';
+        this.videoProjectIds = [];
+        this.videoProjectId = '';
+        this.startProgress();
+        
+        try {
+          // Step 1: Generate script
+          const scriptForm = new FormData();
+          scriptForm.append('image1', this.image1);
+          if (this.image2) scriptForm.append('image2', this.image2);
+          if (this.image3) scriptForm.append('image3', this.image3);
+          if (this.image4) scriptForm.append('image4', this.image4);
+          if (this.image5) scriptForm.append('image5', this.image5);
+          scriptForm.append('extra_prompt', this.extraPrompt);
+          scriptForm.append('add_detail', this.addDetail);
+          scriptForm.append('need_narration', this.needNarration);
+          const userId = localStorage.getItem('user_id');
+          if (userId) {
+            scriptForm.append('user_id', userId);
+          }
+          if (this.authToken) {
+            scriptForm.append('auth_token', this.authToken);
+          }
+
+          const scriptRes = await axios.post('/api/ai-script-generate', scriptForm, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          
+          this.scriptResult = scriptRes.data.script;
+          if (this.scriptResult && Array.isArray(this.scriptResult.ScriptScenes)) {
+            this.scenes = this.scriptResult.ScriptScenes;
+            this.sceneJsons = this.scriptResult.ScriptScenes.map(scene => JSON.stringify(scene, null, 2));
+          } else {
+            this.scenes = [];
+            this.sceneJsons = [];
+            throw new Error('脚本生成失败，无法继续生成视频');
+          }
+          
+          this.completeProgress();
+          this.loading = false;
+          
+          // Step 2: Automatically generate video
+          this.videoLoading = true;
+          this.clearVideoStatusPolling();
+          
+          const videoForm = new FormData();
+          
+          // Add all uploaded images
+          [this.image1, this.image2, this.image3, this.image4, this.image5].forEach(file => {
+            if (file) videoForm.append('images', file);
+          });
+          
+          // Combine all scene Text content
+          const sceneTexts = this.scenes
+            .map(scene => scene.Text || scene.SceneDescription || '')
+            .filter(text => text && text.trim())
+            .join(' ');
+          
+          videoForm.append('prompt', sceneTexts || '根据上传图片生成视频');
+          videoForm.append('ratio', this.videoRatio);
+          videoForm.append('duration_seconds', 15);
+          videoForm.append('count', this.videoCount);
+          
+          if (userId) videoForm.append('user_id', userId);
+          if (this.authToken) videoForm.append('auth_token', this.authToken);
+          
+          const videoRes = await axios.post('/api/ai-app-run-image', videoForm);
+          
+          // Handle multiple project IDs
+          this.videoProjectIds = videoRes.data.project_ids || [];
+          this.videoProjectId = this.videoProjectIds.join(', ');
+          this.videoStatus = videoRes.data.status || '';
+          
+          if (this.videoProjectIds.length > 0) {
+            this.checkVideoStatus();
+          }
+          
+        } catch (err) {
+          console.error(err);
+          const errorMsg = err?.response?.data?.detail || err?.message || '一键生成失败';
+          if (this.loading) {
+            this.error = errorMsg;
+            this.stopProgress();
+          } else {
+            this.videoError = errorMsg;
+          }
+          this.loading = false;
+          this.videoLoading = false;
+        } finally {
+          this.oneClickLoading = false;
         }
       },
       startProgress() {
@@ -2876,8 +2986,28 @@
         </select>
       </div>
       <div class="field">
+        <label class="label">视频比例</label>
+        <select class="input" v-model="videoRatio">
+          <option value="9:16">竖屏 (9:16)</option>
+          <option value="16:9">横屏 (16:9)</option>
+        </select>
+        <div style="margin-top: 6px; font-size: 13px; color: var(--muted);">视频时长15秒</div>
+      </div>
+      <div class="field">
+        <label class="label">生成数量</label>
+        <select class="input" v-model.number="videoCount">
+          <option :value="1">1个</option>
+          <option :value="2">2个</option>
+          <option :value="3">3个</option>
+          <option :value="4">4个</option>
+        </select>
+      </div>
+      <div class="field">
         <div class="row">
-          <button class="btn" :disabled="!canSubmit" @click="submit">{{ loading ? '生成中…' : '启动智能体' }}</button>
+          <button class="btn" :disabled="!canSubmit || oneClickLoading || videoLoading" @click="submit">{{ loading && !oneClickLoading ? '生成中…' : '启动智能体' }}</button>
+          <button class="btn" :disabled="!canSubmit || loading || videoLoading" @click="oneClickGenerateVideo" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
+            {{ oneClickLoading ? '一键生成中…' : '一键生成视频' }}
+          </button>
           <button class="btn secondary" @click="fetchHistory" :disabled="historyLoading">{{ historyLoading ? '加载中...' : '历史记录' }}</button>
         </div>
       </div>
@@ -2920,24 +3050,7 @@
         </div>
       </div>
       <div v-if="scenes.length" style="margin-top: 16px; padding-right: 18px;">
-        <div class="field" style="margin-bottom: 12px; padding-left: 18px;">
-          <label class="label">视频比例</label>
-          <select class="input" v-model="videoRatio">
-            <option value="9:16">竖屏 (9:16)</option>
-            <option value="16:9">横屏 (16:9)</option>
-          </select>
-          <div style="margin-top: 6px; font-size: 13px; color: var(--muted);">视频时长15秒</div>
-        </div>
-        <div class="field" style="margin-bottom: 12px; padding-left: 18px;">
-          <label class="label">生成数量</label>
-          <select class="input" v-model.number="videoCount">
-            <option :value="1">1个</option>
-            <option :value="2">2个</option>
-            <option :value="3">3个</option>
-            <option :value="4">4个</option>
-          </select>
-        </div>
-        <div class="field" style="display: flex; justify-content: flex-end; margin-bottom: 0;">
+        <div class="field" style="display: flex; justify-content: flex-end; margin-bottom: 0; padding-left: 18px;">
           <button class="btn btn-full" :disabled="videoLoading" @click="generateVideo" style="padding: 14px 32px; font-size: 18px;">
             {{ videoLoading ? '生成中…' : '生成视频' }}
           </button>
