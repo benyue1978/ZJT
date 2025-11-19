@@ -78,6 +78,48 @@ def create_ai_image(model="gemini-2.5-pro-image-preview", prompt="", ratio="9:16
     response = requests.post(url, json=payload, headers=headers)
     return response.json()
 
+def create_video_remix(video_id, prompt, aspect_ratio="16:9", duration=15):
+    """
+    Remix/re-edit an existing video using Sora2 API
+    
+    Args:
+        video_id: ID of the video to remix
+        prompt: Text prompt for video remix
+        aspect_ratio: Video aspect ratio (default: "16:9")
+        duration: Video duration in seconds (default: 15)
+    
+    Returns:
+        Response from the API
+    """
+    url = f"https://duomiapi.com/v1/videos/{video_id}/remix"
+    
+    payload = {
+        "model": "sora-2",
+        "prompt": prompt,
+        "aspect_ratio": aspect_ratio,
+        "duration": duration
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": token
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    # Log response for debugging
+    print(f"Remix API response status: {response.status_code}")
+    print(f"Remix API response text: {response.text[:500]}")  # First 500 chars
+    
+    # Check if response is successful
+    if response.status_code != 200:
+        raise Exception(f"API returned status {response.status_code}: {response.text}")
+    
+    try:
+        return response.json()
+    except Exception as e:
+        raise Exception(f"Failed to parse JSON response: {response.text[:200]}")
+
 def get_ai_task_result(project_id, is_video):
     """
     Query AI task generation result

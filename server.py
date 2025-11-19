@@ -18,7 +18,7 @@ from config_util import get_config_path, is_dev_environment
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
 from model import AIToolsModel
 import uuid
-from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image
+from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix
 from PIL import Image
 from baidu import call_ernie_vl_api
 
@@ -2040,6 +2040,168 @@ async def video_enhance(
         raise HTTPException(status_code=500, detail=f"视频高清修复失败: {str(e)}")
 
 
+@app.post("/api/video-remix")
+async def video_remix(
+    video_id: str = Form(..., description="视频ID"),
+    prompt: str = Form(..., description="重新编辑的提示词"),
+    aspect_ratio: str = Form("16:9", description="视频比例: 16:9, 9:16, 1:1"),
+    duration: int = Form(15, description="视频时长（秒）"),
+    count: int = Form(1, ge=1, le=4, description="生成数量 (1-4)"),
+    user_id: int = Form(None, description="用户ID"),
+    auth_token: str = Form(None, description="认证令牌")
+):
+    """
+    Sora2 视频重新编辑接口 - 基于现有视频ID进行重新编辑
+    
+    Args:
+        video_id: 要重新编辑的视频ID
+        prompt: 重新编辑的提示词
+        aspect_ratio: 视频比例 (16:9, 9:16, 1:1)
+        duration: 视频时长（秒）
+        count: 生成数量 (1-4)
+        user_id: 用户ID
+        auth_token: 认证令牌
+    
+    Returns:
+        JSON响应，包含任务ID列表
+    """
+    try:
+        logger.info(f"Video remix request received - video_id: {video_id}, prompt: {prompt}")
+        
+        # 检查认证
+        if CHECK_AUTH_TOKEN and auth_token is None:
+            raise HTTPException(
+                status_code=400,
+                detail="请提供认证令牌"
+            )
+        
+        # 计算所需算力（使用视频生成的算力标准）
+        computing_power = TASK_COMPUTING_POWER[2]  # 2: AI视频生成
+        
+        if CHECK_AUTH_TOKEN:
+            headers = {'Authorization': f'Bearer {auth_token}'}
+            
+            # 检查算力是否充足
+            success, message, response_data = make_perseids_request(
+                endpoint='user/check_computing_power',
+                method='GET',
+                headers=headers
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400,
+                    detail=message
+                )
+            
+            # 检查算力是否足够生成所有视频
+            user_computing_power = response_data.get('computing_power', 0)
+            total_computing_power = computing_power * count
+            if user_computing_power < total_computing_power:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"您的算力不足，需要 {total_computing_power} 算力，当前仅有 {user_computing_power} 算力"
+                )
+        
+        project_ids = []
+        
+        # 循环创建多个任务
+        for i in range(count):
+            try:
+                # 为每个任务生成唯一的交易ID
+                transaction_id = str(uuid.uuid4())
+                
+                # 调用remix API
+                try:
+                    result = create_video_remix(
+                        video_id=video_id,
+                        prompt=prompt,
+                        aspect_ratio=aspect_ratio,
+                        duration=duration
+                    )
+                except Exception as api_error:
+                    error_msg = str(api_error)
+                    logger.error(f"Task {i+1} API call failed: {error_msg}")
+                    # 如果是第一个任务就失败，直接抛出错误
+                    if i == 0 and len(project_ids) == 0:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Remix API调用失败: {error_msg}"
+                        )
+                    continue
+                
+                logger.info(f"Remix task {i+1} result: {result}")
+                
+                # 从响应中获取project_id
+                project_id = result.get("id")
+                if not project_id:
+                    logger.error(f"Task {i+1}: No project ID received from remix API. Response: {result}")
+                    # 如果是第一个任务就失败，直接抛出错误
+                    if i == 0 and len(project_ids) == 0:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"API返回格式错误: 未获取到任务ID。响应: {result}"
+                        )
+                    continue
+                
+                project_ids.append(project_id)
+                
+                # 扣除算力
+                if CHECK_AUTH_TOKEN:
+                    success, message, response_data = make_perseids_request(
+                        endpoint='user/calculate_computing_power',
+                        method='POST',
+                        headers=headers,
+                        data={
+                            "computing_power": computing_power,
+                            "behavior": "deduct",
+                            "transaction_id": transaction_id
+                        }
+                    )
+                    if not success:
+                        logger.error(f"Task {i+1} computing power deduction failed: {message}")
+                        # 继续执行，因为任务已经提交
+                
+                # 创建数据库记录
+                if user_id:
+                    try:
+                        AIToolsModel.create(
+                            prompt=f"Remix: {prompt}",
+                            user_id=user_id,
+                            type=2,  # 2-AI视频生成
+                            ratio=aspect_ratio,
+                            duration=duration,
+                            project_id=project_id,
+                            transaction_id=transaction_id,
+                            status=1,  # 1-正在处理
+                            message=f"原视频ID: {video_id}"
+                        )
+                    except Exception as db_error:
+                        logger.error(f"Failed to create database record for task {i+1}: {db_error}")
+                        # 不因数据库插入失败而中断请求
+                
+            except Exception as task_error:
+                logger.error(f"Task {i+1} failed: {task_error}")
+                logger.error(traceback.format_exc())
+                continue  # 继续处理下一个任务
+        
+        if not project_ids:
+            raise HTTPException(status_code=500, detail="所有任务都提交失败")
+        
+        return JSONResponse({
+            "success": True,
+            "project_ids": project_ids,
+            "status": "submitted",
+            "video_id": video_id
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Video remix failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"视频重新编辑失败: {str(e)}")
+
+
 # Serve upload directory for static file access
 upload_dir = os.path.join(APP_DIR, "upload")
 if not os.path.exists(upload_dir):
@@ -2067,6 +2229,10 @@ async def serve_spa(full_path: str):
     
     First tries to serve a static file if it exists, otherwise returns index.html.
     """
+    # Skip API routes - let them be handled by their specific handlers
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+    
     # Try to serve static file first
     file_path = os.path.join(static_dir, full_path)
     if os.path.isfile(file_path):
