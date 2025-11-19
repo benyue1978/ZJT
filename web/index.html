@@ -3004,10 +3004,10 @@
       </div>
       <div class="field">
         <div class="row">
-          <button class="btn" :disabled="!canSubmit || oneClickLoading || videoLoading" @click="submit">{{ loading && !oneClickLoading ? '生成中…' : '启动智能体' }}</button>
-          <button class="btn" :disabled="!canSubmit || loading || videoLoading" @click="oneClickGenerateVideo" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
+          <button class="btn" :disabled="!canSubmit || loading || videoLoading" @click="oneClickGenerateVideo">
             {{ oneClickLoading ? '一键生成中…' : '一键生成视频' }}
           </button>
+          <button class="btn secondary" :disabled="!canSubmit || oneClickLoading || videoLoading" @click="submit">{{ loading && !oneClickLoading ? '生成中…' : 'AI生成脚本' }}</button>
           <button class="btn secondary" @click="fetchHistory" :disabled="historyLoading">{{ historyLoading ? '加载中...' : '历史记录' }}</button>
         </div>
       </div>
