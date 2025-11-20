@@ -202,6 +202,24 @@
         </div>
       </div>
     </div>
+    
+    <!-- WeChat Mini-Program Guide Modal -->
+    <div class="modal-overlay" v-if="showWechatGuideModal" @click.self="showWechatGuideModal = false">
+      <div class="modal" style="position: relative; max-width: 500px;">
+        <button class="modal-close" @click="showWechatGuideModal = false">×</button>
+        <div class="modal-title">微信浏览器下载提示</div>
+        <div style="padding: 20px; text-align: center;">
+          <p style="font-size: 16px; color: var(--text); margin-bottom: 16px;">
+            微信浏览器无法直接下载视频<br/>
+            请前往小程序下载
+          </p>
+          <img src="/files/小程序二维码.png" alt="小程序二维码" style="max-width: 240px; height: auto; border-radius: 8px; margin-bottom: 16px;" />
+          <p style="font-size: 14px; color: var(--muted); margin: 0;">
+            长按识别二维码进入小程序
+          </p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -378,6 +396,12 @@
       },
       
       downloadVideo(url, index) {
+        // Check if WeChat browser
+        if (this.$root.isWechatBrowser()) {
+          this.$root.showWechatGuideModal = true;
+          return;
+        }
+        
         const now = new Date();
         const dateStr = now.getFullYear().toString() + 
                        (now.getMonth() + 1).toString().padStart(2, '0') + 
@@ -394,6 +418,13 @@
           alert('下载链接不可用');
           return;
         }
+        
+        // Check if WeChat browser
+        if (this.$root.isWechatBrowser()) {
+          this.$root.showWechatGuideModal = true;
+          return;
+        }
+        
         const now = new Date();
         const dateStr = now.getFullYear().toString() + 
                        (now.getMonth() + 1).toString().padStart(2, '0') + 
@@ -1430,6 +1461,12 @@
       },
       
       downloadVideo(url, index, isEnhanced = false) {
+        // Check if WeChat browser
+        if (this.$root.isWechatBrowser()) {
+          this.$root.showWechatGuideModal = true;
+          return;
+        }
+        
         const now = new Date();
         const dateStr = now.getFullYear().toString() + 
                        (now.getMonth() + 1).toString().padStart(2, '0') + 
@@ -1904,6 +1941,12 @@
       },
       
       downloadVideo(url, index) {
+        // Check if WeChat browser
+        if (this.$root.isWechatBrowser()) {
+          this.$root.showWechatGuideModal = true;
+          return;
+        }
+        
         const now = new Date();
         const dateStr = now.getFullYear().toString() + 
                        (now.getMonth() + 1).toString().padStart(2, '0') + 
@@ -1925,6 +1968,13 @@
           alert('暂无可下载的结果');
           return;
         }
+        
+        // Check if WeChat browser
+        if (this.$root.isWechatBrowser()) {
+          this.$root.showWechatGuideModal = true;
+          return;
+        }
+        
         const now = new Date();
         const dateStr = now.getFullYear().toString() +
                         (now.getMonth() + 1).toString().padStart(2, '0') +
@@ -2909,6 +2959,12 @@
         }
       },
       downloadVideo(url, index, isEnhanced = false) {
+          // Check if WeChat browser
+          if (this.$root.isWechatBrowser()) {
+            this.$root.showWechatGuideModal = true;
+            return;
+          }
+          
           const now = new Date();
           const dateStr = now.getFullYear().toString() +
                         (now.getMonth() + 1).toString().padStart(2, '0') +
@@ -3225,7 +3281,8 @@
       resetCodeCountdown: 0,
       resetCountdownTimer: null,
       showTermsModal: false,
-      termsContent: ''
+      termsContent: '',
+      showWechatGuideModal: false
     } },
     mounted() {
       // Extract auth_token from URL query parameters at app level
@@ -3743,6 +3800,11 @@
           alert('复制失败，请手动复制邀请码：' + this.inviteCode);
         }
         document.body.removeChild(textarea);
+      },
+      
+      isWechatBrowser() {
+        const ua = navigator.userAgent.toLowerCase();
+        return /micromessenger/.test(ua);
       }
     },
     

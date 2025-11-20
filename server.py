@@ -1690,8 +1690,6 @@ async def ai_script_generate(
             extra_prompt=extra_prompt
         )
         
-        logger.info(f"Baidu API response received: {result}")
-        
         # 检查是否有错误
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
