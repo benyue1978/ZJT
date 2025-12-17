@@ -265,6 +265,13 @@
           </div>
           <button class="btn" @click="$router.push({name:'video-enhance'})">打开</button>
         </div>
+        <div class="list-item">
+          <div>
+            <div style="font-weight:700">视频 Remix</div>
+            <div class="muted">基于现有视频ID进行重新编辑</div>
+          </div>
+          <button class="btn" @click="$router.push({name:'video-remix'})">打开</button>
+        </div>
         <!-- <div class="list-item">
           <div>
             <div style="font-weight:700">小红书笔记修改</div>
@@ -274,6 +281,259 @@
         </div>-->
       </div>
     `,
+  };
+
+
+  const VideoRemix = {
+    name: 'VideoRemix',
+    data() {
+      return {
+        videoId: '',
+        prompt: '',
+        aspectRatio: '16:9',
+        duration: 15,
+        count: 1,
+        loading: false,
+        error: '',
+        results: [],
+        projectIds: [],
+        status: '',
+        authToken: '',
+      }
+    },
+    mounted() {
+      this.authToken = localStorage.getItem('auth_token') || '';
+    },
+    computed: {
+      canSubmit() { return !!this.videoId.trim() && !!this.prompt.trim() && !this.loading },
+      statusText() {
+        if (['SUCCESS', 'completed'].includes(this.status)) return 'Remix完成！';
+        if (['FAILED'].includes(this.status)) return this.error || '任务失败';
+        if (['QUEUED', 'RUNNING'].includes(this.status) || this.loading) return '正在Remix视频，请稍候...';
+        return '';
+      },
+      aspectRatioOptions() {
+        return [
+          { value: '16:9', label: '16:9 (横屏)' },
+          { value: '9:16', label: '9:16 (竖屏)' },
+          { value: '1:1', label: '1:1 (方形)' }
+        ];
+      },
+      durationOptions() {
+        return [
+          { value: 10, label: '10秒' },
+          { value: 15, label: '15秒' },
+          { value: 20, label: '20秒' }
+        ];
+      },
+      countOptions() {
+        return [
+          { value: 1, label: '1个' },
+          { value: 2, label: '2个' },
+          { value: 3, label: '3个' },
+          { value: 4, label: '4个' }
+        ];
+      }
+    },
+    methods: {
+      async submit(){
+        if(!this.canSubmit) return;
+        this.loading = true; 
+        this.error=''; 
+        this.results=[]; 
+        this.projectIds=[];
+        this.status='';
+        
+        try {
+          const form = new FormData();
+          form.append('video_id', this.videoId);
+          form.append('prompt', this.prompt);
+          form.append('aspect_ratio', this.aspectRatio);
+          form.append('duration', this.duration);
+          form.append('count', this.count);
+          
+          // Add user_id from localStorage
+          const userId = localStorage.getItem('user_id');
+          if (userId) {
+            form.append('user_id', userId);
+          }
+          
+          // Add auth_token if available
+          if (this.authToken) {
+            form.append('auth_token', this.authToken);
+          }
+
+          const res = await axios.post('/api/video-remix', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          
+          // Handle multiple project IDs
+          this.projectIds = res.data.project_ids || [];
+          this.status = res.data.status || 'submitted';
+          
+          // Start polling for status
+          if (this.projectIds.length > 0) {
+            this.checkStatus();
+          }
+          
+        } catch (err) {
+          console.error(err);
+          this.error = err?.response?.data?.detail || err?.message || '请求失败';
+          this.loading = false;
+        }
+      },
+      
+      async checkStatus() {
+        if (!this.projectIds || this.projectIds.length === 0) return;
+        
+        try {
+          const authToken = localStorage.getItem('auth_token');
+          const params = authToken ? { auth_token: authToken } : {};
+          
+          // Batch query all project IDs
+          const projectIdsStr = this.projectIds.join(',');
+          const res = await axios.get(`/api/get-status/${projectIdsStr}`, { params });
+          const payload = res?.data;
+
+          if (!payload) {
+            console.error('Invalid status response:', payload);
+            this.statusInterval = setTimeout(() => this.checkStatus(), 10000);
+            return;
+          }
+
+          // Handle batch response
+          if (payload.tasks) {
+            // Multiple tasks response
+            const tasks = payload.tasks;
+            const allSuccess = tasks.every(t => t.status === 'SUCCESS');
+            const anyFailed = tasks.some(t => t.status === 'FAILED');
+            const anyRunning = tasks.some(t => t.status === 'RUNNING');
+            
+            // Collect all successful results
+            const allResults = [];
+            tasks.forEach(task => {
+              if (task.results && task.results.length > 0) {
+                allResults.push(...task.results);
+              }
+            });
+            
+            this.results = allResults;
+            
+            if (allSuccess) {
+              this.status = 'SUCCESS';
+              this.loading = false;
+              this.clearStatusCheck();
+            } else if (anyFailed && !anyRunning) {
+              // All done but some failed
+              const failedTasks = tasks.filter(t => t.status === 'FAILED');
+              this.error = `${failedTasks.length} 个任务失败`;
+              this.status = 'FAILED';
+              this.loading = false;
+              this.clearStatusCheck();
+            } else {
+              // Still running
+              this.status = 'RUNNING';
+              this.statusInterval = setTimeout(() => this.checkStatus(), 10000);
+            }
+          } else {
+            // Single task response
+            this.status = payload.status || '';
+
+            if (this.status === 'SUCCESS') {
+              this.results = payload.results || [];
+              this.loading = false;
+              this.clearStatusCheck();
+            } else if (this.status === 'FAILED') {
+              this.error = payload.reason || '任务失败';
+              this.loading = false;
+              this.clearStatusCheck();
+            } else {
+              this.statusInterval = setTimeout(() => this.checkStatus(), 10000);
+            }
+          }
+        } catch (err) {
+          console.error('Status check failed:', err);
+          this.statusInterval = setTimeout(() => this.checkStatus(), 10000);
+        }
+      },
+      
+      clearStatusCheck() {
+        if (this.statusInterval) {
+          clearTimeout(this.statusInterval);
+          this.statusInterval = null;
+        }
+      },
+      
+      downloadVideo(url, index) {
+        const now = new Date();
+        const dateStr = now.getFullYear().toString() + 
+                       (now.getMonth() + 1).toString().padStart(2, '0') + 
+                       now.getDate().toString().padStart(2, '0');
+        const timeStr = now.getHours().toString().padStart(2, '0') + 
+                       now.getMinutes().toString().padStart(2, '0');
+        const filename = `remix_video_${dateStr}_${timeStr}_${index + 1}.mp4`;
+        const downloadUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+        window.open(downloadUrl, '_blank');
+      }
+    },
+    template: `
+      <div class="form">
+        <div class="field">
+          <label class="label">视频ID <span style="color: red;">*</span></label>
+          <input class="input" v-model="videoId" placeholder="输入要重新编辑的视频ID" />
+          <div class="muted" style="margin-top: 4px;">例如: 09fe0989-90ce-593a-e9d4-921a62ac617f</div>
+        </div>
+        
+        <div class="field">
+          <label class="label">编辑提示词 <span style="color: red;">*</span></label>
+          <textarea class="input" v-model="prompt" placeholder="描述你想要的编辑效果，例如：黑夜变白天" rows="3"></textarea>
+        </div>
+        
+        <div class="field">
+          <label class="label">视频比例</label>
+          <select class="input" v-model="aspectRatio">
+            <option v-for="opt in aspectRatioOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
+        
+        <div class="field">
+          <label class="label">视频时长</label>
+          <select class="input" v-model="duration">
+            <option v-for="opt in durationOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
+        
+        <div class="field">
+          <label class="label">生成数量</label>
+          <select class="input" v-model="count">
+            <option v-for="opt in countOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <button class="btn" @click="submit" :disabled="!canSubmit">
+            {{ loading ? 'Remix中...' : '开始 Remix' }}
+          </button>
+        </div>
+
+        <div v-if="statusText" class="status" :class="{'success': status==='SUCCESS', 'danger': status==='FAILED'}">
+          {{ statusText }}
+        </div>
+
+        <div v-if="error && !loading" class="status danger">{{ error }}</div>
+
+        <div v-if="results.length" class="results">
+          <div class="result-title">生成结果 ({{ results.length }}个)</div>
+          <div v-for="(r, idx) in results" :key="idx" class="result-item">
+            <video :src="r.file_url" controls style="width:100%; max-height:400px; border-radius:8px;"></video>
+            <div style="margin-top:8px; display:flex; gap:8px;">
+              <button class="btn secondary" @click="downloadVideo(r.file_url, idx)">下载视频</button>
+              <span v-if="r.task_cost_time" class="muted">耗时: {{ r.task_cost_time }}秒</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `
   };
 
 
@@ -3282,7 +3542,8 @@
     { path: '/ai-video-gen', name: 'ai-video-gen', component: AIVideoGen },
     { path: '/image-to-video', name: 'image-to-video', component: ImageToVideo },
     { path: '/ai-script-gen', name: 'ai-script-gen', component: AIScriptGen },
-    { path: '/video-enhance', name: 'video-enhance', component: VideoEnhance }
+    { path: '/video-enhance', name: 'video-enhance', component: VideoEnhance },
+    { path: '/video-remix', name: 'video-remix', component: VideoRemix }
   ];
   const router = VueRouter.createRouter({
     history: VueRouter.createWebHistory(),
