@@ -219,6 +219,45 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
+    .minimap{
+      position: absolute;
+      left: 12px;
+      bottom: 120px;
+      width: 180px;
+      height: 120px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      z-index: 40;
+      overflow: hidden;
+    }
+    .minimap-content{
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .minimap-node{
+      position: absolute;
+      background: var(--primary);
+      border-radius: 2px;
+      opacity: 0.7;
+    }
+    .minimap-viewport{
+      position: absolute;
+      border: 2px solid var(--danger);
+      background: rgba(239,68,68,0.1);
+      border-radius: 2px;
+      cursor: move;
+    }
+    .minimap-line{
+      position: absolute;
+      height: 2px;
+      background: var(--primary);
+      opacity: 0.5;
+      transform-origin: left center;
+    }
+
     .node{
       position:absolute;
       width: 300px;
@@ -361,6 +400,9 @@
         <div class="zoom-level" id="zoomLevel">100%</div>
         <button class="zoom-btn" id="zoomOutBtn" title="缩小">−</button>
       </div>
+      <div class="minimap" id="minimap">
+        <div class="minimap-content" id="minimapContent"></div>
+      </div>
     </div>
   </div>
 
@@ -390,6 +432,72 @@
     const zoomInBtn = document.getElementById('zoomInBtn');
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const zoomLevelEl = document.getElementById('zoomLevel');
+    const minimap = document.getElementById('minimap');
+    const minimapContent = document.getElementById('minimapContent');
+
+    const MINIMAP_WIDTH = 180;
+    const MINIMAP_HEIGHT = 120;
+    const MINIMAP_PADDING = 10;
+
+    function renderMinimap(){
+      if(state.nodes.length === 0){
+        minimapContent.innerHTML = '';
+        return;
+      }
+      
+      // 计算所有节点的边界
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for(const node of state.nodes){
+        const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+        const w = el ? el.offsetWidth : 300;
+        const h = el ? el.offsetHeight : 200;
+        minX = Math.min(minX, node.x);
+        minY = Math.min(minY, node.y);
+        maxX = Math.max(maxX, node.x + w);
+        maxY = Math.max(maxY, node.y + h);
+      }
+      
+      // 添加边距
+      minX -= 100;
+      minY -= 100;
+      maxX += 100;
+      maxY += 100;
+      
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+      
+      // 计算缩放比例
+      const scaleX = (MINIMAP_WIDTH - MINIMAP_PADDING * 2) / contentWidth;
+      const scaleY = (MINIMAP_HEIGHT - MINIMAP_PADDING * 2) / contentHeight;
+      const scale = Math.min(scaleX, scaleY, 0.15); // 最大缩放0.15
+      
+      let html = '';
+      
+      // 渲染节点
+      for(const node of state.nodes){
+        const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+        const w = el ? el.offsetWidth : 300;
+        const h = el ? el.offsetHeight : 200;
+        const x = (node.x - minX) * scale + MINIMAP_PADDING;
+        const y = (node.y - minY) * scale + MINIMAP_PADDING;
+        const mw = w * scale;
+        const mh = h * scale;
+        html += `<div class="minimap-node" style="left:${x}px;top:${y}px;width:${mw}px;height:${mh}px;"></div>`;
+      }
+      
+      // 渲染视口框
+      const containerRect = canvasContainer.getBoundingClientRect();
+      const viewportX = (-state.panX / state.zoom - minX) * scale + MINIMAP_PADDING;
+      const viewportY = (-state.panY / state.zoom - minY) * scale + MINIMAP_PADDING;
+      const viewportW = (containerRect.width / state.zoom) * scale;
+      const viewportH = (containerRect.height / state.zoom) * scale;
+      html += `<div class="minimap-viewport" style="left:${viewportX}px;top:${viewportY}px;width:${viewportW}px;height:${viewportH}px;"></div>`;
+      
+      minimapContent.innerHTML = html;
+      
+      // 保存minimap状态用于点击导航
+      state.minimapState = { minX, minY, scale };
+    }
 
     function applyTransform(){
       canvasWorld.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
@@ -405,6 +513,7 @@
         applyTransform();
         updateZoomLevel();
         renderConnections();
+        renderMinimap();
       }
     }
 
@@ -414,6 +523,7 @@
         applyTransform();
         updateZoomLevel();
         renderConnections();
+        renderMinimap();
       }
     }
 
@@ -436,6 +546,7 @@
       if(el) el.remove();
       if(state.selectedNodeId === id) state.selectedNodeId = null;
       renderConnections();
+      renderMinimap();
     }
 
     function readFileAsDataUrl(file){
@@ -744,6 +855,7 @@
 
     document.getElementById('addNodeBtn').addEventListener('click', () => {
       createImageToVideoNode();
+      renderMinimap();
     });
 
     ratioSelectEl.addEventListener('change', () => {
@@ -865,10 +977,14 @@
     });
 
     window.addEventListener('mouseup', (e) => {
-      state.drag = null;
+      if(state.drag){
+        state.drag = null;
+        renderMinimap();
+      }
       if(state.panning){
         state.panning = null;
         canvasContainer.classList.remove('panning');
+        renderMinimap();
       }
       if(state.connecting){
         // 检查是否在某个输入端口附近释放
@@ -919,6 +1035,31 @@
     zoomOutBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       zoomOut();
+    });
+
+    // 缩略图点击导航
+    minimap.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      if(!state.minimapState || state.nodes.length === 0) return;
+      
+      const rect = minimapContent.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      const { minX, minY, scale } = state.minimapState;
+      const containerRect = canvasContainer.getBoundingClientRect();
+      
+      // 计算点击位置对应的画布坐标
+      const canvasX = (clickX - MINIMAP_PADDING) / scale + minX;
+      const canvasY = (clickY - MINIMAP_PADDING) / scale + minY;
+      
+      // 将该位置移动到视口中心
+      state.panX = -(canvasX - containerRect.width / state.zoom / 2) * state.zoom;
+      state.panY = -(canvasY - containerRect.height / state.zoom / 2) * state.zoom;
+      
+      applyTransform();
+      renderConnections();
+      renderMinimap();
     });
   </script>
 </body>
