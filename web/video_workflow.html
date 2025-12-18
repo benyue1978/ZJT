@@ -25,21 +25,16 @@
       min-height:100vh;
     }
     .topbar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      padding:14px 20px;
-      border-bottom:1px solid var(--border);
-      background: var(--bg);
-      position: sticky;
-      top: 0;
-      z-index: 50;
+      display:none;
     }
     .brand{
       display:flex;
       align-items:center;
       gap:10px;
+      cursor: pointer;
+      text-decoration: none;
     }
+    .brand:hover{ opacity: 0.8; }
     .brand img{width:28px;height:28px;}
     .brand-title{font-weight:900; letter-spacing:0.3px; color: var(--text);}
     .top-actions{display:flex; align-items:center; gap:10px;}
@@ -60,22 +55,7 @@
       border: 1px solid var(--border);
     }
     .shell{
-      padding: 16px 20px;
-    }
-    .toolbar{
-      display:flex;
-      align-items:center;
-      gap:12px;
-      padding: 12px 16px;
-      border:1px solid var(--border);
-      border-radius:12px;
-      background: var(--panel);
-    }
-    .spacer{flex:1;}
-    .ratio{
-      display:flex;
-      align-items:center;
-      gap:8px;
+      padding: 0;
     }
     .ratio-label{
       color: var(--muted);
@@ -92,14 +72,52 @@
       cursor: pointer;
     }
     .canvas-container{
-      margin-top: 16px;
+      margin-top: 0;
       position: relative;
-      min-height: calc(100vh - 180px);
+      min-height: 100vh;
       background: #fafafa;
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
       cursor: grab;
+    }
+    .brand-floating{
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 46;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+      backdrop-filter: blur(6px);
+    }
+    .brand-floating .brand{
+      gap: 8px;
+    }
+    .brand-floating .brand img{width:22px;height:22px;}
+    .brand-floating .brand-title{font-weight:800;}
+    .ratio-floating{
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 46;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+      backdrop-filter: blur(6px);
+    }
+    .ratio-floating .ratio-label{
+      font-weight: 600;
     }
     .canvas-container.panning{
       cursor: grabbing;
@@ -231,6 +249,85 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.12);
       z-index: 40;
       overflow: hidden;
+    }
+
+    .add-btn-container{
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 45;
+    }
+    .add-btn{
+      width: 44px;
+      height: 44px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(34,197,94,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .add-btn:hover{
+      transform: scale(1.1);
+      box-shadow: 0 4px 12px rgba(34,197,94,0.5);
+    }
+    .add-menu{
+      display: none;
+      position: absolute;
+      left: 52px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      min-width: 160px;
+      overflow: hidden;
+    }
+    .add-menu.show{ display: block; }
+    .add-menu-group{
+      padding: 8px 0;
+    }
+    .add-menu-group:not(:last-child){
+      border-bottom: 1px solid var(--border);
+    }
+    .add-menu-label{
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .add-menu-item{
+      padding: 10px 14px;
+      font-size: 14px;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .add-menu-item:hover{
+      background: var(--panel);
+    }
+    .add-menu-icon{
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      color: #111827;
+      opacity: 0.9;
+    }
+    .add-menu-text{
+      display: block;
+      line-height: 1.1;
     }
     .minimap-content{
       position: relative;
@@ -409,22 +506,15 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="brand">
-      <img src="/files/logo.svg" alt="logo" />
-      <div class="brand-title">视频工作流</div>
-    </div>
-    <div class="top-actions">
-      <button class="btn secondary" id="backBtn">返回</button>
-    </div>
-  </div>
-
   <div class="shell">
-    <div class="toolbar">
-      <button class="btn" id="addNodeBtn">+ 图生视频</button>
-      <button class="btn secondary" id="addImageNodeBtn">+ 图片</button>
-      <div class="spacer"></div>
-      <div class="ratio">
+    <div class="canvas-container" id="canvasContainer">
+      <div class="brand-floating">
+        <a class="brand" href="/" title="返回首页">
+          <img src="/files/logo.svg" alt="logo" />
+          <div class="brand-title">视频工作流</div>
+        </a>
+      </div>
+      <div class="ratio-floating">
         <div class="ratio-label">视频比例</div>
         <select id="ratioSelect">
           <option value="9:16">9:16</option>
@@ -434,9 +524,41 @@
           <option value="16:9" selected>16:9</option>
         </select>
       </div>
-    </div>
-
-    <div class="canvas-container" id="canvasContainer">
+      <div class="add-btn-container" id="addBtnContainer">
+        <button class="add-btn" id="addBtn" title="添加">+</button>
+        <div class="add-menu" id="addMenu">
+          <div class="add-menu-group">
+            <div class="add-menu-label">添加节点</div>
+            <div class="add-menu-item" id="menuAddVideo">
+              <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="3" y="6" width="14" height="12" rx="2" stroke="currentColor" stroke-width="2" />
+                <path d="M17 10L21 8V16L17 14V10Z" fill="currentColor" />
+              </svg>
+              <span class="add-menu-text">图生视频</span>
+            </div>
+            <div class="add-menu-item" id="menuAddImage">
+              <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="2" />
+                <path d="M7 15L10 12L13 15L16 11L20 17H4L7 15Z" fill="currentColor" opacity="0.35" />
+                <circle cx="9" cy="9" r="1.5" fill="currentColor" />
+              </svg>
+              <span class="add-menu-text">图片</span>
+            </div>
+          </div>
+          <div class="add-menu-group">
+            <div class="add-menu-label">添加素材</div>
+            <div class="add-menu-item" id="menuAddAsset">
+              <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M6 8C6 6.89543 6.89543 6 8 6H20V18C20 19.1046 19.1046 20 18 20H8C6.89543 20 6 19.1046 6 18V8Z" stroke="currentColor" stroke-width="2" />
+                <path d="M6 9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <path d="M4 9C4 7.89543 4.89543 7 6 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                <path d="M4 9V17C4 18.1046 4.89543 19 6 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <span class="add-menu-text">素材库</span>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="canvas-world" id="canvasWorld">
         <svg class="connections" id="connectionsSvg"></svg>
         <div class="canvas" id="canvas"></div>
@@ -1141,23 +1263,42 @@
       setSelected(id);
     }
 
-    document.getElementById('addNodeBtn').addEventListener('click', () => {
-      createImageToVideoNode();
-      renderMinimap();
+    const addBtn = document.getElementById('addBtn');
+    const addMenu = document.getElementById('addMenu');
+
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      addMenu.classList.toggle('show');
     });
 
-    document.getElementById('addImageNodeBtn').addEventListener('click', () => {
+    document.getElementById('menuAddVideo').addEventListener('click', () => {
+      createImageToVideoNode();
+      renderMinimap();
+      addMenu.classList.remove('show');
+    });
+
+    document.getElementById('menuAddImage').addEventListener('click', () => {
       createImageNode();
       renderMinimap();
+      addMenu.classList.remove('show');
+    });
+
+    document.getElementById('menuAddAsset').addEventListener('click', () => {
+      // 素材库 - 空实现
+      addMenu.classList.remove('show');
+    });
+
+    // 点击其他地方关闭菜单
+    document.addEventListener('click', (e) => {
+      if(!e.target.closest('#addBtnContainer')){
+        addMenu.classList.remove('show');
+      }
     });
 
     ratioSelectEl.addEventListener('change', () => {
       state.ratio = ratioSelectEl.value;
     });
 
-    document.getElementById('backBtn').addEventListener('click', () => {
-      window.location.href = '/';
-    });
 
     canvasContainer.addEventListener('mousedown', (e) => {
       if(e.target === canvasEl || e.target === canvasContainer || e.target === canvasWorld){
@@ -1209,6 +1350,43 @@
         }
       }
     });
+
+    // 劫持浏览器缩放快捷键（Ctrl+/Ctrl- / Ctrl=）
+    window.addEventListener('keydown', (e) => {
+      const isCtrl = e.ctrlKey || e.metaKey;
+      if(!isCtrl) return;
+      // 不在输入框内时才响应
+      if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+      if(e.key === '+' || e.key === '=' ){
+        e.preventDefault();
+        zoomIn();
+      } else if(e.key === '-'){
+        e.preventDefault();
+        zoomOut();
+      }
+    });
+
+    // 劫持鼠标滚轮缩放（在画布区域内）
+    canvasContainer.addEventListener('wheel', (e) => {
+      // 仅当鼠标在画布区域内时生效
+      // 允许正常滚动页面：当前页面没有滚动条，但仍做限定
+      const isCtrl = e.ctrlKey || e.metaKey;
+      // ctrl + wheel：浏览器默认会缩放页面，必须阻止
+      if(isCtrl){
+        e.preventDefault();
+      }
+
+      // 普通滚轮也作为画布缩放（用户需求）
+      // 如果未来需要支持滚动，可把此判断改成 isCtrl
+      e.preventDefault();
+
+      if(e.deltaY < 0){
+        zoomIn();
+      } else if(e.deltaY > 0){
+        zoomOut();
+      }
+    }, { passive: false });
 
     window.addEventListener('mousemove', (e) => {
       // 平移画布
