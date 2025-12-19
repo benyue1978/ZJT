@@ -875,6 +875,12 @@
     const MINIMAP_HEIGHT = 120;
     const MINIMAP_PADDING = 10;
 
+    // 测试模式：URL添加 ?test=1 即可启用，不会真正调用API
+    const TEST_MODE = new URLSearchParams(window.location.search).get('test') === '1';
+    if(TEST_MODE){
+      console.log('%c[TEST MODE] 测试模式已启用，API调用将被模拟', 'color: orange; font-weight: bold;');
+    }
+
     // 获取URL参数中的工作流ID
     function getWorkflowIdFromUrl(){
       const params = new URLSearchParams(window.location.search);
@@ -926,6 +932,20 @@
 
     // 生成视频API调用
     async function generateVideoFromImage(imageUrl, prompt, duration, count, ratio){
+      // 测试模式：模拟API响应
+      if(TEST_MODE){
+        console.log('[TEST MODE] 模拟生成视频API调用', { imageUrl, prompt, duration, count, ratio });
+        await new Promise(r => setTimeout(r, 500)); // 模拟网络延迟
+        const mockIds = [];
+        for(let i = 0; i < (count || 1); i++){
+          mockIds.push('mock_project_' + Date.now() + '_' + i);
+        }
+        return {
+          projectIds: mockIds,
+          status: 'submitted'
+        };
+      }
+
       const userId = localStorage.getItem('user_id');
       const authToken = getAuthToken();
       
@@ -962,7 +982,28 @@
     }
 
     // 查询视频生成状态
+    // 测试模式下的模拟状态计数器
+    const mockStatusCounter = {};
+    
     async function checkVideoStatus(projectIds){
+      // 测试模式：模拟状态查询（第2次查询返回成功）
+      if(TEST_MODE){
+        const key = projectIds.join(',');
+        mockStatusCounter[key] = (mockStatusCounter[key] || 0) + 1;
+        console.log('[TEST MODE] 模拟查询状态，第', mockStatusCounter[key], '次');
+        await new Promise(r => setTimeout(r, 300));
+        
+        if(mockStatusCounter[key] >= 2){
+          // 第2次及以后返回成功，附带模拟视频URL
+          const mockResults = projectIds.map((_, i) => 
+            'http://ailive.perseids.cn/upload/test_video.mp4'
+          );
+          return { status: 'SUCCESS', results: mockResults };
+        } else {
+          return { status: 'RUNNING', results: [] };
+        }
+      }
+
       const authToken = getAuthToken();
       const projectIdsStr = projectIds.join(',');
       
@@ -1298,6 +1339,9 @@
         node.data.prompt = nodeData.data.prompt || '';
         node.data.startUrl = nodeData.data.startUrl || '';
         node.data.endUrl = nodeData.data.endUrl || '';
+        node.data.duration = nodeData.data.duration || 15;
+        node.data.model = nodeData.data.model || 'sora';
+        node.data.drawCount = nodeData.data.drawCount || 1;
         node.data.motionLevel = nodeData.data.motionLevel || 5;
         node.data.useMotion = nodeData.data.useMotion || false;
         
@@ -1305,8 +1349,20 @@
         const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
         if(el){
           // 更新提示词
-          const promptEl = el.querySelector('.prompt-input');
+          const promptEl = el.querySelector('.prompt');
           if(promptEl) promptEl.value = node.data.prompt;
+          
+          // 更新时长选择
+          const durationSelect = el.querySelector('.duration-select');
+          if(durationSelect) durationSelect.value = node.data.duration;
+          
+          // 更新模型选择
+          const modelSelect = el.querySelector('.model-select');
+          if(modelSelect) modelSelect.value = node.data.model;
+          
+          // 更新抽卡次数标签
+          const genCountLabel = el.querySelector('.gen-count-label');
+          if(genCountLabel) genCountLabel.textContent = `抽卡次数：X${node.data.drawCount}`;
           
           // 更新首帧图片
           if(node.data.startUrl){
@@ -1994,7 +2050,7 @@
         y,
         data: {
           prompt: '',
-          duration: 10,
+          duration: 15,
           model: 'sora',
           drawCount: 1,
           motionEnabled: false,
@@ -2268,9 +2324,12 @@
           const duration = node.data.duration || 10;
           const prompt = node.data.prompt || '';
           const ratio = state.ratio || '9:16';
+          
+          console.log('[DEBUG] 生成视频参数:', { drawCount: node.data.drawCount, desiredCount, duration, prompt, ratio });
 
           // 调用生成API
           const result = await generateVideoFromImage(startImageUrl, prompt, duration, desiredCount, ratio);
+          console.log('[DEBUG] API返回:', { projectIds: result.projectIds, count: result.projectIds?.length });
           
           genStatus.textContent = '任务已提交，正在生成视频...';
           node.data.projectIds = result.projectIds;
@@ -2286,6 +2345,7 @@
               })
           ));
           const missingCount = Math.max(0, desiredCount - connectedVideoIds.length);
+          console.log('[DEBUG] 视频节点:', { connectedVideoIds, desiredCount, missingCount });
           const newVideoNodeIds = [];
 
           for(let i = 0; i < missingCount; i++){

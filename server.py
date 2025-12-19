@@ -1119,11 +1119,12 @@ async def ai_app_run_image_url(
                 if CHECK_AUTH_TOKEN:
                     headers = {'Authorization': f'Bearer {auth_token}'}
                     make_perseids_request(
-                        endpoint='user/consume_computing_power',
+                        endpoint='user/calculate_computing_power',
                         method='POST',
                         headers=headers,
                         data={
                             'computing_power': computing_power,
+                            'behavior': 'deduct',
                             'transaction_id': transaction_id
                         }
                     )
@@ -1138,7 +1139,7 @@ async def ai_app_run_image_url(
                             ratio=ratio,
                             duration=duration_seconds,
                             project_id=project_id,
-                            status='processing'
+                            status=1  # 1-处理中, 2-完成, -1-失败
                         )
                     except Exception as db_err:
                         logger.error(f"Failed to save to database: {str(db_err)}")
