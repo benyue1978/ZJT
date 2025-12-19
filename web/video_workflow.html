@@ -135,21 +135,23 @@
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%) translateY(100px);
-      background: #1a1a1a;
-      color: #fff;
-      padding: 12px 24px;
-      border-radius: 8px;
+      background: transparent;
+      color: #333;
+      padding: 0;
       font-size: 14px;
+      font-weight: 500;
       z-index: 2000;
       opacity: 0;
       transition: all 0.3s;
+      pointer-events: none;
+      text-shadow: 0 1px 2px rgba(255,255,255,0.8);
     }
     .toast.show{
       transform: translateX(-50%) translateY(0);
       opacity: 1;
     }
-    .toast.error{ background: var(--danger); }
-    .toast.success{ background: var(--primary); }
+    .toast.error{ color: #dc2626; }
+    .toast.success{ color: #16a34a; }
     .canvas-container.panning{
       cursor: grabbing;
     }
@@ -1629,7 +1631,10 @@
             </div>
             <div class="preview-row" style="margin-top: 8px; justify-content: space-between;">
               <div class="gen-meta video-name"></div>
-              <button class="mini-btn video-clear" type="button">清除</button>
+              <div style="display: flex; gap: 8px;">
+                <button class="mini-btn video-download" type="button">下载</button>
+                <button class="mini-btn video-clear" type="button">清除</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1645,6 +1650,7 @@
       const playBtn = el.querySelector('.vp-play');
       const zoomBtn = el.querySelector('.vp-zoom');
       const nameEl = el.querySelector('.video-name');
+      const downloadBtn = el.querySelector('.video-download');
       const clearBtn = el.querySelector('.video-clear');
 
       deleteBtn.addEventListener('click', (e) => {
@@ -1745,6 +1751,28 @@
         try{ thumbVideo.pause(); } catch(err){}
         playBtn.textContent = '▶';
         setVideoFromFile(null);
+      });
+
+      downloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if(!node.data.url){
+          showToast('没有可下载的视频', 'error');
+          return;
+        }
+        
+        // 生成文件名
+        const now = new Date();
+        const dateStr = now.getFullYear().toString() + 
+                       (now.getMonth() + 1).toString().padStart(2, '0') + 
+                       now.getDate().toString().padStart(2, '0');
+        const timeStr = now.getHours().toString().padStart(2, '0') + 
+                       now.getMinutes().toString().padStart(2, '0');
+        const filename = `workflow_video_${dateStr}_${timeStr}.mp4`;
+        
+        // 使用后端代理下载，绕过CORS
+        const downloadUrl = `/api/download?url=${encodeURIComponent(node.data.url)}&filename=${encodeURIComponent(filename)}`;
+        window.open(downloadUrl, '_blank');
+        showToast('开始下载', 'success');
       });
 
       canvasEl.appendChild(el);
