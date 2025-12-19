@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
 from config_util import get_config_path, is_dev_environment
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
-from model import AIToolsModel
+from model import AIToolsModel, VideoWorkflowModel
 import uuid
 from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix, create_character, get_character_task_result
 from PIL import Image
@@ -2448,6 +2448,204 @@ async def api_character_status(
         raise HTTPException(status_code=500, detail=f"查询角色状态失败: {str(e)}")
 
 
+# ==================== Video Workflow API ====================
+
+class VideoWorkflowCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    cover_image: Optional[str] = None
+    status: Optional[int] = 1
+    workflow_data: Optional[dict] = None
+
+class VideoWorkflowUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    cover_image: Optional[str] = None
+    status: Optional[int] = None
+    workflow_data: Optional[dict] = None
+
+
+@app.get('/api/video-workflow/list')
+async def get_video_workflow_list(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(10, ge=1, le=100, description="每页数量"),
+    status: Optional[int] = Query(None, description="状态筛选: 0-禁用, 1-启用, 2-草稿"),
+    keyword: Optional[str] = Query(None, description="搜索关键词"),
+    order_by: str = Query("create_time", description="排序字段"),
+    order_direction: str = Query("DESC", description="排序方向: ASC, DESC"),
+    auth_token: str = Header(None, alias="Authorization")
+):
+    """
+    获取视频工作流列表（分页）
+    """
+    try:
+        # 查询所有工作流（后续可根据用户权限过滤）
+        result = VideoWorkflowModel.list_all(
+            page=page,
+            page_size=page_size,
+            status=status,
+            keyword=keyword,
+            order_by=order_by,
+            order_direction=order_direction
+        )
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": result
+        })
+    except Exception as e:
+        logger.error(f"Failed to get video workflow list: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"获取工作流列表失败: {str(e)}"}
+        )
+
+
+@app.get('/api/video-workflow/{workflow_id}')
+async def get_video_workflow(
+    workflow_id: int,
+    auth_token: str = Header(None, alias="Authorization")
+):
+    """
+    获取单个视频工作流详情
+    """
+    try:
+        workflow = VideoWorkflowModel.get_by_id(workflow_id)
+        if not workflow:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "工作流不存在"}
+            )
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": workflow.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Failed to get video workflow {workflow_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"获取工作流详情失败: {str(e)}"}
+        )
+
+
+@app.post('/api/video-workflow/create')
+async def create_video_workflow(
+    request: VideoWorkflowCreateRequest,
+    auth_token: str = Header(None, alias="Authorization")
+):
+    """
+    创建视频工作流
+    """
+    try:
+        user_id = 0  # 暂时使用默认用户ID
+        
+        workflow_id = VideoWorkflowModel.create(
+            name=request.name,
+            user_id=user_id,
+            description=request.description,
+            cover_image=request.cover_image,
+            status=request.status,
+            workflow_data=request.workflow_data
+        )
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "创建成功",
+            "data": {"id": workflow_id}
+        })
+    except Exception as e:
+        logger.error(f"Failed to create video workflow: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"创建工作流失败: {str(e)}"}
+        )
+
+
+@app.put('/api/video-workflow/{workflow_id}')
+async def update_video_workflow(
+    workflow_id: int,
+    request: VideoWorkflowUpdateRequest,
+    auth_token: str = Header(None, alias="Authorization")
+):
+    """
+    更新视频工作流
+    """
+    try:
+        # 检查工作流是否存在
+        workflow = VideoWorkflowModel.get_by_id(workflow_id)
+        if not workflow:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "工作流不存在"}
+            )
+        
+        # 构建更新字段
+        update_fields = {}
+        if request.name is not None:
+            update_fields['name'] = request.name
+        if request.description is not None:
+            update_fields['description'] = request.description
+        if request.cover_image is not None:
+            update_fields['cover_image'] = request.cover_image
+        if request.status is not None:
+            update_fields['status'] = request.status
+        if request.workflow_data is not None:
+            update_fields['workflow_data'] = request.workflow_data
+        
+        if update_fields:
+            VideoWorkflowModel.update(workflow_id, **update_fields)
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "更新成功"
+        })
+    except Exception as e:
+        logger.error(f"Failed to update video workflow {workflow_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"更新工作流失败: {str(e)}"}
+        )
+
+
+@app.delete('/api/video-workflow/{workflow_id}')
+async def delete_video_workflow(
+    workflow_id: int,
+    auth_token: str = Header(None, alias="Authorization")
+):
+    """
+    删除视频工作流
+    """
+    try:
+        # 检查工作流是否存在
+        workflow = VideoWorkflowModel.get_by_id(workflow_id)
+        if not workflow:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "工作流不存在"}
+            )
+        
+        VideoWorkflowModel.delete(workflow_id)
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "删除成功"
+        })
+    except Exception as e:
+        logger.error(f"Failed to delete video workflow {workflow_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"删除工作流失败: {str(e)}"}
+        )
+
+
 # Serve upload directory for static file access
 upload_dir = os.path.join(APP_DIR, "upload")
 if not os.path.exists(upload_dir):
@@ -2464,6 +2662,13 @@ app.mount("/files", StaticFiles(directory=files_dir), name="files")
 static_dir = os.path.join(APP_DIR, "web")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir, exist_ok=True)
+
+@app.get("/video-workflow-list")
+async def serve_video_workflow_list():
+    file_path = os.path.join(static_dir, "video_workflow_list.html")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Video workflow list page not found")
 
 @app.get("/video-workflow")
 async def serve_video_workflow():
