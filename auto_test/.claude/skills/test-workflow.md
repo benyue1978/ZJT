@@ -34,13 +34,33 @@ run_all_tests.ps1 → 循环调用 claude /run-test
 
 ### 执行规则
 
-1. 每次运行只测试**一个模块**
+1. 每次运行只测试**一个模块**（或大模块的一个子集）
 2. 模块内的 features 持续执行，不询问用户
-3. 当前模块所有 features 完成后：
-   - 更新 `test_progress.json` 中该模块状态为 `completed`
-   - 更新 `current_module_index` 指向下一个模块
-   - **结束会话**，输出"模块 XXX 测试完成，请重新运行 /run-test 继续下一模块"
-4. 用户重新运行 `/run-test`，智能体读取进度，从新模块开始（全新上下文）
+3. **大模块拆分规则**：如果模块 features 超过 5 个，按以下方式拆分：
+   - `workflow_editor`: 拆分为 3 批
+     - 批次 1: editor_001 ~ editor_006（基础功能）
+     - 批次 2: editor_007 ~ editor_011（节点操作）
+     - 批次 3: editor_012 ~ editor_016（连接和保存）
+   - `node_operations`: 按 features 数量类似拆分
+4. 当前批次完成后：
+   - 更新 `test_progress.json`
+   - **结束会话**，输出提示
+5. 用户重新运行 `/run-test`，从下一批次继续（全新上下文）
+
+### 大模块拆分示例
+
+```json
+{
+  "current_module_index": 2,
+  "current_batch": 1,
+  "modules": [
+    { "id": "auth", "status": "completed" },
+    { "id": "workflow_list", "status": "completed" },
+    { "id": "workflow_editor", "status": "in_progress", "batches": 3 },
+    { "id": "node_operations", "status": "pending" }
+  ]
+}
+```
 
 ### 进度文件
 
