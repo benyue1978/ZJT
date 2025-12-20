@@ -14,20 +14,21 @@
 
 ## 输出格式
 
+**简短状态**：
 ```
-=== 测试状态报告 ===
-会话文件: test_sessions/session_20251220_170300.json
+📊 当前测试状态
+━━━━━━━━━━━━━━━━
+✅ auth - 已完成
+🔄 workflow_list - 进行中  
+⏳ workflow_editor - 待测试
+⏳ node_operations - 待测试
 
-模块: auth (用户认证)
-  ✅ auth_001 用户登录功能
-  ❌ auth_002 用户登出功能
+总进度: 2/4 (50%)
+```
 
-模块: workflow_list (工作流列表)
-  ❌ list_001 访问工作流列表页
-  ...
-
-总进度: 5/20 (25%)
-下一个待测试: auth_002
+**详细报告**：生成 HTML 文件
+```python
+python generate_report.py
 ```
 
 $ARGUMENTS
