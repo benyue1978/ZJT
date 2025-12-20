@@ -2031,6 +2031,116 @@
               "pass": false
             }
           ]
+        },
+        {
+          "id": "node_020",
+          "name": "图片节点-图片编辑功能与抽卡",
+          "description": "验证用户可以在图片节点中上传图片、输入编辑提示词、选择模型/比例/抽卡次数后执行编辑，生成结果创建新的图片节点并显示预览",
+          "priority": "P0",
+          "page_url": "/video-workflow",
+          "api_endpoint": "POST /api/image-edit",
+          "pass": false,
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "打开添加节点菜单",
+              "operation": "click",
+              "selector": "#addBtn",
+              "expected_result": "弹出添加节点菜单",
+              "pass": false
+            },
+            {
+              "step": 2,
+              "action": "点击图片节点",
+              "operation": "click",
+              "selector": "#menuAddImage",
+              "expected_result": "画布上创建图片节点",
+              "pass": false
+            },
+            {
+              "step": 3,
+              "action": "上传图片到图片节点",
+              "operation": "upload",
+              "selector": ".image-file",
+              "test_file": "test_image.png",
+              "expected_result": "显示图片预览",
+              "pass": false
+            },
+            {
+              "step": 4,
+              "action": "输入编辑提示词",
+              "operation": "input",
+              "selector": ".image-prompt",
+              "value": "把这张图改成赛博朋克风格",
+              "expected_result": "提示词输入框有内容",
+              "pass": false
+            },
+            {
+              "step": 5,
+              "action": "选择抽卡次数为X2",
+              "operation": "click",
+              "selector": ".gen-btn-caret",
+              "expected_result": "显示抽卡次数下拉菜单",
+              "pass": false
+            },
+            {
+              "step": 6,
+              "action": "点击X2选项",
+              "operation": "click",
+              "selector": ".gen-item[data-count='2']",
+              "expected_result": "抽卡次数设置为X2",
+              "pass": false
+            },
+            {
+              "step": 7,
+              "action": "点击编辑图片按钮",
+              "operation": "click",
+              "selector": ".image-edit-btn",
+              "expected_result": "触发图片编辑任务提交",
+              "pass": false
+            },
+            {
+              "step": 8,
+              "action": "等待生成完成",
+              "mcp_tool": "mcp1_browser_wait_for",
+              "mcp_params": {
+                "text": "生成完成",
+                "time": 180
+              },
+              "expected_result": "图片节点显示生成完成状态",
+              "pass": false
+            },
+            {
+              "step": 9,
+              "action": "验证新创建的图片节点数量",
+              "mcp_tool": "mcp1_browser_evaluate",
+              "mcp_params": {
+                "function": "() => { const s = window.state; if(!s || !Array.isArray(s.nodes)) return { count: 0 }; return { count: s.nodes.filter(n => n.type === 'image').length }; }"
+              },
+              "verify": "count >= 2 (原始节点 + 至少1个新节点)",
+              "pass": false
+            },
+            {
+              "step": 10,
+              "action": "验证新图片节点的预览图片",
+              "mcp_tool": "mcp1_browser_evaluate",
+              "mcp_params": {
+                "function": "() => { const imgs = Array.from(document.querySelectorAll('.image-preview')); const srcs = imgs.map(i => i.getAttribute('src') || i.src || '').filter(Boolean); return { count: srcs.length, srcs: srcs.slice(0, 3) }; }"
+              },
+              "verify": "count >= 2，且 srcs 数组元素以 http(s) 或 /api/proxy-image 开头",
+              "pass": false
+            },
+            {
+              "step": 11,
+              "action": "验证抽卡次数标签显示",
+              "mcp_tool": "mcp1_browser_evaluate",
+              "mcp_params": {
+                "function": "() => { const label = document.querySelector('.image-draw-count-label'); return { text: label ? label.textContent : '', exists: !!label }; }"
+              },
+              "verify": "exists 为 true 且 text 包含 'X2'",
+              "pass": false
+            }
+          ]
         }
       ]
     },

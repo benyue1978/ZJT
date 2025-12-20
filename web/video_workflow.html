@@ -177,7 +177,7 @@
       width: 10000px;
       height: 10000px;
       pointer-events: none;
-      z-index: 1;
+      z-index: 11;
     }
     svg.connections path.hitbox{
       fill: none;
@@ -670,8 +670,8 @@
       position: absolute;
       width: 18px;
       height: 18px;
-      background: #fff;
-      border: 2px solid var(--primary);
+      background: transparent;
+      border: 3px solid var(--primary);
       border-radius: 50%;
       cursor: crosshair;
       z-index: 20;
@@ -773,7 +773,6 @@
               <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="2" />
                 <path d="M7 15L10 12L13 15L16 11L20 17H4L7 15Z" fill="currentColor" opacity="0.35" />
-                <circle cx="9" cy="9" r="1.5" fill="currentColor" />
               </svg>
               <span class="add-menu-text">图片</span>
             </div>
@@ -897,6 +896,32 @@
       }
 
       return [];
+    }
+
+    function isSameOriginUrl(url){
+      try{
+        const u = new URL(url, window.location.href);
+        return u.origin === window.location.origin;
+      } catch(e){
+        return true;
+      }
+    }
+
+    function proxyImageUrl(url){
+      if(!url) return '';
+      if(typeof url !== 'string') return '';
+      if(url.startsWith('data:') || url.startsWith('blob:')) return url;
+      if(isSameOriginUrl(url)) return url;
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+
+    function proxyDownloadUrl(url, filename){
+      if(!url) return '';
+      if(typeof url !== 'string') return '';
+      if(url.startsWith('data:') || url.startsWith('blob:')) return url;
+      if(isSameOriginUrl(url)) return url;
+      const fn = filename ? `&filename=${encodeURIComponent(filename)}` : '';
+      return `/api/download?url=${encodeURIComponent(url)}${fn}`;
     }
 
     const canvasEl = document.getElementById('canvas');
@@ -1376,8 +1401,59 @@
         createVideoNodeWithData(nodeData);
       } else if(nodeData.type === 'image'){
         createImageNodeWithData(nodeData);
+      } else if(nodeData.type === 'image_edit'){
+        // 兼容旧的 image_edit 节点，转换为新的 image 节点
+        nodeData.type = 'image';
+        nodeData.data.url = nodeData.data.imageUrl || nodeData.data.url || '';
+        createImageNodeWithData(nodeData);
       }
     }
+
+    async function generateEditedImage(file, prompt, ratio, model, count){
+      const userId = localStorage.getItem('user_id');
+      const authToken = getAuthToken();
+      const form = new FormData();
+
+      form.append('image', file);
+      form.append('prompt', prompt || '');
+      form.append('ratio', ratio || '9:16');
+      form.append('count', count || 1);
+      form.append('model', model || 'gemini-2.5-pro-image-preview');
+      if(userId){
+        form.append('user_id', userId);
+      }
+      if(authToken){
+        form.append('auth_token', authToken);
+      }
+
+      const res = await fetch('/api/image-edit', {
+        method: 'POST',
+        body: form
+      });
+      const data = await res.json();
+      if(data.project_ids && data.project_ids.length > 0){
+        return {
+          projectIds: data.project_ids,
+          status: data.status
+        };
+      }
+      throw new Error(data.detail || data.message || '提交任务失败');
+    }
+
+    async function fetchFileFromUrl(url){
+      const res = await fetch(proxyImageUrl(url));
+      if(!res.ok) throw new Error('无法获取图片内容');
+      const blob = await res.blob();
+      const name = 'image.png';
+      try{
+        return new File([blob], name, { type: blob.type || 'image/png' });
+      } catch(e){
+        // Fallback for older browsers
+        blob.name = name;
+        return blob;
+      }
+    }
+
 
     // 带数据创建图生视频节点（复用createImageToVideoNode的逻辑）
     function createImageToVideoNodeWithData(nodeData){
@@ -1428,7 +1504,7 @@
             const startPreview = el.querySelector('.start-preview');
             const startImagePort = el.querySelector('.start-image-port');
             if(startPreview){
-              startPreview.src = node.data.startUrl;
+              startPreview.src = proxyImageUrl(node.data.startUrl);
               node.data.startPreview = node.data.startUrl;
             }
             if(startPreviewRow) startPreviewRow.style.display = 'flex';
@@ -1441,7 +1517,7 @@
             const endPreview = el.querySelector('.end-preview');
             const endImagePort = el.querySelector('.end-image-port');
             if(endPreview){
-              endPreview.src = node.data.endUrl;
+              endPreview.src = proxyImageUrl(node.data.endUrl);
               node.data.endPreview = node.data.endUrl;
             }
             if(endPreviewRow) endPreviewRow.style.display = 'flex';
@@ -1476,7 +1552,7 @@
             const thumbVideo = el.querySelector('.video-thumb');
             const nameEl = el.querySelector('.video-name');
             if(previewField && thumbVideo && nameEl){
-              thumbVideo.src = node.data.url;
+              thumbVideo.src = proxyDownloadUrl(node.data.url);
               thumbVideo.muted = true;
               thumbVideo.loop = true;
               nameEl.textContent = node.data.name;
@@ -1489,30 +1565,41 @@
 
     // 带数据创建图片节点（复用createImageNode的逻辑）
     function createImageNodeWithData(nodeData){
-      // 临时保存nextNodeId
       const savedNextNodeId = state.nextNodeId;
       state.nextNodeId = nodeData.id;
       
-      // 调用原有的创建函数
       createImageNode({ x: nodeData.x, y: nodeData.y });
       
-      // 恢复nextNodeId为最大值
       state.nextNodeId = Math.max(savedNextNodeId, nodeData.id + 1);
       
-      // 更新节点数据
       const node = state.nodes.find(n => n.id === nodeData.id);
       if(node && nodeData.data){
         node.data.url = nodeData.data.url || '';
         node.data.name = nodeData.data.name || '';
         node.data.preview = nodeData.data.preview || nodeData.data.url || '';
-        // 如果有URL，显示预览
-        if(node.data.url || node.data.preview){
-          const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
-          if(el){
+        node.data.prompt = nodeData.data.prompt || '';
+        node.data.ratio = nodeData.data.ratio || '9:16';
+        node.data.model = nodeData.data.model || 'gemini-2.5-pro-image-preview';
+        node.data.drawCount = nodeData.data.drawCount || 1;
+        
+        const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+        if(el){
+          const promptEl = el.querySelector('.image-prompt');
+          const ratioEl = el.querySelector('.image-ratio');
+          const modelEl = el.querySelector('.image-model');
+          const drawCountLabel = el.querySelector('.image-draw-count-label');
+          
+          if(promptEl) promptEl.value = node.data.prompt;
+          if(ratioEl) ratioEl.value = node.data.ratio;
+          if(modelEl) modelEl.value = node.data.model;
+          if(drawCountLabel) drawCountLabel.textContent = `抽卡次数：X${node.data.drawCount}`;
+          
+          if(node.data.url || node.data.preview){
             const previewImg = el.querySelector('.image-preview');
             const previewRow = el.querySelector('.image-preview-row');
             if(previewImg){
-              previewImg.src = node.data.url || node.data.preview;
+              const raw = node.data.url || node.data.preview;
+              previewImg.src = proxyImageUrl(raw);
               if(previewRow) previewRow.style.display = 'flex';
             }
           }
@@ -1908,9 +1995,10 @@
     }
 
     function getOutputPortPos(nodeId){
-      const node = state.nodes.find(n => n.id === nodeId);
+      const nid = Number(nodeId);
+      const node = state.nodes.find(n => n.id === nid);
       if(!node) return {x:0, y:0};
-      const el = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+      const el = canvasEl.querySelector(`.node[data-node-id="${nid}"]`);
       if(!el) return {x: node.x, y: node.y};
       return {
         x: node.x + el.offsetWidth,
@@ -1919,9 +2007,10 @@
     }
 
     function getInputPortPos(nodeId){
-      const node = state.nodes.find(n => n.id === nodeId);
+      const nid = Number(nodeId);
+      const node = state.nodes.find(n => n.id === nid);
       if(!node) return {x:0, y:0};
-      const el = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+      const el = canvasEl.querySelector(`.node[data-node-id="${nid}"]`);
       if(!el) return {x: node.x, y: node.y};
       return {
         x: node.x,
@@ -2490,7 +2579,7 @@
                       const thumbVideo = videoEl.querySelector('.video-thumb');
                       const nameEl = videoEl.querySelector('.video-name');
                       if(previewField && thumbVideo && nameEl){
-                        thumbVideo.src = videoUrl;
+                        thumbVideo.src = proxyDownloadUrl(videoUrl);
                         thumbVideo.muted = true;
                         thumbVideo.loop = true;
                         thumbVideo.controls = false;
@@ -2730,6 +2819,7 @@
       const id = state.nextNodeId++;
       const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
       const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const defaultRatio = state.ratio || ratioSelectEl.value || '9:16';
       const node = {
         id,
         type: 'image',
@@ -2738,7 +2828,13 @@
         y,
         data: {
           file: null,
+          url: '',
+          name: '',
           preview: '',
+          prompt: '',
+          ratio: defaultRatio,
+          model: 'gemini-2.5-pro-image-preview',
+          drawCount: 1,
         }
       };
       state.nodes.push(node);
@@ -2757,12 +2853,49 @@
         </div>
         <div class="node-body">
           <div class="field">
-            <div class="label">图片</div>
+            <div class="label">上传图片</div>
             <input class="image-file" type="file" accept="image/*" />
             <div class="preview-row image-preview-row" style="display:none;">
               <img class="preview image-preview" />
               <button class="mini-btn image-clear" type="button">清除</button>
             </div>
+          </div>
+          <div class="field">
+            <div class="label">编辑提示词（可选）</div>
+            <textarea class="image-prompt" rows="2" placeholder="输入提示词进行图片编辑"></textarea>
+          </div>
+          <div class="field">
+            <div class="label">模型</div>
+            <select class="image-model">
+              <option value="gemini-2.5-pro-image-preview">标准版 (2算力)</option>
+              <option value="gemini-3-pro-image-preview">加强版 (6算力)</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="label">图片比例</div>
+            <select class="image-ratio">
+              <option value="9:16">竖屏 (9:16)</option>
+              <option value="16:9">横屏 (16:9)</option>
+              <option value="1:1">正方形 (1:1)</option>
+              <option value="3:4">竖屏 (3:4)</option>
+              <option value="4:3">横屏 (4:3)</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="btn-row">
+              <div class="gen-container">
+                <button class="gen-btn gen-btn-main image-edit-btn" type="button">编辑图片</button>
+                <button class="gen-btn gen-btn-caret" type="button" aria-label="选择抽卡次数">▾</button>
+                <div class="gen-menu">
+                  <div class="gen-item" data-count="1">X1</div>
+                  <div class="gen-item" data-count="2">X2</div>
+                  <div class="gen-item" data-count="3">X3</div>
+                  <div class="gen-item" data-count="4">X4</div>
+                </div>
+              </div>
+            </div>
+            <div class="gen-meta image-draw-count-label"></div>
+            <div class="muted image-edit-status" style="display:none;"></div>
           </div>
         </div>
       `;
@@ -2806,34 +2939,73 @@
       const imagePreviewRow = el.querySelector('.image-preview-row');
       const imagePreviewImg = el.querySelector('.image-preview');
       const imageClearBtn = el.querySelector('.image-clear');
+      const promptEl = el.querySelector('.image-prompt');
+      const ratioEl = el.querySelector('.image-ratio');
+      const modelEl = el.querySelector('.image-model');
+      const editBtn = el.querySelector('.image-edit-btn');
+      const statusEl = el.querySelector('.image-edit-status');
+      const drawCountLabel = el.querySelector('.image-draw-count-label');
+      const genCaret = el.querySelector('.gen-btn-caret');
+      const genMenu = el.querySelector('.gen-menu');
+
+      if(ratioEl) ratioEl.value = node.data.ratio;
+
+      function updateDrawCountLabel(){
+        drawCountLabel.textContent = `抽卡次数：X${node.data.drawCount}`;
+      }
+      updateDrawCountLabel();
+
+      genCaret.addEventListener('click', (e) => {
+        e.stopPropagation();
+        genMenu.classList.toggle('show');
+      });
+
+      const genItems = genMenu.querySelectorAll('.gen-item');
+      for(const item of genItems){
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const count = Number(item.dataset.count || '1');
+          node.data.drawCount = count;
+          updateDrawCountLabel();
+          genMenu.classList.remove('show');
+        });
+      }
 
       imagePreviewImg.addEventListener('click', (e) => {
         e.stopPropagation();
-        const src = imagePreviewImg.getAttribute('src') || node.data.preview;
+        const src = node.data.url ? proxyImageUrl(node.data.url) : (imagePreviewImg.getAttribute('src') || '');
         if(!src) return;
         openImageModal(src, '图片预览');
+      });
+
+      promptEl.addEventListener('input', () => {
+        node.data.prompt = promptEl.value;
+      });
+      ratioEl.addEventListener('change', () => {
+        node.data.ratio = ratioEl.value;
+      });
+      modelEl.addEventListener('change', () => {
+        node.data.model = modelEl.value;
       });
 
       imageFileEl.addEventListener('change', async () => {
         const file = imageFileEl.files && imageFileEl.files[0];
         if(!file) return;
+        node.data.file = file;
         
-        // 先显示本地预览
         const localPreview = await readFileAsDataUrl(file);
         imagePreviewImg.src = localPreview;
         imagePreviewRow.style.display = 'flex';
         
-        // 上传到服务器获取永久URL
         const uploadedUrl = await uploadFile(file);
         if(uploadedUrl){
           node.data.url = uploadedUrl;
           node.data.name = file.name;
           node.data.preview = uploadedUrl;
-          imagePreviewImg.src = uploadedUrl;
+          imagePreviewImg.src = proxyImageUrl(uploadedUrl);
           showToast('图片上传成功', 'success');
           try{ autoSaveWorkflow(); } catch(e){}
         } else {
-          // 上传失败，清除预览
           imagePreviewRow.style.display = 'none';
           imagePreviewImg.removeAttribute('src');
         }
@@ -2850,8 +3022,97 @@
         imagePreviewImg.removeAttribute('src');
       });
 
+      editBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if(!node.data.url && !node.data.file){
+          statusEl.style.display = 'block';
+          statusEl.style.color = '#dc2626';
+          statusEl.textContent = '请先上传图片';
+          return;
+        }
+        if(!node.data.prompt){
+          statusEl.style.display = 'block';
+          statusEl.style.color = '#dc2626';
+          statusEl.textContent = '请先输入编辑提示词';
+          return;
+        }
+
+        editBtn.disabled = true;
+        statusEl.style.display = 'block';
+        statusEl.style.color = '';
+        statusEl.textContent = '正在提交任务...';
+
+        try{
+          let submitFile = node.data.file;
+          if(!submitFile && node.data.url){
+            submitFile = await fetchFileFromUrl(node.data.url);
+          }
+
+          const desiredCount = Math.max(1, Number(node.data.drawCount) || 1);
+          const submitRes = await generateEditedImage(submitFile, node.data.prompt, node.data.ratio, node.data.model, desiredCount);
+          statusEl.textContent = '任务已提交，正在生成图片...';
+          node.data.projectIds = submitRes.projectIds;
+
+          pollVideoStatus(
+            submitRes.projectIds,
+            (progressText) => { statusEl.textContent = progressText; },
+            (statusResult) => {
+              const rawResults = extractResultsArray(statusResult);
+              const imageUrls = Array.isArray(rawResults)
+                ? rawResults.map(normalizeVideoUrl).filter(Boolean)
+                : [];
+
+              if(imageUrls.length === 0){
+                statusEl.style.color = '#dc2626';
+                statusEl.textContent = '生成成功，但未获取到图片地址';
+                editBtn.disabled = false;
+                showToast('生成成功但未返回图片地址', 'error');
+                return;
+              }
+
+              statusEl.style.color = '#16a34a';
+              statusEl.textContent = `生成完成！共${imageUrls.length}张图片`;
+              editBtn.disabled = false;
+
+              // 为每个生成的图片创建新的图片节点
+              const firstUrl = imageUrls[0];
+              const newNodeId = createImageNode({ x: node.x + 380, y: node.y });
+              const newNode = state.nodes.find(n => n.id === newNodeId);
+              if(newNode){
+                newNode.data.url = firstUrl;
+                newNode.data.preview = firstUrl;
+                newNode.data.name = '编辑结果';
+                const newEl = canvasEl.querySelector(`.node[data-node-id="${newNodeId}"]`);
+                if(newEl){
+                  const newImg = newEl.querySelector('.image-preview');
+                  const newRow = newEl.querySelector('.image-preview-row');
+                  if(newImg) newImg.src = proxyImageUrl(firstUrl);
+                  if(newRow) newRow.style.display = 'flex';
+                }
+              }
+
+              try{ autoSaveWorkflow(); } catch(e){}
+              renderMinimap();
+              showToast('图片编辑成功！', 'success');
+            },
+            (errMsg) => {
+              statusEl.style.color = '#dc2626';
+              statusEl.textContent = errMsg;
+              editBtn.disabled = false;
+              showToast(errMsg || '图片编辑失败', 'error');
+            }
+          );
+        } catch(err){
+          statusEl.style.color = '#dc2626';
+          statusEl.textContent = err.message || '提交失败';
+          editBtn.disabled = false;
+          showToast('提交失败: ' + (err.message || ''), 'error');
+        }
+      });
+
       canvasEl.appendChild(el);
       setSelected(id);
+      return id;
     }
 
     const addBtn = document.getElementById('addBtn');
@@ -2879,6 +3140,7 @@
       renderMinimap();
       addMenu.classList.remove('show');
     });
+
 
     document.getElementById('menuAddAsset').addEventListener('click', () => {
       // 素材库 - 空实现
@@ -3064,6 +3326,28 @@
             }
           }
         }
+
+        
+        // 如果从图生视频节点拖拽，查找视频节点输入端口
+        if(fromNode && fromNode.type === 'image_to_video'){
+          let nearestPort = null;
+          let nearestDist = 50;
+          for(const node of state.nodes){
+            if(node.type !== 'video') continue;
+            const toEl = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+            if(!toEl) continue;
+            const portEl = toEl.querySelector('.port.input');
+            if(!portEl) continue;
+            const rect = portEl.getBoundingClientRect();
+            const portX = (rect.left + rect.width/2 - containerRect.left - state.panX) / state.zoom;
+            const portY = (rect.top + rect.height/2 - containerRect.top - state.panY) / state.zoom;
+            const dist = Math.sqrt(Math.pow(toX - portX, 2) + Math.pow(toY - portY, 2));
+            if(dist < nearestDist){
+              nearestDist = dist;
+              nearestPort = { nodeId: node.id };
+            }
+          }
+        }
         
         // 更新图片端口高亮状态
         for(const portEl of canvasEl.querySelectorAll('.start-image-port, .end-image-port')){
@@ -3204,6 +3488,7 @@
             }
           }
         }
+
         
         // 清除所有端口高亮
         for(const portEl of canvasEl.querySelectorAll('.can-connect')){
