@@ -180,8 +180,10 @@ cp test_config.example.json test_config.json
 
 编辑 `test_config.json`，填写：
 - `base_url`: 被测试服务器地址
-- `credentials.phone`: 测试账号手机号
-- `credentials.password`: 测试账号密码
+- `credentials.primary.phone`: 主测试账号手机号
+- `credentials.primary.password`: 主测试账号密码
+- `credentials.secondary.phone`: 副测试账号手机号（用于权限测试）
+- `credentials.secondary.password`: 副测试账号密码
 
 ## 运行测试
 

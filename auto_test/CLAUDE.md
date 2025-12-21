@@ -38,8 +38,10 @@ auto_test/
 1. 复制 `test_config.example.json` 为 `test_config.json`
 2. 填写以下信息：
    - `base_url`: 被测试服务器地址（如 http://localhost:8000）
-   - `credentials.phone`: 测试账号手机号
-   - `credentials.password`: 测试账号密码
+   - `credentials.primary.phone`: 主测试账号手机号
+   - `credentials.primary.password`: 主测试账号密码
+   - `credentials.secondary.phone`: 副测试账号手机号（用于权限测试）
+   - `credentials.secondary.password`: 副测试账号密码
    - `test_assets.test_image`: 测试用图片路径
 
 ### 配置文件格式
@@ -49,8 +51,14 @@ auto_test/
   "base_url": "http://localhost:8000",
   "test_mode_param": "?test=1",
   "credentials": {
-    "phone": "13800138000",
-    "password": "your_password"
+    "primary": {
+      "phone": "13800138000",
+      "password": "your_password"
+    },
+    "secondary": {
+      "phone": "13900139000",
+      "password": "your_secondary_password"
+    }
   },
   "test_assets": {
     "test_image": "/path/to/test_image.jpg"
