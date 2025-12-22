@@ -721,6 +721,192 @@
       box-shadow: 0 0 0 4px rgba(59,130,246,0.3);
       transform: translateY(-50%) scale(1.3);
     }
+
+    /* 时间轴样式 */
+    .timeline-container {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 200px;
+      background: #fff;
+      border-top: 2px solid var(--border);
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+    .timeline-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      min-height: 40px;
+    }
+    .timeline-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .timeline-title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .timeline-total-duration {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .timeline-header-right {
+      display: flex;
+      gap: 8px;
+    }
+    .timeline-ruler {
+      height: 24px;
+      background: #f5f5f5;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .ruler-mark {
+      position: absolute;
+      top: 0;
+      font-size: 10px;
+      color: var(--muted);
+      padding: 2px 4px;
+      white-space: nowrap;
+    }
+    .timeline-tracks {
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
+      background: #fafafa;
+    }
+    .timeline-track {
+      height: 100%;
+      position: relative;
+      padding: 12px;
+      min-width: max-content;
+    }
+    .timeline-clip {
+      height: 100px;
+      min-width: 50px;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: grab;
+      position: absolute;
+      border: 2px solid transparent;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .timeline-clip:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+    .timeline-clip.selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-light);
+    }
+    .timeline-clip.dragging {
+      opacity: 0.5;
+      cursor: grabbing;
+    }
+    .timeline-clip.drop-target {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+      animation: pulse 0.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: translateY(-2px) scale(1); }
+      50% { transform: translateY(-2px) scale(1.05); }
+    }
+    .timeline-drop-indicator {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: #3b82f6;
+      box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+      z-index: 1000;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .timeline-drop-indicator.show {
+      opacity: 1;
+    }
+    .timeline-clip-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+    }
+    .timeline-clip-duration {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .timeline-clip-name {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      right: 4px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .timeline-clip-actions {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      display: none;
+      gap: 4px;
+    }
+    .timeline-clip:hover .timeline-clip-actions {
+      display: flex;
+    }
+    .timeline-clip-actions .vp-btn {
+      width: 24px;
+      height: 24px;
+      font-size: 14px;
+    }
+    .timeline-expand-btn {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      z-index: 99;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(34,197,94,0.4);
+    }
+    .timeline-expand-btn:hover {
+      opacity: 0.9;
+    }
+    .canvas-container.timeline-visible {
+      padding-bottom: 200px;
+    }
   </style>
 </head>
 <body>
@@ -833,6 +1019,36 @@
     </div>
   </div>
 
+  <!-- 时间轴面板 -->
+  <div class="timeline-container" id="timelineContainer" style="display:none;">
+    <div class="timeline-header">
+      <div class="timeline-header-left">
+        <span class="timeline-title">时间轴</span>
+        <span class="timeline-total-duration" id="timelineTotalDuration">总时长: 0:00</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:8px;">提示: 拖拽调整顺序 | 按住Shift拖拽可替换</span>
+      </div>
+      <div class="timeline-header-right">
+        <button class="mini-btn" id="timelineClearBtn">清空</button>
+        <button class="mini-btn" id="timelineToggleBtn">收起</button>
+      </div>
+    </div>
+    <div class="timeline-ruler" id="timelineRuler"></div>
+    <div class="timeline-tracks" id="timelineTracks">
+      <div class="timeline-track" id="videoTrack">
+        <!-- 视频片段将动态添加到这里 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 时间轴展开按钮（收起时显示） -->
+  <button class="timeline-expand-btn" id="timelineExpandBtn" style="display:none;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <line x1="3" y1="15" x2="21" y2="15"/>
+    </svg>
+    时间轴
+  </button>
+
   <script>
     const state = {
       ratio: '16:9',
@@ -851,6 +1067,12 @@
       panX: 0,
       panY: 0,
       zoom: 1,
+      timeline: {
+        clips: [],
+        nextClipId: 1,
+        selectedClipId: null,
+        visible: false,
+      }
     };
 
     function normalizeVideoUrl(item){
@@ -1137,6 +1359,366 @@
       }
     }
 
+    // ============ 时间轴功能 ============
+    
+    // 添加视频到时间轴
+    function addToTimeline(nodeId) {
+      const node = state.nodes.find(n => n.id === nodeId);
+      if (!node || node.type !== 'video' || !node.data.url) {
+        showToast('请先生成或上传视频', 'error');
+        return;
+      }
+      
+      // 如果没有时长，尝试获取
+      if (!node.data.duration) {
+        getVideoDuration(node.data.url).then(duration => {
+          node.data.duration = duration;
+          addClipToTimeline(nodeId, node, duration);
+        }).catch(() => {
+          addClipToTimeline(nodeId, node, 10);
+        });
+      } else {
+        addClipToTimeline(nodeId, node, node.data.duration);
+      }
+    }
+    
+    // 添加片段到时间轴的辅助函数
+    function addClipToTimeline(nodeId, node, duration) {
+      const clip = {
+        id: state.timeline.nextClipId++,
+        nodeId: nodeId,
+        url: node.data.url,
+        name: node.data.name || '视频',
+        duration: duration,
+        order: state.timeline.clips.length,
+      };
+      
+      state.timeline.clips.push(clip);
+      state.timeline.visible = true;
+      
+      renderTimeline();
+      showToast('已添加到时间轴', 'success');
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 获取视频时长
+    function getVideoDuration(url) {
+      return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.muted = true;
+        
+        video.addEventListener('loadedmetadata', () => {
+          if (video.duration && isFinite(video.duration)) {
+            resolve(Math.round(video.duration));
+          } else {
+            reject(new Error('Invalid duration'));
+          }
+          video.src = '';
+        }, { once: true });
+        
+        video.addEventListener('error', () => {
+          reject(new Error('Failed to load video'));
+        }, { once: true });
+        
+        video.src = proxyDownloadUrl(url);
+      });
+    }
+    
+    // 从时间轴移除片段
+    function removeFromTimeline(clipId) {
+      state.timeline.clips = state.timeline.clips.filter(c => c.id !== clipId);
+      state.timeline.clips.forEach((c, i) => c.order = i);
+      renderTimeline();
+      showToast('已从时间轴移除', 'success');
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 移动时间轴片段（拖拽排序）
+    function moveTimelineClip(clipId, newOrder) {
+      const clip = state.timeline.clips.find(c => c.id === clipId);
+      if (!clip) return;
+      
+      const oldOrder = clip.order;
+      if (oldOrder === newOrder) return;
+      
+      state.timeline.clips.forEach(c => {
+        if (c.id === clipId) {
+          c.order = newOrder;
+        } else if (oldOrder < newOrder && c.order > oldOrder && c.order <= newOrder) {
+          c.order--;
+        } else if (oldOrder > newOrder && c.order >= newOrder && c.order < oldOrder) {
+          c.order++;
+        }
+      });
+      
+      state.timeline.clips.sort((a, b) => a.order - b.order);
+      renderTimeline();
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 渲染时间轴
+    function renderTimeline() {
+      const container = document.getElementById('timelineContainer');
+      const track = document.getElementById('videoTrack');
+      const ruler = document.getElementById('timelineRuler');
+      const totalDurationEl = document.getElementById('timelineTotalDuration');
+      const expandBtn = document.getElementById('timelineExpandBtn');
+      
+      if (!state.timeline.visible || state.timeline.clips.length === 0) {
+        container.style.display = 'none';
+        expandBtn.style.display = 'none';
+        canvasContainer.classList.remove('timeline-visible');
+        return;
+      }
+      
+      container.style.display = 'flex';
+      expandBtn.style.display = 'none';
+      canvasContainer.classList.add('timeline-visible');
+      
+      const totalDuration = state.timeline.clips.reduce((sum, c) => sum + c.duration, 0);
+      const minutes = Math.floor(totalDuration / 60);
+      const seconds = totalDuration % 60;
+      totalDurationEl.textContent = `总时长: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+      
+      renderTimelineRuler(ruler, totalDuration);
+      
+      const sortedClips = [...state.timeline.clips].sort((a, b) => a.order - b.order);
+      
+      // 计算每个片段的累计起始时间
+      let accumulatedTime = 0;
+      track.innerHTML = sortedClips.map(clip => {
+        const startTime = accumulatedTime;
+        const width = clip.duration * 10;
+        accumulatedTime += clip.duration;
+        
+        return `
+          <div class="timeline-clip ${state.timeline.selectedClipId === clip.id ? 'selected' : ''}" 
+               data-clip-id="${clip.id}" 
+               draggable="true"
+               style="position: absolute; left: ${startTime * 10}px; width: ${width}px;">
+            <video class="timeline-clip-thumb" src="${proxyDownloadUrl(clip.url)}" muted preload="metadata"></video>
+            <div class="timeline-clip-name">${clip.name}</div>
+            <div class="timeline-clip-duration">${clip.duration}s</div>
+            <div class="timeline-clip-actions">
+              <button class="vp-btn clip-remove-btn" title="移除">×</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      // 设置轨道最小宽度以容纳所有片段
+      track.style.minWidth = (totalDuration * 10 + 24) + 'px'; // 24px for padding
+      
+      bindTimelineClipEvents();
+    }
+    
+    // 渲染时间刻度
+    function renderTimelineRuler(ruler, totalDuration) {
+      let html = '';
+      const interval = totalDuration > 60 ? 10 : 5;
+      for (let i = 0; i <= totalDuration; i += interval) {
+        const minutes = Math.floor(i / 60);
+        const seconds = i % 60;
+        const label = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        html += `<div class="ruler-mark" style="left:${i * 10}px;">${label}</div>`;
+      }
+      ruler.innerHTML = html;
+    }
+    
+    // 替换时间轴片段
+    function replaceTimelineClip(targetClipId, draggedClipId) {
+      const targetClip = state.timeline.clips.find(c => c.id === targetClipId);
+      const draggedClip = state.timeline.clips.find(c => c.id === draggedClipId);
+      
+      if (!targetClip || !draggedClip) return;
+      
+      // 用拖拽的片段内容替换目标片段
+      targetClip.url = draggedClip.url;
+      targetClip.name = draggedClip.name;
+      targetClip.duration = draggedClip.duration;
+      targetClip.nodeId = draggedClip.nodeId;
+      
+      // 删除被拖拽的片段
+      state.timeline.clips = state.timeline.clips.filter(c => c.id !== draggedClipId);
+      
+      // 重新规范化order
+      state.timeline.clips.sort((a, b) => a.order - b.order);
+      state.timeline.clips.forEach((c, index) => {
+        c.order = index;
+      });
+      
+      renderTimeline();
+      showToast('已替换视频片段', 'success');
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 绑定时间轴片段事件
+    function bindTimelineClipEvents() {
+      const track = document.getElementById('videoTrack');
+      
+      // 创建插入位置指示器
+      let dropIndicator = track.querySelector('.timeline-drop-indicator');
+      if (!dropIndicator) {
+        dropIndicator = document.createElement('div');
+        dropIndicator.className = 'timeline-drop-indicator';
+        track.appendChild(dropIndicator);
+      }
+      
+      let draggedClipId = null;
+      let dropPosition = null; // { clipId, insertBefore: true/false }
+      
+      track.querySelectorAll('.timeline-clip').forEach(clipEl => {
+        const clipId = Number(clipEl.dataset.clipId);
+        
+        clipEl.addEventListener('click', (e) => {
+          if(e.target.classList.contains('clip-remove-btn')) return;
+          state.timeline.selectedClipId = clipId;
+          renderTimeline();
+        });
+        
+        clipEl.addEventListener('dragstart', (e) => {
+          draggedClipId = clipId;
+          e.dataTransfer.setData('text/plain', clipId);
+          e.dataTransfer.effectAllowed = 'move';
+          clipEl.classList.add('dragging');
+        });
+        
+        clipEl.addEventListener('dragend', () => {
+          clipEl.classList.remove('dragging');
+          dropIndicator.classList.remove('show');
+          track.querySelectorAll('.timeline-clip').forEach(el => {
+            el.classList.remove('drop-target');
+          });
+          draggedClipId = null;
+          dropPosition = null;
+        });
+        
+        clipEl.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (!draggedClipId || draggedClipId === clipId) {
+            dropIndicator.classList.remove('show');
+            return;
+          }
+          
+          e.dataTransfer.dropEffect = 'move';
+          
+          // 检测是否按住Shift键进行替换
+          if (e.shiftKey) {
+            // 替换模式：高亮整个片段
+            clipEl.classList.add('drop-target');
+            dropIndicator.classList.remove('show');
+            dropPosition = { clipId, replace: true };
+          } else {
+            // 插入模式：显示插入位置指示器
+            clipEl.classList.remove('drop-target');
+            
+            const rect = clipEl.getBoundingClientRect();
+            const mouseX = e.clientX;
+            const clipCenterX = rect.left + rect.width / 2;
+            const insertBefore = mouseX < clipCenterX;
+            
+            // 计算指示器位置
+            const trackRect = track.getBoundingClientRect();
+            let indicatorLeft;
+            if (insertBefore) {
+              indicatorLeft = rect.left - trackRect.left - 2;
+            } else {
+              indicatorLeft = rect.right - trackRect.left - 2;
+            }
+            
+            dropIndicator.style.left = indicatorLeft + 'px';
+            dropIndicator.classList.add('show');
+            dropPosition = { clipId, insertBefore };
+          }
+        });
+        
+        clipEl.addEventListener('dragleave', (e) => {
+          if (!clipEl.contains(e.relatedTarget)) {
+            clipEl.classList.remove('drop-target');
+          }
+        });
+        
+        clipEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          clipEl.classList.remove('drop-target');
+          dropIndicator.classList.remove('show');
+          
+          if (!draggedClipId || draggedClipId === clipId || !dropPosition) return;
+          
+          if (dropPosition.replace) {
+            // 替换模式
+            replaceTimelineClip(clipId, draggedClipId);
+          } else {
+            // 插入模式
+            // 先排序获取当前实际顺序
+            const sortedClips = [...state.timeline.clips].sort((a, b) => a.order - b.order);
+            const targetIndex = sortedClips.findIndex(c => c.id === clipId);
+            const draggedIndex = sortedClips.findIndex(c => c.id === draggedClipId);
+            
+            if (targetIndex !== -1 && draggedIndex !== -1) {
+              // 计算光标位置对应的最终插入位置
+              let finalPosition;
+              if (dropPosition.insertBefore) {
+                // 光标在目标元素前面
+                finalPosition = targetIndex;
+              } else {
+                // 光标在目标元素后面
+                finalPosition = targetIndex + 1;
+              }
+              
+              // 如果被拖拽元素在光标位置之前，需要调整最终位置
+              // 因为移除被拖拽元素后，后面的元素会前移
+              if (draggedIndex < finalPosition) {
+                finalPosition--;
+              }
+              
+              moveTimelineClipToPosition(draggedClipId, finalPosition);
+            }
+          }
+          
+          dropPosition = null;
+        });
+        
+        const removeBtn = clipEl.querySelector('.clip-remove-btn');
+        if(removeBtn){
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeFromTimeline(clipId);
+          });
+        }
+      });
+    }
+    
+    // 移动片段到指定位置（简化版本）
+    function moveTimelineClipToPosition(clipId, targetOrder) {
+      const clipIndex = state.timeline.clips.findIndex(c => c.id === clipId);
+      if (clipIndex === -1) return;
+      
+      // 先按当前order排序
+      state.timeline.clips.sort((a, b) => a.order - b.order);
+      
+      // 移除元素
+      const [clip] = state.timeline.clips.splice(clipIndex, 1);
+      
+      // 确保targetOrder在有效范围内
+      targetOrder = Math.max(0, Math.min(targetOrder, state.timeline.clips.length));
+      
+      // 插入到新位置
+      state.timeline.clips.splice(targetOrder, 0, clip);
+      
+      // 重新分配order
+      state.timeline.clips.forEach((c, index) => {
+        c.order = index;
+      });
+      
+      renderTimeline();
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // ============ 时间轴功能结束 ============
+
     // 轮询视频状态
     function pollVideoStatus(projectIds, onProgress, onComplete, onError, onTaskUpdate){
       let pollCount = 0;
@@ -1218,7 +1800,11 @@
         nextImgConnId: state.nextImgConnId,
         nodes: serializableNodes,
         connections: state.connections.map(c => ({ id: c.id, from: c.from, to: c.to })),
-        imageConnections: state.imageConnections.map(c => ({ id: c.id, from: c.from, to: c.to, portType: c.portType }))
+        imageConnections: state.imageConnections.map(c => ({ id: c.id, from: c.from, to: c.to, portType: c.portType })),
+        timeline: {
+          clips: state.timeline.clips,
+          nextClipId: state.timeline.nextClipId,
+        }
       };
     }
 
@@ -1405,6 +1991,14 @@
       
       if(data.imageConnections && Array.isArray(data.imageConnections)){
         state.imageConnections = data.imageConnections;
+      }
+      
+      // 恢复时间轴
+      if(data.timeline){
+        state.timeline.clips = data.timeline.clips || [];
+        state.timeline.nextClipId = data.timeline.nextClipId || 1;
+        state.timeline.visible = state.timeline.clips.length > 0;
+        renderTimeline();
       }
       
       // 重新渲染
@@ -1823,6 +2417,7 @@
             <div class="preview-row" style="margin-top: 8px; justify-content: space-between;">
               <div class="gen-meta video-name"></div>
               <div style="display: flex; gap: 8px;">
+                <button class="mini-btn video-add-timeline" type="button">添加到时间轴</button>
                 <button class="mini-btn video-download" type="button">下载</button>
                 <button class="mini-btn video-clear" type="button">清除</button>
               </div>
@@ -1844,6 +2439,7 @@
       const playBtn = el.querySelector('.vp-play');
       const zoomBtn = el.querySelector('.vp-zoom');
       const nameEl = el.querySelector('.video-name');
+      const addTimelineBtn = el.querySelector('.video-add-timeline');
       const downloadBtn = el.querySelector('.video-download');
       const clearBtn = el.querySelector('.video-clear');
       const statusField = el.querySelector('.video-status-field');
@@ -1904,6 +2500,13 @@
           thumbVideo.controls = false;
           nameEl.textContent = node.data.name;
           previewField.style.display = 'block';
+          
+          // 获取视频时长
+          thumbVideo.addEventListener('loadedmetadata', () => {
+            if(thumbVideo.duration && isFinite(thumbVideo.duration)){
+              node.data.duration = Math.round(thumbVideo.duration);
+            }
+          }, { once: true });
         } else {
           thumbVideo.removeAttribute('src');
           thumbVideo.load();
@@ -1940,6 +2543,11 @@
         e.stopPropagation();
         if(!node.data.url) return;
         openVideoModal(node.data.url);
+      });
+
+      addTimelineBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addToTimeline(id);
       });
 
       clearBtn.addEventListener('click', (e) => {
@@ -3439,7 +4047,7 @@
       }
     });
 
-    // 键盘删除连接线
+    // 键盘删除连接线和时间轴片段
     window.addEventListener('keydown', (e) => {
       if(e.key === 'Delete' || e.key === 'Backspace'){
         // 不在输入框内时才响应
@@ -3454,6 +4062,10 @@
           state.selectedImgConnId = null;
           hideConnDeleteBtn();
           renderImageConnections();
+        } else if(state.timeline.selectedClipId !== null){
+          e.preventDefault();
+          removeFromTimeline(state.timeline.selectedClipId);
+          state.timeline.selectedClipId = null;
         }
       }
     });
@@ -3789,6 +4401,31 @@
     document.getElementById('saveBtn').addEventListener('click', (e) => {
       e.stopPropagation();
       saveWorkflow();
+    });
+
+    // 时间轴控制按钮事件
+    document.getElementById('timelineToggleBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.timeline.visible = false;
+      renderTimeline();
+      document.getElementById('timelineExpandBtn').style.display = 'flex';
+    });
+
+    document.getElementById('timelineExpandBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.timeline.visible = true;
+      renderTimeline();
+    });
+
+    document.getElementById('timelineClearBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(confirm('确定要清空时间轴吗？')){
+        state.timeline.clips = [];
+        state.timeline.selectedClipId = null;
+        renderTimeline();
+        showToast('时间轴已清空', 'success');
+        try{ autoSaveWorkflow(); } catch(e){}
+      }
     });
 
     // 页面加载时初始化
