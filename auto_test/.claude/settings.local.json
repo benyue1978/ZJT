@@ -15,7 +15,8 @@
       "mcp__playwright__browser_close",
       "mcp__playwright__browser_run_code",
       "mcp__playwright__browser_file_upload",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Skill(new-test-session)"
     ]
   }
 }
