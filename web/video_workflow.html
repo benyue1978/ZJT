@@ -1397,6 +1397,8 @@
         url: node.data.url,
         name: node.data.name || '视频',
         duration: duration,
+        startTime: 0,           // 剪切开始时间（秒）
+        endTime: duration,      // 剪切结束时间（秒）
         order: state.timeline.clips.length,
       };
       
@@ -1483,7 +1485,11 @@
       expandBtn.style.display = 'none';
       canvasContainer.classList.add('timeline-visible');
       
-      const totalDuration = state.timeline.clips.reduce((sum, c) => sum + c.duration, 0);
+      // 计算总时长（考虑剪切后的实际播放时长）
+      const totalDuration = state.timeline.clips.reduce((sum, c) => {
+        const actualDuration = (c.endTime || c.duration) - (c.startTime || 0);
+        return sum + actualDuration;
+      }, 0);
       const minutes = Math.floor(totalDuration / 60);
       const seconds = totalDuration % 60;
       totalDurationEl.textContent = `总时长: ${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -1496,8 +1502,16 @@
       let accumulatedTime = 0;
       track.innerHTML = sortedClips.map(clip => {
         const startTime = accumulatedTime;
-        const width = clip.duration * 10;
-        accumulatedTime += clip.duration;
+        // 计算剪切后的实际播放时长
+        const clipStartTime = clip.startTime || 0;
+        const clipEndTime = clip.endTime || clip.duration;
+        const actualDuration = clipEndTime - clipStartTime;
+        const width = actualDuration * 10;
+        accumulatedTime += actualDuration;
+        
+        // 显示剪切信息
+        const isTrimmed = clipStartTime > 0 || clipEndTime < clip.duration;
+        const durationText = isTrimmed ? `${actualDuration.toFixed(1)}s (已剪切)` : `${actualDuration}s`;
         
         return `
           <div class="timeline-clip ${state.timeline.selectedClipId === clip.id ? 'selected' : ''}" 
@@ -1506,8 +1520,9 @@
                style="position: absolute; left: ${startTime * 10}px; width: ${width}px;">
             <video class="timeline-clip-thumb" src="${proxyDownloadUrl(clip.url)}" muted preload="metadata"></video>
             <div class="timeline-clip-name" title="${clip.name}">${clip.name}</div>
-            <div class="timeline-clip-duration">${clip.duration}s</div>
+            <div class="timeline-clip-duration">${durationText}</div>
             <div class="timeline-clip-actions">
+              <button class="vp-btn clip-trim-btn" title="剪切">✂</button>
               <button class="vp-btn clip-remove-btn" title="移除">×</button>
             </div>
           </div>
@@ -1544,6 +1559,8 @@
       targetClip.url = draggedClip.url;
       targetClip.name = draggedClip.name;
       targetClip.duration = draggedClip.duration;
+      targetClip.startTime = draggedClip.startTime || 0;
+      targetClip.endTime = draggedClip.endTime || draggedClip.duration;
       targetClip.nodeId = draggedClip.nodeId;
       
       // 删除被拖拽的片段
@@ -1580,6 +1597,7 @@
         
         clipEl.addEventListener('click', (e) => {
           if(e.target.classList.contains('clip-remove-btn')) return;
+          if(e.target.classList.contains('clip-trim-btn')) return;
           state.timeline.selectedClipId = clipId;
           renderTimeline();
         });
@@ -1694,6 +1712,134 @@
             e.stopPropagation();
             removeFromTimeline(clipId);
           });
+        }
+        
+        const trimBtn = clipEl.querySelector('.clip-trim-btn');
+        if(trimBtn){
+          trimBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            console.log('Trim button clicked, clipId:', clipId);
+            openTrimDialog(clipId);
+          });
+        } else {
+          console.warn('Trim button not found for clip:', clipId);
+        }
+      });
+    }
+    
+    // 打开剪切对话框
+    function openTrimDialog(clipId) {
+      const clip = state.timeline.clips.find(c => c.id === clipId);
+      if(!clip) return;
+      
+      const startTime = clip.startTime || 0;
+      const endTime = clip.endTime || clip.duration;
+      
+      // 创建模态框
+      const dialog = document.createElement('div');
+      dialog.className = 'modal show';
+      dialog.id = 'trimDialog';
+      dialog.innerHTML = `
+        <div class="modal-card" style="max-width: 500px;">
+          <div class="modal-header">
+            <div class="modal-title">剪切视频片段</div>
+            <button class="modal-close" type="button" aria-label="关闭">×</button>
+          </div>
+          <div class="modal-body" style="padding: 20px;">
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">
+                视频名称: ${clip.name}
+              </div>
+              <div style="font-size: 13px; color: var(--muted);">
+                原始时长: ${clip.duration}秒
+              </div>
+            </div>
+            
+            <div class="field">
+              <label class="label">开始时间（秒）</label>
+              <input type="number" id="trimStartTime" 
+                     min="0" max="${clip.duration}" step="0.1" value="${startTime}" 
+                     style="width: 100%; padding: 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;" />
+            </div>
+            
+            <div class="field" style="margin-top: 12px;">
+              <label class="label">结束时间（秒）</label>
+              <input type="number" id="trimEndTime" 
+                     min="0" max="${clip.duration}" step="0.1" value="${endTime}" 
+                     style="width: 100%; padding: 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;" />
+            </div>
+            
+            <div style="margin-top: 16px; padding: 12px; background: var(--panel); border-radius: 8px;">
+              <div style="font-size: 13px; color: var(--muted);">
+                剪切后时长: <span id="trimmedDuration" style="color: var(--text); font-weight: 600;">${(endTime - startTime).toFixed(1)}</span>秒
+              </div>
+            </div>
+            
+            <div style="margin-top: 20px; display: flex; gap: 8px; justify-content: flex-end;">
+              <button class="btn btn-secondary modal-close" type="button">取消</button>
+              <button class="btn btn-primary" id="confirmTrim" type="button">确定</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(dialog);
+      
+      const startInput = dialog.querySelector('#trimStartTime');
+      const endInput = dialog.querySelector('#trimEndTime');
+      const durationSpan = dialog.querySelector('#trimmedDuration');
+      
+      // 实时更新剪切后时长
+      const updateDuration = () => {
+        const start = parseFloat(startInput.value) || 0;
+        const end = parseFloat(endInput.value) || clip.duration;
+        const duration = Math.max(0, end - start);
+        durationSpan.textContent = duration.toFixed(1);
+      };
+      
+      startInput.addEventListener('input', updateDuration);
+      endInput.addEventListener('input', updateDuration);
+      
+      // 关闭对话框
+      const closeDialog = () => {
+        dialog.classList.remove('show');
+        setTimeout(() => dialog.remove(), 300);
+      };
+      
+      dialog.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', closeDialog);
+      });
+      
+      // 确认剪切
+      dialog.querySelector('#confirmTrim').addEventListener('click', () => {
+        const start = parseFloat(startInput.value) || 0;
+        const end = parseFloat(endInput.value) || clip.duration;
+        
+        // 验证输入
+        if(start < 0 || start >= clip.duration){
+          showToast('开始时间无效', 'error');
+          return;
+        }
+        if(end <= start || end > clip.duration){
+          showToast('结束时间必须大于开始时间且不超过视频时长', 'error');
+          return;
+        }
+        
+        // 更新片段的剪切时间
+        clip.startTime = start;
+        clip.endTime = end;
+        
+        renderTimeline();
+        showToast('剪切成功', 'success');
+        try{ autoSaveWorkflow(); } catch(e){}
+        
+        closeDialog();
+      });
+      
+      // 点击背景关闭
+      dialog.addEventListener('click', (e) => {
+        if(e.target === dialog){
+          closeDialog();
         }
       });
     }
