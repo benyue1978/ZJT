@@ -1727,7 +1727,7 @@
       });
     }
     
-    // 打开剪切对话框
+    // 打开剪切对话框（带预览功能）
     function openTrimDialog(clipId) {
       const clip = state.timeline.clips.find(c => c.id === clipId);
       if(!clip) return;
@@ -1740,44 +1740,78 @@
       dialog.className = 'modal show';
       dialog.id = 'trimDialog';
       dialog.innerHTML = `
-        <div class="modal-card" style="max-width: 500px;">
+        <div class="modal-card" style="max-width: 900px;">
           <div class="modal-header">
-            <div class="modal-title">剪切视频片段</div>
+            <div class="modal-title">剪切视频片段 - ${clip.name}</div>
             <button class="modal-close" type="button" aria-label="关闭">×</button>
           </div>
           <div class="modal-body" style="padding: 20px;">
-            <div style="margin-bottom: 16px;">
-              <div style="font-size: 13px; color: var(--muted); margin-bottom: 8px;">
-                视频名称: ${clip.name}
-              </div>
-              <div style="font-size: 13px; color: var(--muted);">
-                原始时长: ${clip.duration}秒
-              </div>
-            </div>
-            
-            <div class="field">
-              <label class="label">开始时间（秒）</label>
-              <input type="number" id="trimStartTime" 
-                     min="0" max="${clip.duration}" step="0.1" value="${startTime}" 
-                     style="width: 100%; padding: 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;" />
-            </div>
-            
-            <div class="field" style="margin-top: 12px;">
-              <label class="label">结束时间（秒）</label>
-              <input type="number" id="trimEndTime" 
-                     min="0" max="${clip.duration}" step="0.1" value="${endTime}" 
-                     style="width: 100%; padding: 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;" />
-            </div>
-            
-            <div style="margin-top: 16px; padding: 12px; background: var(--panel); border-radius: 8px;">
-              <div style="font-size: 13px; color: var(--muted);">
-                剪切后时长: <span id="trimmedDuration" style="color: var(--text); font-weight: 600;">${(endTime - startTime).toFixed(1)}</span>秒
+            <!-- 视频预览区域 -->
+            <div style="margin-bottom: 20px; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
+              <video id="trimPreviewVideo" 
+                     style="width: 100%; height: 450px; object-fit: contain;" 
+                     preload="metadata"
+                     muted></video>
+              <!-- 加载提示 -->
+              <div id="trimLoadingOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff;">
+                <div style="font-size: 16px; margin-bottom: 12px;">正在加载视频...</div>
+                <div style="width: 200px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden;">
+                  <div id="trimLoadingProgress" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.3s;"></div>
+                </div>
+                <div id="trimLoadingText" style="font-size: 12px; margin-top: 8px; color: var(--muted);">准备中...</div>
               </div>
             </div>
             
-            <div style="margin-top: 20px; display: flex; gap: 8px; justify-content: flex-end;">
-              <button class="btn btn-secondary modal-close" type="button">取消</button>
-              <button class="btn btn-primary" id="confirmTrim" type="button">确定</button>
+            <!-- 时间轴滑块区域 -->
+            <div style="margin-bottom: 20px;">
+              <div id="trimTrackContainer" style="position: relative; height: 100px; background: #1a1a1a; border-radius: 8px; overflow: hidden; cursor: pointer; opacity: 0.5; pointer-events: none;">
+                <!-- 视频缩略图轨道 -->
+                <canvas id="trimThumbnailTrack" 
+                        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+                
+                <!-- 左侧遮罩 -->
+                <div id="trimLeftMask" 
+                     style="position: absolute; top: 0; left: 0; height: 100%; background: rgba(0, 0, 0, 0.7); pointer-events: none;"></div>
+                
+                <!-- 右侧遮罩 -->
+                <div id="trimRightMask" 
+                     style="position: absolute; top: 0; right: 0; height: 100%; background: rgba(0, 0, 0, 0.7); pointer-events: none;"></div>
+                
+                <!-- 选中区域边框 -->
+                <div id="trimSelectedRange" 
+                     style="position: absolute; top: 0; height: 100%; border: 3px solid #3b82f6; pointer-events: none; box-sizing: border-box;"></div>
+                
+                <!-- 开始时间滑块 -->
+                <div id="trimStartHandle" 
+                     style="position: absolute; top: 0; width: 16px; height: 100%; background: #3b82f6; cursor: ew-resize; z-index: 10; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);">
+                  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 3px; height: 50px; background: #fff; border-radius: 2px;"></div>
+                </div>
+                
+                <!-- 结束时间滑块 -->
+                <div id="trimEndHandle" 
+                     style="position: absolute; top: 0; width: 16px; height: 100%; background: #3b82f6; cursor: ew-resize; z-index: 10; box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);">
+                  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 3px; height: 50px; background: #fff; border-radius: 2px;"></div>
+                </div>
+              </div>
+              
+              <!-- 时间显示 -->
+              <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 13px; color: var(--text);">
+                <span>开始: <strong id="trimStartTimeDisplay">0.0</strong>s</span>
+                <span>剪辑时长: <strong id="trimDurationDisplay" style="color: #3b82f6;">0.0</strong>s</span>
+                <span>结束: <strong id="trimEndTimeDisplay">0.0</strong>s</span>
+              </div>
+            </div>
+            
+            <!-- 播放控制和操作按钮 -->
+            <div style="display: flex; gap: 12px; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 12px;">
+                <button class="btn btn-secondary" id="trimPlayBtn" type="button">▶ 预览剪辑效果</button>
+                <button class="btn btn-secondary" id="trimResetBtn" type="button">重置</button>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" id="trimCancelBtn" type="button">取消</button>
+                <button class="btn btn-primary" id="confirmTrim" type="button">确定剪切</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1785,49 +1819,358 @@
       
       document.body.appendChild(dialog);
       
-      const startInput = dialog.querySelector('#trimStartTime');
-      const endInput = dialog.querySelector('#trimEndTime');
-      const durationSpan = dialog.querySelector('#trimmedDuration');
+      // 获取DOM元素
+      const video = dialog.querySelector('#trimPreviewVideo');
+      const canvas = dialog.querySelector('#trimThumbnailTrack');
+      const ctx = canvas.getContext('2d');
+      const startHandle = dialog.querySelector('#trimStartHandle');
+      const endHandle = dialog.querySelector('#trimEndHandle');
+      const selectedRange = dialog.querySelector('#trimSelectedRange');
+      const leftMask = dialog.querySelector('#trimLeftMask');
+      const rightMask = dialog.querySelector('#trimRightMask');
+      const startTimeDisplay = dialog.querySelector('#trimStartTimeDisplay');
+      const endTimeDisplay = dialog.querySelector('#trimEndTimeDisplay');
+      const durationDisplay = dialog.querySelector('#trimDurationDisplay');
+      const playBtn = dialog.querySelector('#trimPlayBtn');
+      const resetBtn = dialog.querySelector('#trimResetBtn');
+      const trackContainer = dialog.querySelector('#trimTrackContainer');
+      const loadingOverlay = dialog.querySelector('#trimLoadingOverlay');
+      const loadingProgress = dialog.querySelector('#trimLoadingProgress');
+      const loadingText = dialog.querySelector('#trimLoadingText');
       
-      // 实时更新剪切后时长
-      const updateDuration = () => {
-        const start = parseFloat(startInput.value) || 0;
-        const end = parseFloat(endInput.value) || clip.duration;
-        const duration = Math.max(0, end - start);
-        durationSpan.textContent = duration.toFixed(1);
+      // 状态变量
+      let currentStart = startTime;
+      let currentEnd = endTime;
+      let isDraggingStart = false;
+      let isDraggingEnd = false;
+      let isPlaying = false;
+      let thumbnailsGenerated = false;
+      let videoReady = false;
+      
+      // Blob URL（用于清理）
+      let blobUrl = null;
+      
+      // 预下载视频为Blob，这样seek就能正常工作
+      const preloadVideoAsBlob = () => {
+        return new Promise((resolve, reject) => {
+          loadingText.textContent = '正在下载视频以支持精确剪辑...';
+          loadingProgress.style.width = '5%';
+          
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', proxyDownloadUrl(clip.url), true);
+          xhr.responseType = 'blob';
+          
+          xhr.onprogress = (e) => {
+            if(e.lengthComputable){
+              const percent = Math.round((e.loaded / e.total) * 70);
+              loadingProgress.style.width = `${5 + percent}%`;
+              const mb = (e.loaded / 1024 / 1024).toFixed(1);
+              const totalMb = (e.total / 1024 / 1024).toFixed(1);
+              loadingText.textContent = `下载视频中... ${mb}MB / ${totalMb}MB`;
+            }
+          };
+          
+          xhr.onload = () => {
+            if(xhr.status === 200){
+              const blob = xhr.response;
+              blobUrl = URL.createObjectURL(blob);
+              video.src = blobUrl;
+              console.log('视频已下载为Blob，seek功能已启用');
+              resolve();
+            } else {
+              reject(new Error(`下载失败: ${xhr.status}`));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error('网络错误'));
+          xhr.ontimeout = () => reject(new Error('下载超时'));
+          xhr.timeout = 120000; // 2分钟超时
+          
+          xhr.send();
+        });
       };
       
-      startInput.addEventListener('input', updateDuration);
-      endInput.addEventListener('input', updateDuration);
+      // 等待视频加载完成
+      const waitForVideoReady = () => {
+        return new Promise((resolve, reject) => {
+          if(video.readyState >= 2 && video.duration && isFinite(video.duration)){
+            videoReady = true;
+            resolve();
+            return;
+          }
+          
+          const timeout = setTimeout(() => {
+            reject(new Error('视频加载超时'));
+          }, 30000);
+          
+          const onCanPlay = () => {
+            if(video.duration && isFinite(video.duration) && video.duration > 0){
+              clearTimeout(timeout);
+              video.removeEventListener('canplay', onCanPlay);
+              loadingText.textContent = '视频已就绪，正在生成缩略图...';
+              loadingProgress.style.width = '80%';
+              videoReady = true;
+              resolve();
+            }
+          };
+          
+          video.addEventListener('canplay', onCanPlay);
+          video.addEventListener('error', () => {
+            clearTimeout(timeout);
+            reject(new Error('视频加载失败'));
+          });
+        });
+      };
+      
+      // 生成视频缩略图（使用seek方式，Blob URL支持精确seek）
+      const generateThumbnails = async () => {
+        if(thumbnailsGenerated) return;
+        if(!videoReady) return;
+        
+        const containerWidth = trackContainer.offsetWidth;
+        const containerHeight = trackContainer.offsetHeight;
+        canvas.width = containerWidth;
+        canvas.height = containerHeight;
+        
+        const thumbnailCount = 10;
+        const thumbnailWidth = containerWidth / thumbnailCount;
+        const videoDuration = video.duration;
+        
+        console.log('=== 开始生成缩略图（Seek模式）===');
+        console.log('Video duration:', videoDuration, 'seconds');
+        
+        // 绘制帧到canvas指定位置
+        const drawFrameAt = (index) => {
+          const aspectRatio = video.videoWidth / video.videoHeight || 16/9;
+          const drawHeight = containerHeight;
+          const drawWidth = drawHeight * aspectRatio;
+          const offsetX = (thumbnailWidth - drawWidth) / 2;
+          
+          ctx.drawImage(video, 
+            index * thumbnailWidth + Math.max(0, offsetX), 0, 
+            drawWidth, drawHeight);
+        };
+        
+        // 等待seek完成并绘制
+        const seekAndDraw = (index, time) => {
+          return new Promise((resolve) => {
+            const onSeeked = () => {
+              video.removeEventListener('seeked', onSeeked);
+              drawFrameAt(index);
+              console.log(`✓ 缩略图 ${index + 1}/${thumbnailCount}: seek到=${time.toFixed(2)}s, 实际=${video.currentTime.toFixed(2)}s`);
+              resolve();
+            };
+            video.addEventListener('seeked', onSeeked);
+            video.currentTime = time;
+          });
+        };
+        
+        video.pause();
+        
+        // 按顺序生成每一帧
+        for(let i = 0; i < thumbnailCount; i++){
+          const time = thumbnailCount > 1 ? (i / (thumbnailCount - 1)) * videoDuration : 0;
+          
+          const progress = 80 + (i / thumbnailCount) * 20;
+          loadingProgress.style.width = `${progress}%`;
+          loadingText.textContent = `生成缩略图 ${i + 1}/${thumbnailCount}...`;
+          
+          await seekAndDraw(i, time);
+        }
+        
+        thumbnailsGenerated = true;
+        video.currentTime = currentStart;
+        
+        // 隐藏加载提示，启用时间轴
+        loadingOverlay.style.display = 'none';
+        trackContainer.style.opacity = '1';
+        trackContainer.style.pointerEvents = 'auto';
+        
+        console.log('=== 缩略图生成完成 ===');
+      };
+      
+      // 更新UI显示
+      const updateUI = () => {
+        const trackWidth = trackContainer.offsetWidth;
+        const startPercent = (currentStart / clip.duration) * 100;
+        const endPercent = (currentEnd / clip.duration) * 100;
+        
+        startHandle.style.left = `calc(${startPercent}% - 8px)`;
+        endHandle.style.left = `calc(${endPercent}% - 8px)`;
+        selectedRange.style.left = `${startPercent}%`;
+        selectedRange.style.width = `${endPercent - startPercent}%`;
+        
+        // 更新遮罩
+        leftMask.style.width = `${startPercent}%`;
+        rightMask.style.width = `${100 - endPercent}%`;
+        
+        startTimeDisplay.textContent = currentStart.toFixed(1);
+        endTimeDisplay.textContent = currentEnd.toFixed(1);
+        durationDisplay.textContent = (currentEnd - currentStart).toFixed(1);
+        
+        // 更新视频当前时间
+        if(!isPlaying){
+          video.currentTime = currentStart;
+        }
+      };
+      
+      // 初始化：预下载视频为Blob，然后生成缩略图
+      (async () => {
+        try {
+          // 先下载视频为Blob，这样seek才能正常工作
+          await preloadVideoAsBlob();
+          await waitForVideoReady();
+          updateUI();
+          await generateThumbnails();
+        } catch(error) {
+          console.error('视频加载或缩略图生成失败:', error);
+          loadingText.textContent = '加载失败: ' + error.message;
+          loadingText.style.color = '#ef4444';
+          showToast('视频加载失败，请重试', 'error');
+        }
+      })();
+      
+      // 拖动开始滑块
+      startHandle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingStart = true;
+      });
+      
+      // 拖动结束滑块
+      endHandle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isDraggingEnd = true;
+      });
+      
+      // 点击时间轴跳转并播放
+      trackContainer.addEventListener('click', (e) => {
+        if(isDraggingStart || isDraggingEnd) return;
+        if(e.target === startHandle || e.target === endHandle) return;
+        if(e.target.parentElement === startHandle || e.target.parentElement === endHandle) return;
+        
+        const rect = trackContainer.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const percent = x / rect.width;
+        const time = percent * clip.duration;
+        
+        // 限制在剪辑范围内
+        const targetTime = Math.max(currentStart, Math.min(time, currentEnd));
+        video.currentTime = targetTime;
+        
+        // 自动播放
+        if(!isPlaying){
+          video.play();
+          isPlaying = true;
+          playBtn.textContent = '⏸ 暂停';
+        }
+      });
+      
+      // 鼠标移动事件
+      const handleMouseMove = (e) => {
+        if(!isDraggingStart && !isDraggingEnd) return;
+        
+        const rect = trackContainer.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const percent = x / rect.width;
+        const time = percent * clip.duration;
+        
+        if(isDraggingStart){
+          currentStart = Math.max(0, Math.min(time, currentEnd - 0.1));
+          video.currentTime = currentStart;
+        } else if(isDraggingEnd){
+          currentEnd = Math.max(currentStart + 0.1, Math.min(time, clip.duration));
+          video.currentTime = currentEnd;
+        }
+        
+        updateUI();
+      };
+      
+      // 鼠标释放事件
+      const handleMouseUp = () => {
+        // 拖动结束，不自动播放，让用户手动点击播放按钮
+        isDraggingStart = false;
+        isDraggingEnd = false;
+      };
+      
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      
+      // 预览播放（Blob URL支持精确seek）
+      playBtn.addEventListener('click', () => {
+        if(isPlaying){
+          video.pause();
+          isPlaying = false;
+          playBtn.textContent = '▶ 预览剪辑效果';
+        } else {
+          // 从起点开始播放
+          video.currentTime = currentStart;
+          video.play();
+          isPlaying = true;
+          playBtn.textContent = '⏸ 暂停';
+          console.log(`开始播放: 起点=${currentStart.toFixed(2)}s, 终点=${currentEnd.toFixed(2)}s`);
+        }
+      });
+      
+      // 视频播放时检查是否到达终点
+      video.addEventListener('timeupdate', () => {
+        if(isPlaying && video.currentTime >= currentEnd){
+          video.pause();
+          video.currentTime = currentStart;
+          isPlaying = false;
+          playBtn.textContent = '▶ 预览剪辑效果';
+          console.log(`到达终点: ${video.currentTime.toFixed(2)}s >= ${currentEnd.toFixed(2)}s, 已暂停`);
+        }
+      });
+      
+      // 重置按钮
+      resetBtn.addEventListener('click', () => {
+        currentStart = 0;
+        currentEnd = clip.duration;
+        updateUI();
+      });
       
       // 关闭对话框
       const closeDialog = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        video.pause();
+        // 清理Blob URL，释放内存
+        if(blobUrl){
+          URL.revokeObjectURL(blobUrl);
+          blobUrl = null;
+        }
         dialog.classList.remove('show');
         setTimeout(() => dialog.remove(), 300);
       };
       
+      // 取消按钮
+      const cancelBtn = dialog.querySelector('#trimCancelBtn');
+      if(cancelBtn){
+        cancelBtn.addEventListener('click', closeDialog);
+      }
+      
+      // 关闭按钮（右上角的×）
       dialog.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', closeDialog);
       });
       
       // 确认剪切
       dialog.querySelector('#confirmTrim').addEventListener('click', () => {
-        const start = parseFloat(startInput.value) || 0;
-        const end = parseFloat(endInput.value) || clip.duration;
-        
         // 验证输入
-        if(start < 0 || start >= clip.duration){
+        if(currentStart < 0 || currentStart >= clip.duration){
           showToast('开始时间无效', 'error');
           return;
         }
-        if(end <= start || end > clip.duration){
+        if(currentEnd <= currentStart || currentEnd > clip.duration){
           showToast('结束时间必须大于开始时间且不超过视频时长', 'error');
           return;
         }
         
         // 更新片段的剪切时间
-        clip.startTime = start;
-        clip.endTime = end;
+        clip.startTime = currentStart;
+        clip.endTime = currentEnd;
         
         renderTimeline();
         showToast('剪切成功', 'success');
