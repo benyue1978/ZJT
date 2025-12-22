@@ -1758,6 +1758,224 @@
           ]
         },
         {
+          "id": "node_009_1",
+          "name": "图生视频节点-多次抽卡独立状态显示",
+          "description": "验证多次抽卡时，每个视频节点独立显示生成状态，成功和失败的视频节点互不干扰（端到端测试，使用真实API）",
+          "priority": "P1",
+          "page_url": "/video-workflow",
+          "api_endpoint": "POST /api/ai-app-run-image-url, GET /api/get-status/{projectIds}",
+          "pass": false,
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "上传首帧图片并选择抽卡次数X2",
+              "operation": "upload_and_select",
+              "expected_result": "首帧图片上传成功，抽卡次数显示为X2",
+              "pass": false
+            },
+            {
+              "step": 2,
+              "action": "点击生成视频按钮",
+              "operation": "click",
+              "selector": ".gen-btn-main",
+              "expected_result": "自动创建2个视频节点并连接，显示生成中状态",
+              "pass": false
+            },
+            {
+              "step": 3,
+              "action": "等待视频生成完成（最多等待6分钟）",
+              "operation": "wait_for_completion",
+              "timeout": 180000,
+              "expected_result": "所有视频任务完成（成功或失败）",
+              "pass": false
+            },
+            {
+              "step": 4,
+              "action": "验证每个视频节点状态独立显示",
+              "operation": "verify",
+              "expected_result": "每个视频节点下方显示各自的状态：成功显示绿色✓和视频预览，失败显示红色✗和具体错误原因",
+              "pass": false
+            },
+            {
+              "step": 5,
+              "action": "验证图生视频节点总体状态正确",
+              "operation": "verify",
+              "selector": ".gen-status",
+              "expected_result": "根据实际结果显示：全部成功显示绿色，全部失败显示红色，部分成功显示橙色并注明数量",
+              "pass": false
+            },
+            {
+              "step": 6,
+              "action": "验证失败视频节点的错误信息未被覆盖",
+              "operation": "verify",
+              "expected_result": "失败的视频节点保持显示详细错误原因，不会被替换为汇总信息",
+              "pass": false
+            }
+          ]
+        },
+        {
+          "id": "node_009_2",
+          "name": "图生视频节点-图片连接线不消失",
+          "description": "验证点击生成视频按钮时，图片节点到图生视频节点的连接线不会消失",
+          "priority": "P0",
+          "page_url": "/video-workflow",
+          "api_endpoint": "POST /api/ai-app-run-image-url",
+          "pass": false,
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "创建图片节点并上传图片",
+              "operation": "create_and_upload",
+              "expected_result": "图片节点创建成功，图片上传完成",
+              "pass": false
+            },
+            {
+              "step": 2,
+              "action": "创建图生视频节点",
+              "operation": "create_node",
+              "node_type": "image_to_video",
+              "expected_result": "图生视频节点创建成功",
+              "pass": false
+            },
+            {
+              "step": 3,
+              "action": "连接图片节点到图生视频节点的首帧端口",
+              "operation": "connect_nodes",
+              "expected_result": "连接线显示正常",
+              "pass": false
+            },
+            {
+              "step": 4,
+              "action": "点击生成视频按钮",
+              "operation": "click",
+              "selector": ".gen-btn-main",
+              "expected_result": "开始生成视频，创建视频节点",
+              "pass": false
+            },
+            {
+              "step": 5,
+              "action": "验证图片连接线仍然存在",
+              "operation": "verify",
+              "selector": ".image-conn-group",
+              "expected_result": "图片节点到图生视频节点的连接线仍然显示，未消失",
+              "pass": false
+            },
+            {
+              "step": 6,
+              "action": "验证视频连接线正常显示",
+              "operation": "verify",
+              "expected_result": "图生视频节点到视频节点的连接线正常显示",
+              "pass": false
+            }
+          ]
+        },
+        {
+          "id": "node_009_3",
+          "name": "图生视频节点-sora模型比例限制",
+          "description": "验证sora模型只支持16:9和9:16两种比例",
+          "priority": "P0",
+          "page_url": "/video-workflow",
+          "api_endpoint": "无",
+          "pass": false,
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "创建图生视频节点",
+              "operation": "create_node",
+              "node_type": "image_to_video",
+              "expected_result": "图生视频节点创建成功，默认模型为sora",
+              "pass": false
+            },
+            {
+              "step": 2,
+              "action": "验证比例选项只有16:9和9:16",
+              "operation": "verify",
+              "selector": ".ratio-select option",
+              "expected_result": "比例下拉框只显示9:16和16:9两个选项",
+              "pass": false
+            },
+            {
+              "step": 3,
+              "action": "选择比例为16:9",
+              "operation": "select",
+              "selector": ".ratio-select",
+              "value": "16:9",
+              "expected_result": "比例成功设置为16:9",
+              "pass": false
+            },
+            {
+              "step": 4,
+              "action": "保存并重新加载工作流",
+              "operation": "save_and_reload",
+              "expected_result": "工作流保存成功并重新加载",
+              "pass": false
+            },
+            {
+              "step": 5,
+              "action": "验证加载后比例仍为16:9",
+              "operation": "verify",
+              "selector": ".ratio-select",
+              "expected_result": "比例选项仍然只有9:16和16:9，当前值为16:9",
+              "pass": false
+            }
+          ]
+        },
+        {
+          "id": "node_009_4",
+          "name": "图生视频节点-比例字段持久化",
+          "description": "验证图生视频节点的比例字段能正确保存和恢复",
+          "priority": "P0",
+          "page_url": "/video-workflow",
+          "api_endpoint": "PUT /api/video-workflow/{id}",
+          "pass": false,
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "创建图生视频节点并设置比例为9:16",
+              "operation": "create_and_set",
+              "expected_result": "节点创建成功，比例设置为9:16",
+              "pass": false
+            },
+            {
+              "step": 2,
+              "action": "保存工作流",
+              "operation": "click",
+              "selector": "#saveBtn",
+              "expected_result": "工作流保存成功",
+              "pass": false
+            },
+            {
+              "step": 3,
+              "action": "刷新页面重新加载工作流",
+              "operation": "reload",
+              "expected_result": "页面刷新，工作流重新加载",
+              "pass": false
+            },
+            {
+              "step": 4,
+              "action": "验证比例恢复为9:16",
+              "operation": "verify",
+              "selector": ".ratio-select",
+              "expected_result": "比例选择框的值为9:16",
+              "pass": false
+            },
+            {
+              "step": 5,
+              "action": "修改比例为16:9并再次保存",
+              "operation": "change_and_save",
+              "expected_result": "比例修改为16:9并保存成功",
+              "pass": false
+            },
+            {
+              "step": 6,
+              "action": "再次刷新页面验证比例持久化",
+              "operation": "reload_and_verify",
+              "expected_result": "比例恢复为16:9，确认持久化成功",
+              "pass": false
+            }
+          ]
+        },
+        {
           "id": "node_010",
           "name": "视频节点-上传本地视频",
           "description": "验证用户可以在视频节点上传本地视频文件",
