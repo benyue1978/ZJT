@@ -4107,16 +4107,30 @@
               'Authorization': `Bearer ${this.authToken}`
             }
           });
-          
           if (response.data.success) {
             this.computingPower = response.data.data.computing_power;
           } else {
-            this.computingPower = 0;
-            console.error('Failed to fetch computing power:', response.data.message);
+            console.log("Computing power response:", response.data.message);
+            if (response.data.message === '无效或已过期的认证信息') {
+              this.computingPower = null;
+              alert('登录过期，请重新登录');
+            } else {
+              this.computingPower = 0;
+              console.error('Failed to fetch computing power:', response.data.message);
+            }
           }
         } catch (error) {
           console.error('Fetch computing power error:', error);
-          this.computingPower = 0;
+          if (error.response && error.response.data) {
+            if (error.response.data.message === '无效或已过期的认证信息') {
+              this.computingPower = null;
+              alert('登录过期，请重新登录');
+            } else {
+              this.computingPower = 0;
+            }
+          } else {
+            this.computingPower = 0;
+          }
         }
       },
       
