@@ -1511,13 +1511,36 @@
           const durationSelect = el.querySelector('.duration-select');
           if(durationSelect) durationSelect.value = node.data.duration;
           
-          // 更新比例选择
-          const ratioSelect = el.querySelector('.ratio-select');
-          if(ratioSelect) ratioSelect.value = node.data.ratio;
-          
-          // 更新模型选择
+          // 先更新模型选择
           const modelSelect = el.querySelector('.model-select');
           if(modelSelect) modelSelect.value = node.data.model;
+          
+          // 根据模型更新比例选项，然后设置比例值
+          const ratioSelect = el.querySelector('.ratio-select');
+          if(ratioSelect && modelSelect) {
+            const model = node.data.model;
+            if(model === 'sora') {
+              // sora只支持16:9和9:16
+              ratioSelect.innerHTML = `
+                <option value="9:16">9:16</option>
+                <option value="16:9">16:9</option>
+              `;
+              // 如果保存的比例不在支持列表中，使用16:9
+              if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') {
+                node.data.ratio = '16:9';
+              }
+            } else {
+              // 其他模型支持所有比例
+              ratioSelect.innerHTML = `
+                <option value="9:16">9:16</option>
+                <option value="3:4">3:4</option>
+                <option value="1:1">1:1</option>
+                <option value="4:3">4:3</option>
+                <option value="16:9">16:9</option>
+              `;
+            }
+            ratioSelect.value = node.data.ratio;
+          }
           
           // 更新抽卡次数标签
           const genCountLabel = el.querySelector('.gen-count-label');
@@ -2398,9 +2421,45 @@
         node.data.ratio = ratioSelect.value;
       });
 
+      // 根据模型更新比例选项
+      function updateRatioOptions(model) {
+        const currentRatio = ratioSelect.value;
+        ratioSelect.innerHTML = '';
+        
+        if(model === 'sora') {
+          // sora只支持16:9和9:16
+          ratioSelect.innerHTML = `
+            <option value="9:16">9:16</option>
+            <option value="16:9">16:9</option>
+          `;
+          // 如果当前比例不在支持列表中，默认使用16:9
+          if(currentRatio !== '9:16' && currentRatio !== '16:9') {
+            ratioSelect.value = '16:9';
+            node.data.ratio = '16:9';
+          } else {
+            ratioSelect.value = currentRatio;
+          }
+        } else {
+          // 其他模型支持所有比例
+          ratioSelect.innerHTML = `
+            <option value="9:16">9:16</option>
+            <option value="3:4">3:4</option>
+            <option value="1:1">1:1</option>
+            <option value="4:3">4:3</option>
+            <option value="16:9">16:9</option>
+          `;
+          ratioSelect.value = currentRatio;
+        }
+      }
+      
       modelSelect.value = node.data.model;
+      // 初始化时根据模型设置比例选项
+      updateRatioOptions(node.data.model);
+      
       modelSelect.addEventListener('change', () => {
         node.data.model = modelSelect.value;
+        // 模型改变时更新比例选项
+        updateRatioOptions(modelSelect.value);
       });
 
       /* 运镜功能暂时隐藏
@@ -2578,6 +2637,7 @@
           const allVideoNodeIds = [...connectedVideoIds, ...newVideoNodeIds];
           
           renderConnections();
+          renderImageConnections();
           renderMinimap();
 
           // 为每个视频节点初始化状态显示
