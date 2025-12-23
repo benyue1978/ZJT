@@ -21,6 +21,7 @@ import uuid
 from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix, create_character, get_character_task_result
 from PIL import Image
 from baidu import call_ernie_vl_api
+from task.scheduler import init_scheduler
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -2517,6 +2518,7 @@ if __name__ == "__main__":
         logger.info(f"Using SSL cert: {ssl_certfile}")
         logger.info(f"Using SSL key: {ssl_keyfile}")
         
+        init_scheduler(app)
         uvicorn.run(
             "server:app", 
             host="0.0.0.0", 
@@ -2528,4 +2530,5 @@ if __name__ == "__main__":
     else:
         # HTTP configuration
         logger.info(f"Starting HTTP server on port {port}")
+        init_scheduler(app)
         uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
