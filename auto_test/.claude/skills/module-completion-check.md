@@ -88,7 +88,6 @@ python test_navigator.py --status
 1. 运行 `python test_navigator.py --module <模块ID>` 找到下一个待测试项
 2. 继续执行剩余的测试步骤
 3. 使用 `python test_navigator.py --pass-current --module <模块ID>` 标记完成
-4. 建议为每个步骤添加备注：`--remark "测试通过，功能正常"`
 
 ### 问题2：功能未全部完成
 
@@ -117,7 +116,6 @@ python test_navigator.py --status
 - [ ] 功能进度显示为 `X/X`（分子分母相等）
 - [ ] 运行 `python test_navigator.py --module <模块ID>` 显示 "[DONE] 所有测试已完成"
 - [ ] 整体进度统计中该模块计入已完成模块数
-- [ ] 确认重要测试步骤都有适当的备注信息记录
 
 ## 报告格式
 
