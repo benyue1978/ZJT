@@ -52,6 +52,7 @@ def count_features(session_data):
         passed_steps = 0
         failed_features = []
         failed_steps = []
+        passed_steps_with_remarks = []
         
         for feature in module.get('features', []):
             feature_id = feature.get('id', 'unknown')
@@ -66,13 +67,25 @@ def count_features(session_data):
                 step_passed = step.get('pass', False)
                 if step_passed:
                     passed_steps += 1
+                    # 收集通过步骤的备注信息
+                    step_remark = step.get('remark', '')
+                    if step_remark:
+                        passed_steps_with_remarks.append({
+                            'feature_id': feature_id,
+                            'feature_name': feature_name,
+                            'step': step.get('step', '?'),
+                            'action': step.get('action', 'Unknown Action'),
+                            'remark': step_remark,
+                            'expected_result': step.get('expected_result', step.get('verify', ''))
+                        })
                 else:
                     # 收集失败步骤信息
                     step_info = {
                         'step': step.get('step', '?'),
                         'action': step.get('action', 'Unknown Action'),
                         'error': step.get('error', '测试未通过'),
-                        'expected_result': step.get('expected_result', step.get('verify', ''))
+                        'expected_result': step.get('expected_result', step.get('verify', '')),
+                        'remark': step.get('remark', '')
                     }
                     feature_step_failures.append(step_info)
                     failed_steps.append({
@@ -98,7 +111,8 @@ def count_features(session_data):
             'features': {'total': total_features, 'passed': passed_features},
             'steps': {'total': total_steps, 'passed': passed_steps},
             'failed_features': failed_features,
-            'failed_steps': failed_steps
+            'failed_steps': failed_steps,
+            'passed_steps_with_remarks': passed_steps_with_remarks
         }
     
     return stats
@@ -165,6 +179,11 @@ def generate_html_report():
         .failure-header {{ font-weight: bold; color: #2d3748; margin-bottom: 8px; }}
         .failure-details {{ color: #4a5568; line-height: 1.5; }}
         .error-message {{ background: #fed7d7; color: #c53030; padding: 8px 12px; border-radius: 4px; margin: 5px 0; font-family: monospace; }}
+        .remark-message {{ background: #e6fffa; color: #2c7a7b; padding: 8px 12px; border-radius: 4px; margin: 5px 0; border-left: 4px solid #38b2ac; }}
+        .passed-steps-section {{ margin-top: 20px; }}
+        .passed-step-item {{ background: #f0fff4; border-left: 4px solid #38a169; padding: 12px; margin: 8px 0; border-radius: 0 4px 4px 0; }}
+        .passed-step-header {{ font-weight: bold; color: #2d3748; margin-bottom: 5px; }}
+        .passed-step-details {{ color: #4a5568; line-height: 1.4; font-size: 0.9em; }}
         .priority-badge {{ display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }}
         .priority-p0 {{ background: #fed7d7; color: #c53030; }}
         .priority-p1 {{ background: #feebc8; color: #c05621; }}
@@ -405,6 +424,7 @@ def generate_html_report():
                                     <strong>步骤 {step['step']}:</strong> {step['action']}<br>
                                     <strong>错误:</strong> {step['error']}<br>
                                     <strong>期望结果:</strong> {step['expected_result']}
+                                    {f'<br><strong>备注:</strong> {step["remark"]}' if step.get('remark') else ''}
                                 </div>
 """
                     html_content += """
@@ -412,6 +432,38 @@ def generate_html_report():
 """
                 
                 html_content += """
+                        </div>
+"""
+            
+            html_content += """
+                    </div>
+                </div>
+"""
+        
+        # 显示通过步骤的备注信息（如果有的话）
+        if module_id in stats and stats[module_id].get('passed_steps_with_remarks'):
+            passed_remarks = stats[module_id]['passed_steps_with_remarks']
+            remark_count = len(passed_remarks)
+            html_content += f"""
+                <div class="passed-steps-section">
+                    <div class="collapsible" onclick="toggleCollapse(this)">
+                        [INFO] 测试备注详情 ({remark_count} 个步骤有备注) - 点击展开/收起
+                    </div>
+                    <div class="collapse-content">
+"""
+            
+            for remark_step in passed_remarks:
+                html_content += f"""
+                        <div class="passed-step-item">
+                            <div class="passed-step-header">
+                                [PASSED] 步骤 {remark_step['step']}: {remark_step['action']}
+                            </div>
+                            <div class="passed-step-details">
+                                <strong>期望结果:</strong> {remark_step['expected_result']}
+                            </div>
+                            <div class="remark-message">
+                                <strong>测试备注:</strong> {remark_step['remark']}
+                            </div>
                         </div>
 """
             

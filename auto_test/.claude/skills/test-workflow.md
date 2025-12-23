@@ -23,17 +23,31 @@ python test_navigator.py --feature node_005
 # ⭐ 标记当前步骤为通过（必须指定模块）
 python test_navigator.py --pass-current --module node_operations
 
+# ⭐ 标记当前步骤为通过并添加备注
+python test_navigator.py --pass-current --module node_operations --remark "界面显示正常，功能测试通过"
+
 # ⭐ 标记指定功能的某个步骤为通过
 python test_navigator.py --pass node_005 1
 
+# ⭐ 标记指定步骤为通过并添加备注
+python test_navigator.py --pass node_005 1 --remark "节点创建成功，所有字段显示正确"
+
 # ⭐ 标记指定功能的所有步骤为通过
 python test_navigator.py --pass node_005
+
+# ⭐ 标记整个功能为通过并添加备注
+python test_navigator.py --pass node_005 --remark "所有测试步骤完成，功能运行正常"
 ```
 
 ## 智能体分工模式
 
 **测试工程师**：每完成一个功能后立即停止，返回结果给项目经理
 **项目经理**：持续运行，调度下一个功能，直到所有测试完成或卡住
+
+**重要提醒：**
+- 测试清单中每个步骤都有 `remark` 字段
+- 测试智能体应该充分利用备注功能记录测试细节
+- 项目工程师可以通过备注了解测试过程中的具体发现
 
 ### 测试工程师规则
 
@@ -56,6 +70,7 @@ python test_navigator.py --pass node_005
 4. **项目经理会自动调度下一个功能**
 5. **不要读取完整的 test_todo_list.json**（太大）
 6. **使用 test_navigator.py** 获取精确的下一个测试步骤
+7. **建议为每个步骤添加备注** - 记录测试细节和发现
 
 ## 文件职责
 
@@ -114,8 +129,13 @@ test_sessions/session_YYYYMMDD_HHMMSS.json
 ### 步骤级别
 每个 test_step 执行成功后，**立即**修改会话文件：
 ```json
-{ "step": 1, "pass": false }  →  { "step": 1, "pass": true }
+{ "step": 1, "pass": false, "remark": "" }  →  { "step": 1, "pass": true, "remark": "测试通过，界面显示正常" }
 ```
+
+**备注字段说明：**
+- 每个测试步骤都有 `remark` 字段用于记录测试细节
+- 测试智能体可以在标记步骤通过时添加备注信息
+- 备注内容应包含具体的测试发现和观察结果
 
 ### Feature 级别
 当一个 feature 的所有 test_steps 都是 `pass: true` 时，将该 feature 的 `pass` 也改为 `true`
@@ -139,3 +159,20 @@ test_sessions/session_YYYYMMDD_HHMMSS.json
 1. 步骤失败时，记录错误信息到会话文件的 `error` 字段
 2. 跳过当前 feature，继续下一个 feature
 3. 不要因为一个失败就停止整个测试
+4. 失败的步骤也可以在 `remark` 字段中记录失败原因和具体现象
+
+## 备注字段最佳实践
+
+**何时添加备注：**
+- 测试步骤有特殊发现或异常现象
+- 界面响应时间异常（过快或过慢）
+- 发现潜在的用户体验问题
+- 测试数据或结果需要记录
+- 步骤执行过程中的重要观察
+
+**备注内容示例：**
+- "页面加载时间约3秒，响应正常"
+- "按钮点击后立即响应，无延迟"
+- "模态框弹出位置略偏右，但功能正常"
+- "API返回数据格式正确，包含预期字段"
+- "文件上传成功，预览图片清晰"
