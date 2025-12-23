@@ -1058,7 +1058,7 @@
           ]
         },
         {
-          "id": "editor_007",
+          "id": "editor_008",
           "name": "添加图生视频节点",
           "description": "验证用户可以添加图生视频节点，节点正确显示在画布上，包含首帧画面、尾帧画面、视频长度、模型、提示词等字段",
           "priority": "P0",
@@ -1125,7 +1125,7 @@
           ]
         },
         {
-          "id": "editor_008",
+          "id": "editor_009",
           "name": "添加视频节点",
           "description": "验证用户可以添加视频节点，节点正确显示在画布上，包含视频上传区域和输入端口",
           "priority": "P0",
@@ -1170,7 +1170,7 @@
           ]
         },
         {
-          "id": "editor_009",
+          "id": "editor_010",
           "name": "添加图片节点",
           "description": "验证用户可以添加图片节点，节点正确显示在画布上，包含图片上传区域和输出端口",
           "priority": "P0",
@@ -1214,7 +1214,7 @@
           ]
         },
         {
-          "id": "editor_010",
+          "id": "editor_011",
           "name": "节点拖拽移动",
           "description": "验证用户可以通过拖拽节点头部移动节点位置，节点位置正确更新",
           "priority": "P0",
@@ -1264,7 +1264,7 @@
           ]
         },
         {
-          "id": "editor_011",
+          "id": "editor_012",
           "name": "节点删除功能",
           "description": "验证用户可以通过点击节点头部的删除按钮删除节点，节点及其相关连接线一并删除",
           "priority": "P0",
@@ -1296,7 +1296,7 @@
           ]
         },
         {
-          "id": "editor_012",
+          "id": "editor_013",
           "name": "节点连接-图生视频到视频",
           "description": "验证用户可以从图生视频节点的输出端口拖拽连接到视频节点的输入端口，创建贝塞尔曲线连接线",
           "priority": "P0",
@@ -1304,7 +1304,7 @@
           "pass": false,
           "prerequisites": [
             "editor_007",
-            "editor_008"
+            "editor_009"
           ],
           "test_steps": [
             {
@@ -1341,7 +1341,7 @@
           ]
         },
         {
-          "id": "editor_013",
+          "id": "editor_014",
           "name": "节点连接-图片到图生视频首帧",
           "description": "验证用户可以从图片节点的输出端口连接到图生视频节点的首帧图片输入端口",
           "priority": "P0",
@@ -1349,7 +1349,7 @@
           "pass": false,
           "prerequisites": [
             "editor_007",
-            "editor_009"
+            "editor_010"
           ],
           "test_steps": [
             {
@@ -1378,14 +1378,14 @@
           ]
         },
         {
-          "id": "editor_014",
+          "id": "editor_015",
           "name": "连接线选中与删除",
           "description": "验证用户可以点击连接线选中，选中后显示删除按钮，点击删除按钮移除连接线",
           "priority": "P1",
           "page_url": "/video-workflow",
           "pass": false,
           "prerequisites": [
-            "editor_012"
+            "editor_013"
           ],
           "test_steps": [
             {
@@ -1415,7 +1415,7 @@
           ]
         },
         {
-          "id": "editor_015",
+          "id": "editor_016",
           "name": "保存工作流功能",
           "description": "验证用户点击保存按钮可以将当前工作流状态（节点、连接、视口位置等）保存到服务器",
           "priority": "P0",
@@ -1448,14 +1448,14 @@
           ]
         },
         {
-          "id": "editor_016",
+          "id": "editor_017",
           "name": "工作流数据恢复",
           "description": "验证用户重新打开已保存的工作流时，节点、连接线、视口位置等数据正确恢复",
           "priority": "P0",
           "page_url": "/video-workflow?id={workflow_id}",
           "pass": false,
           "prerequisites": [
-            "editor_015"
+            "editor_016"
           ],
           "test_steps": [
             {
@@ -3002,7 +3002,7 @@
           "priority": "P0",
           "page_url": "/video-workflow",
           "pass": false,
-          "prerequisites": ["editor_008"],
+          "prerequisites": ["editor_009"],
           "test_steps": [
             {
               "step": 1,
