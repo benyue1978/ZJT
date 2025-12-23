@@ -2702,6 +2702,59 @@ async def upload_workflow_asset(
         )
 
 
+@app.post('/api/parse-script')
+async def parse_script(
+    request: Request,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: Optional[int] = Header(None, alias="X-User-Id")
+):
+    """
+    解析剧本为分镜组
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        body = await request.json()
+        script_content = body.get('script_content', '')
+        max_group_duration = body.get('max_group_duration', 15)
+        
+        if not script_content:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "剧本内容不能为空"}
+            )
+        
+        # 导入剧本解析模块
+        from llm.script_parser import parse_script_to_shots
+        
+        # 调用LLM解析剧本
+        parsed_data = await parse_script_to_shots(
+            script_content=script_content,
+            max_group_duration=max_group_duration,
+            model=None,
+            temperature=0.7
+        )
+        
+        if not parsed_data:
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": "剧本解析失败"}
+            )
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "解析成功",
+            "data": parsed_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to parse script: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"剧本解析失败: {str(e)}"}
+        )
+
+
 @app.post('/api/video-workflow/create')
 async def create_video_workflow(
     request: VideoWorkflowCreateRequest,

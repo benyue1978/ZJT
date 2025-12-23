@@ -969,6 +969,15 @@
               </svg>
               <span class="add-menu-text">图片</span>
             </div>
+            <div class="add-menu-item" id="menuAddScript">
+              <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M9 5H7C5.89543 5 5 5.89543 5 7V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V7C19 5.89543 18.1046 5 17 5H15" stroke="currentColor" stroke-width="2"/>
+                <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="2"/>
+                <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="9" y1="16" x2="15" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span class="add-menu-text">剧本</span>
+            </div>
           </div>
           <div class="add-menu-group">
             <div class="add-menu-label">添加素材</div>
@@ -4534,6 +4543,364 @@
       return id;
     }
 
+    // 剧本节点
+    function createScriptNode(opts){
+      const id = state.nextNodeId++;
+      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
+      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const node = {
+        id,
+        type: 'script',
+        title: '剧本',
+        x,
+        y,
+        data: {
+          file: null,
+          url: '',
+          name: '',
+          scriptContent: '',
+          parsedData: null,
+        }
+      };
+      state.nodes.push(node);
+
+      const el = document.createElement('div');
+      el.className = 'node';
+      el.dataset.nodeId = String(id);
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+
+      el.innerHTML = `
+        <div class="port output" title="输出（拆分为分镜组）"></div>
+        <div class="node-header">
+          <div class="node-title">${node.title}</div>
+          <button class="icon-btn" title="删除">×</button>
+        </div>
+        <div class="node-body">
+          <div class="field">
+            <div class="label">输入剧本内容 <span class="script-char-count" style="float: right; color: #666; font-size: 12px;">0/2000</span></div>
+            <textarea class="script-textarea" rows="6" maxlength="2000" placeholder="在此输入剧本内容，或上传文件（最多2000字符）"></textarea>
+          </div>
+          <div class="field">
+            <div class="label">或上传剧本文件</div>
+            <input class="script-file" type="file" accept=".txt,.md" />
+          </div>
+          <div class="field">
+            <div class="label">镜头组最长时长</div>
+            <select class="script-duration-select" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+              <option value="5">5秒</option>
+              <option value="8">8秒</option>
+              <option value="10">10秒</option>
+              <option value="15" selected>15秒</option>
+            </select>
+            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">每个镜头组内所有镜头的总时长不超过此值</div>
+          </div>
+          <div class="field script-info-field" style="display:none;">
+            <div class="gen-meta script-name"></div>
+            <div class="gen-meta script-length"></div>
+          </div>
+          <div class="field script-warning-field" style="display:none;">
+            <div class="gen-meta" style="color: #f59e0b;">文件内容超过2000字符，已自动截取前2000字符。建议将剧本分段处理。</div>
+          </div>
+          <div class="field">
+            <button class="gen-btn script-split-btn" type="button" style="border-radius: 10px; width: 100%;" disabled>拆分镜组</button>
+            <div class="gen-meta script-status" style="display:none; margin-top: 8px;"></div>
+          </div>
+        </div>
+      `;
+
+      const headerEl = el.querySelector('.node-header');
+      const deleteBtn = el.querySelector('.icon-btn');
+      const textareaEl = el.querySelector('.script-textarea');
+      const fileEl = el.querySelector('.script-file');
+      const durationSelectEl = el.querySelector('.script-duration-select');
+      const infoField = el.querySelector('.script-info-field');
+      const nameEl = el.querySelector('.script-name');
+      const lengthEl = el.querySelector('.script-length');
+      const splitBtn = el.querySelector('.script-split-btn');
+      const statusEl = el.querySelector('.script-status');
+      const charCountEl = el.querySelector('.script-char-count');
+      const warningField = el.querySelector('.script-warning-field');
+      
+      // 初始化节点数据中的最大时长
+      node.data.maxGroupDuration = 15;
+
+      // 更新字符计数器
+      function updateCharCount(length) {
+        charCountEl.textContent = `${length}/2000`;
+        if(length > 1900) {
+          charCountEl.style.color = '#dc2626';
+        } else if(length > 1700) {
+          charCountEl.style.color = '#f59e0b';
+        } else {
+          charCountEl.style.color = '#666';
+        }
+      }
+
+      // 更新剧本内容和按钮状态
+      function updateScriptContent(content, source) {
+        node.data.scriptContent = content;
+        updateCharCount(content.length);
+        
+        if(content && content.trim().length > 0) {
+          splitBtn.disabled = false;
+          nameEl.textContent = source;
+          lengthEl.textContent = `长度: ${content.length} 字符`;
+          infoField.style.display = 'block';
+        } else {
+          splitBtn.disabled = true;
+          infoField.style.display = 'none';
+        }
+      }
+
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeNode(id);
+      });
+
+      el.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        setSelected(id);
+      });
+
+      headerEl.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelected(id);
+        state.drag = {
+          nodeId: id,
+          startX: e.clientX,
+          startY: e.clientY,
+          origX: node.x,
+          origY: node.y,
+        };
+      });
+
+      // 时长选择监听
+      durationSelectEl.addEventListener('change', () => {
+        node.data.maxGroupDuration = parseInt(durationSelectEl.value);
+      });
+
+      // 文本框输入监听
+      textareaEl.addEventListener('input', () => {
+        const content = textareaEl.value;
+        updateScriptContent(content, '来源: 文本输入');
+      });
+
+      // 文件上传监听
+      fileEl.addEventListener('change', async () => {
+        const file = fileEl.files && fileEl.files[0];
+        if(!file) return;
+        
+        try {
+          let content = await file.text();
+          node.data.file = file;
+          node.data.name = file.name;
+          
+          // 检查是否超过2000字符
+          const originalLength = content.length;
+          const isTruncated = originalLength > 2000;
+          if(isTruncated) {
+            content = content.substring(0, 2000);
+            warningField.style.display = 'block';
+            showToast(`文件内容已截取至2000字符（原${originalLength}字符）`, 'warning');
+          } else {
+            warningField.style.display = 'none';
+            showToast('剧本文件加载成功', 'success');
+          }
+          
+          // 更新文本框内容
+          textareaEl.value = content;
+          updateScriptContent(content, `来源: ${file.name}${isTruncated ? ' (已截取)' : ''}`);
+          
+          fileEl.value = '';
+        } catch(error) {
+          console.error('读取文件失败:', error);
+          showToast('读取文件失败', 'error');
+        }
+      });
+
+      splitBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        
+        if(!node.data.scriptContent) {
+          showToast('请先上传剧本文件', 'error');
+          return;
+        }
+
+        splitBtn.disabled = true;
+        statusEl.style.display = 'block';
+        statusEl.style.color = '#666';
+        statusEl.textContent = '正在调用LLM解析剧本...';
+
+        try {
+          const response = await fetch('/api/parse-script', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': getAuthToken(),
+              'X-User-Id': getUserId()
+            },
+            body: JSON.stringify({
+              script_content: node.data.scriptContent,
+              max_group_duration: node.data.maxGroupDuration || 15
+            })
+          });
+
+          const result = await response.json();
+          
+          if(result.code === 0 && result.data) {
+            node.data.parsedData = result.data;
+            
+            statusEl.style.color = '#16a34a';
+            statusEl.textContent = `解析成功！共${result.data.shot_groups?.length || 0}个分镜组`;
+            
+            // 创建分镜组节点
+            if(result.data.shot_groups && result.data.shot_groups.length > 0) {
+              result.data.shot_groups.forEach((shotGroup, index) => {
+                const offsetX = 400;
+                const offsetY = index * 320;
+                createShotGroupNode({
+                  x: node.x + offsetX,
+                  y: node.y + offsetY,
+                  shotGroupData: shotGroup,
+                  scriptData: result.data
+                });
+              });
+              
+              renderMinimap();
+              try{ autoSaveWorkflow(); } catch(e){}
+            }
+            
+            showToast('剧本拆分成功！', 'success');
+          } else {
+            throw new Error(result.message || '解析失败');
+          }
+        } catch(error) {
+          console.error('剧本解析失败:', error);
+          statusEl.style.color = '#dc2626';
+          statusEl.textContent = '解析失败: ' + (error.message || '未知错误');
+          showToast('剧本解析失败', 'error');
+        } finally {
+          splitBtn.disabled = false;
+        }
+      });
+
+      canvasEl.appendChild(el);
+      setSelected(id);
+      return id;
+    }
+
+    // 分镜组节点
+    function createShotGroupNode(opts){
+      const id = state.nextNodeId++;
+      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
+      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const shotGroupData = opts && opts.shotGroupData ? opts.shotGroupData : {};
+      const scriptData = opts && opts.scriptData ? opts.scriptData : {};
+      
+      const node = {
+        id,
+        type: 'shot_group',
+        title: shotGroupData.group_name || '分镜组',
+        x,
+        y,
+        data: {
+          groupId: shotGroupData.group_id || '',
+          groupName: shotGroupData.group_name || '',
+          shots: shotGroupData.shots || [],
+          scriptData: scriptData,
+        }
+      };
+      state.nodes.push(node);
+
+      const el = document.createElement('div');
+      el.className = 'node';
+      el.dataset.nodeId = String(id);
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+      el.style.width = '360px';
+
+      // 构建分镜列表HTML
+      const shotsHtml = node.data.shots.map((shot, idx) => {
+        const duration = shot.time_range || '未知';
+        return `
+          <div style="padding: 8px; background: #f8f9fa; border-radius: 6px; margin-bottom: 6px; font-size: 12px;">
+            <div style="font-weight: 700; margin-bottom: 4px;">${shot.shot_id} - ${shot.description}</div>
+            <div style="color: #666; font-size: 11px;">时长: ${duration} | ${shot.shot_type} | ${shot.camera_movement}</div>
+            <div style="color: #666; font-size: 11px; margin-top: 2px;">起始画面: ${(shot.opening_frame_description || '').substring(0, 60)}...</div>
+          </div>
+        `;
+      }).join('');
+
+      el.innerHTML = `
+        <div class="port output" title="输出"></div>
+        <div class="node-header">
+          <div class="node-title">${node.title}</div>
+          <button class="icon-btn" title="删除">×</button>
+        </div>
+        <div class="node-body">
+          <div class="field">
+            <div class="label">分镜组ID: ${node.data.groupId}</div>
+            <div class="gen-meta">共 ${node.data.shots.length} 个分镜</div>
+          </div>
+          <div class="field" style="max-height: 300px; overflow-y: auto;">
+            ${shotsHtml}
+          </div>
+          <div class="field">
+            <button class="mini-btn shot-group-detail-btn" type="button">查看详情</button>
+          </div>
+        </div>
+      `;
+
+      const headerEl = el.querySelector('.node-header');
+      const deleteBtn = el.querySelector('.icon-btn');
+      const detailBtn = el.querySelector('.shot-group-detail-btn');
+
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeNode(id);
+      });
+
+      el.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        setSelected(id);
+      });
+
+      headerEl.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelected(id);
+        state.drag = {
+          nodeId: id,
+          startX: e.clientX,
+          startY: e.clientY,
+          origX: node.x,
+          origY: node.y,
+        };
+      });
+
+      detailBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // 显示详细信息
+        const detailText = JSON.stringify(node.data, null, 2);
+        const blob = new Blob([detailText], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${node.data.groupId}_detail.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('分镜组详情已下载', 'success');
+      });
+
+      canvasEl.appendChild(el);
+      setSelected(id);
+      return id;
+    }
+
     const addBtn = document.getElementById('addBtn');
     const addMenu = document.getElementById('addMenu');
 
@@ -4560,6 +4927,11 @@
       addMenu.classList.remove('show');
     });
 
+    document.getElementById('menuAddScript').addEventListener('click', () => {
+      createScriptNode();
+      renderMinimap();
+      addMenu.classList.remove('show');
+    });
 
     document.getElementById('menuAddAsset').addEventListener('click', () => {
       // 素材库 - 空实现
