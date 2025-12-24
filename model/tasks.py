@@ -42,10 +42,9 @@ class TasksModel:
     @staticmethod
     def create(
         task_type: str,
-        task_id: str,
+        task_id: int,
         try_count: int = 0,
-        status: int = 0,
-        next_trigger: Optional[datetime] = None
+        status: int = 0
     ) -> int:
         """
         Create a new task record
@@ -62,10 +61,10 @@ class TasksModel:
         """
         sql = """
             INSERT INTO tasks 
-            (task_type, task_id, try_count, status, next_trigger)
-            VALUES (%s, %s, %s, %s, %s)
+            (task_type, task_id, try_count, status)
+            VALUES (%s, %s, %s, %s)
         """
-        params = (task_type, task_id, try_count, status, next_trigger)
+        params = (task_type, task_id, try_count, status)
         
         try:
             record_id = execute_insert(sql, params)
@@ -98,7 +97,7 @@ class TasksModel:
             raise
     
     @staticmethod
-    def get_by_task_id(task_id: str) -> Optional[Task]:
+    def get_by_task_id(task_id: int) -> Optional[Task]:
         """
         Get task record by task ID
         
@@ -279,7 +278,7 @@ class TasksModel:
     
     @staticmethod
     def update_by_task_id(
-        task_id: str,
+        task_id: int,
         **kwargs
     ) -> int:
         """
@@ -318,7 +317,7 @@ class TasksModel:
             raise
     
     @staticmethod
-    def increment_try_count(task_id: str) -> int:
+    def increment_try_count(task_id: int) -> int:
         """
         Increment try_count for a task
         
@@ -360,7 +359,7 @@ class TasksModel:
             raise
     
     @staticmethod
-    def delete_by_task_id(task_id: str) -> int:
+    def delete_by_task_id(task_id: int) -> int:
         """
         Delete task record by task ID
         

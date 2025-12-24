@@ -13,7 +13,7 @@ from duomi_api_requset import (
     get_ai_task_result,
 )
 from model import TasksModel, AIToolsModel
-from config.constant import TASK_TYPE_GENERATE_VIDEO
+from config.constant import TASK_TYPE_GENERATE_VIDEO,AUTHENTICATION_ID
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def _submit_new_task(ai_tool):
         logger.info(response)
         project_id = response.get("data", {}).get("task_id")
     elif ai_tool_type in [2, 3]:
-        result = create_image_to_video(ai_tool.prompt, ai_tool.ratio, image_urls, ai_tool.duration_seconds)
+        result = create_image_to_video(ai_tool.prompt, ai_tool.ratio, image_urls, ai_tool.duration)
         logger.info(f"Submit task result: {result}")
         project_id = result.get("id")
     else:
@@ -120,10 +120,10 @@ def _check_task_status(ai_tool):
     if task_status == 1:
         return _handle_task_success(project_id, task_id, media_url)
     elif task_status == 2:
-        return _handle_task_failure(project_id, task_id, ai_tool_type, reason)
+        return _handle_task_failure(project_id, task_id, ai_tool_type, reason,ai_tool.user_id)
     else:
         logger.info(f"Task {project_id} still processing (status={task_status})")
-        return False
+        return True
 
 
 def _handle_task_success(project_id, task_id, media_url):
@@ -152,7 +152,7 @@ def _handle_task_success(project_id, task_id, media_url):
         return False
 
 
-def _handle_task_failure(project_id, task_id, ai_tool_type, reason):
+def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
     """
     Handle failed task
     
@@ -161,6 +161,7 @@ def _handle_task_failure(project_id, task_id, ai_tool_type, reason):
         task_id: Task ID
         ai_tool_type: AI tool type
         reason: Failure reason
+        user_id: User ID for refund tracking
     
     Returns:
         bool: True if handled successfully
@@ -184,11 +185,25 @@ def _handle_task_failure(project_id, task_id, ai_tool_type, reason):
     
     # Refund computing power (note: auth_token not available in background task)
     try:
-        transaction_id = str(uuid.uuid4())
         computing_power = TASK_COMPUTING_POWER.get(ai_tool_type)
         
         if computing_power:
             transaction_id = str(uuid.uuid4())
+            logger.info(f"Refunding {user_id} , {AUTHENTICATION_ID}")
+            success, message, response_data = make_perseids_request(
+                endpoint='get_auth_token_by_user_id',
+                method='POST',
+                data={
+                    "user_id": user_id,
+                    "authentication_id": AUTHENTICATION_ID
+                }
+            )
+
+            if not success:
+                logger.error(f"Failed to get auth token for user {user_id}: {message}")
+                return False
+                
+            auth_token = response_data['token']
             headers = {'Authorization': f'Bearer {auth_token}'}
                         
             # 发起请求，增加算力（补回）
@@ -278,7 +293,7 @@ def process_task_with_retry(task_type, process_func):
                 processed_count += 1
                 
                 if success:
-                    logger.info(f"Task completed successfully: {task.task_id}, status updated to 2 (处理完成)")
+                    logger.info(f"Task completed successfully: {task.task_id}")
                     success_count += 1
                 else:
                     # Failed - increment retry count and update status to -1 (处理失败)

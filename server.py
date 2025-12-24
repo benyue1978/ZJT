@@ -16,13 +16,13 @@ from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
 from config_util import get_config_path, is_dev_environment
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
-from model import AIToolsModel
+from model import AIToolsModel, TasksModel
 import uuid
-from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix, create_character, get_character_task_result
+from duomi_api_requset import create_video_remix, create_character, get_character_task_result
 from PIL import Image
 from baidu import call_ernie_vl_api
 from task.scheduler import init_scheduler
-from config.constant import TASK_COMPUTING_POWER
+from config.constant import TASK_COMPUTING_POWER, TASK_TYPE_GENERATE_VIDEO
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -547,6 +547,11 @@ async def image_edit(
                         transaction_id=transaction_id,
                         status=0
                     )
+                    TasksModel.create(
+                        task_type=TASK_TYPE_GENERATE_VIDEO,
+                        task_id=id,
+                        status=0
+                    )
                     project_ids.append(id)
                 except Exception as db_error:
                     logger.error(f"Failed to create database record: {db_error}")
@@ -684,7 +689,7 @@ async def get_status(
             # Update database based on status
             if status == 2:  # Success
                 status_str = "SUCCESS"
-                
+                media_url = task_record.result_url
                 if media_url:
                     results_payload = [{
                         "file_url": media_url,
@@ -798,6 +803,12 @@ async def ai_app_run(
                         type=2,  # 2-AI视频生成
                         ratio=ratio,
                         transaction_id=transaction_id,
+                        duration=duration_seconds,
+                        status=0
+                    )
+                    TasksModel.create(
+                        task_type=TASK_TYPE_GENERATE_VIDEO,
+                        task_id=id,
                         status=0
                     )
                     project_ids.append(id)
@@ -916,6 +927,11 @@ async def ai_app_run_image(
                             ratio=ratio,
                             duration=duration_seconds,
                             transaction_id=transaction_id,
+                            status=0
+                        )
+                        TasksModel.create(
+                            task_type=TASK_TYPE_GENERATE_VIDEO,
+                            task_id=id,
                             status=0
                         )
                         project_ids.append(id)
