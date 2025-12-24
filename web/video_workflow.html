@@ -347,6 +347,9 @@
           <div class="field">
             <label class="label" style="color: #0f172a;">参考音频</label>
             <input type="file" id="createCharacterVoiceInput" accept="audio/*" style="width: 100%; background: #f9fafb; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; font-size: 13px;" />
+            <div id="createCharacterVoicePreview" style="margin-top: 8px; display: none;">
+              <audio id="createCharacterVoicePreviewAudio" controls style="width: 100%; max-height: 40px;"></audio>
+            </div>
           </div>
         </div>
       </div>
@@ -6367,6 +6370,13 @@
       document.getElementById('createCharacterOtherInfoInput').value = '';
       document.getElementById('createCharacterImageInput').value = '';
       document.getElementById('createCharacterVoiceInput').value = '';
+      
+      // 重置音频预览
+      const voicePreview = document.getElementById('createCharacterVoicePreview');
+      const voicePreviewAudio = document.getElementById('createCharacterVoicePreviewAudio');
+      voicePreviewAudio.src = '';
+      voicePreview.style.display = 'none';
+      
       document.getElementById('createCharacterModal').classList.add('show');
     }
     
@@ -6455,6 +6465,48 @@
     document.getElementById('createCharacterModal').addEventListener('click', (e) => {
       if (e.target.id === 'createCharacterModal') {
         document.getElementById('createCharacterModal').classList.remove('show');
+      }
+    });
+    
+    // 创建角色音频文件选择预览
+    document.getElementById('createCharacterVoiceInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const voicePreview = document.getElementById('createCharacterVoicePreview');
+      const voicePreviewAudio = document.getElementById('createCharacterVoicePreviewAudio');
+      
+      if (file) {
+        const url = URL.createObjectURL(file);
+        voicePreviewAudio.src = url;
+        voicePreview.style.display = 'block';
+      } else {
+        voicePreviewAudio.src = '';
+        voicePreview.style.display = 'none';
+      }
+    });
+    
+    // 编辑角色音频文件选择预览
+    document.getElementById('editCharacterVoiceInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const voicePreview = document.getElementById('editCharacterVoicePreview');
+      const voicePreviewAudio = document.getElementById('editCharacterVoicePreviewAudio');
+      
+      if (file) {
+        const url = URL.createObjectURL(file);
+        voicePreviewAudio.src = url;
+        voicePreview.style.display = 'block';
+      } else {
+        // 如果清空文件，检查是否有原始音频
+        const characterId = currentEditingCharacterNodeId;
+        if (characterId) {
+          const node = state.nodes.find(n => n.id === characterId);
+          if (node && node.data && node.data.default_voice) {
+            voicePreviewAudio.src = node.data.default_voice;
+            voicePreview.style.display = 'block';
+            return;
+          }
+        }
+        voicePreviewAudio.src = '';
+        voicePreview.style.display = 'none';
       }
     });
     
