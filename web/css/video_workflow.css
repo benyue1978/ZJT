@@ -93,6 +93,17 @@ select{
 }
 .brand-floating .brand img{width:22px;height:22px;}
 .brand-floating .brand-title{font-weight:800;}
+.world-selector{
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+.world-selector select{
+  font-size: 13px;
+  padding: 6px 10px;
+  min-width: 140px;
+}
 .ratio-floating{
   position: absolute;
   top: 12px;

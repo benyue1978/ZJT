@@ -23,6 +23,7 @@ class VideoWorkflow:
         self.workflow_data = kwargs.get('workflow_data')
         self.style = kwargs.get('style')
         self.style_reference_image = kwargs.get('style_reference_image')
+        self.default_world_id = kwargs.get('default_world_id')
         self.create_time = kwargs.get('create_time')
         self.update_time = kwargs.get('update_time')
     
@@ -45,6 +46,7 @@ class VideoWorkflow:
             'workflow_data': workflow_data,
             'style': self.style,
             'style_reference_image': self.style_reference_image,
+            'default_world_id': self.default_world_id,
             'create_time': self.create_time.isoformat() if self.create_time else None,
             'update_time': self.update_time.isoformat() if self.update_time else None
         }
@@ -286,7 +288,7 @@ class VideoWorkflowModel:
         Returns:
             Number of affected rows
         """
-        allowed_fields = ['name', 'description', 'cover_image', 'status', 'workflow_data', 'style', 'style_reference_image']
+        allowed_fields = ['name', 'description', 'cover_image', 'status', 'workflow_data', 'style', 'style_reference_image', 'default_world_id']
         
         update_fields = []
         params = []

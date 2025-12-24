@@ -491,7 +491,13 @@
       const worldSelect = document.getElementById('characterWorldSelect');
       
       // 加载世界列表
-      await loadWorlds(worldSelect);
+      await loadWorldsToSelect(worldSelect);
+      
+      // 如果有默认世界，自动选择并加载角色
+      if (state.defaultWorldId) {
+        worldSelect.value = state.defaultWorldId;
+        await loadCharacters(state.defaultWorldId);
+      }
       
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
@@ -503,16 +509,22 @@
       const worldSelect = document.getElementById('locationWorldSelect');
       
       // 加载世界列表
-      await loadWorlds(worldSelect);
+      await loadWorldsToSelect(worldSelect);
+      
+      // 如果有默认世界，自动选择并加载场景
+      if (state.defaultWorldId) {
+        worldSelect.value = state.defaultWorldId;
+        await loadLocations(state.defaultWorldId);
+      }
       
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
     }
     
-    // 加载世界列表
-    async function loadWorlds(selectElement) {
+    // 加载世界列表到选择器
+    async function loadWorldsToSelect(selectElement) {
       try {
-        const response = await fetch('/api/worlds', {
+        const response = await fetch('/api/worlds?page=1&page_size=100', {
           headers: {
             'Authorization': localStorage.getItem('auth_token') || '',
             'X-User-Id': localStorage.getItem('user_id') || '1'
@@ -1142,7 +1154,7 @@
           
           // 重新加载世界列表
           if (currentWorldSelectElement) {
-            await loadWorlds(currentWorldSelectElement);
+            await loadWorldsToSelect(currentWorldSelectElement);
             // 自动选中新创建的世界
             currentWorldSelectElement.value = result.data.id;
             
@@ -1583,10 +1595,12 @@
 
     // 页面加载时初始化
     (async function init(){
+      // 初始化世界选择器
+      initWorldSelector();
+      
       const workflowId = getWorkflowIdFromUrl();
       if(workflowId){
         await loadWorkflow(workflowId);
-        // 启动自动保存
         startAutoSave();
       }
     })();

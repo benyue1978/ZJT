@@ -13,6 +13,7 @@
 - Toast 提示函数 (`showToast`)
 - DOM 元素引用（canvas、modal 等）
 - 常量定义（TEST_MODE、MINIMAP 尺寸）
+- 新增 `defaultWorldId` 字段用于存储默认选择的世界ID
 
 ### 2. api.js (159 行, ~6KB)
 **功能**: API 调用和数据处理
@@ -40,6 +41,7 @@
 - 自动保存定时器管理
 - 画风设置管理
 - 图片编辑 API
+- 加载和保存默认世界
 
 ### 5. canvas.js (147 行, ~6KB)
 **功能**: 画布渲染和交互
@@ -68,6 +70,15 @@
 - 键盘快捷键（删除、缩放）
 - 角色/场景管理功能
 - 页面初始化
+- 角色/场景模态框自动选择默认世界
+
+### 8. world.js (新模块)
+**功能**: 世界管理
+- `loadWorlds()` - 加载世界列表
+- `populateWorldSelector()` - 填充世界选择器下拉框
+- `handleWorldSelectionChange(worldId)` - 处理世界选择变化
+- `saveDefaultWorld(workflowId, worldId)` - 保存默认世界到工作流
+- `initWorldSelector()` - 初始化世界选择器
 
 ## 加载顺序
 
@@ -80,7 +91,8 @@ HTML 中按以下顺序加载模块（依赖关系）：
 <script src="/js/workflow.js"></script>   <!-- 4. 工作流管理 -->
 <script src="/js/canvas.js"></script>     <!-- 5. 画布渲染 -->
 <script src="/js/nodes.js"></script>      <!-- 6. 节点创建和模态框 -->
-<script src="/js/events.js"></script>     <!-- 7. 事件和初始化 -->
+<script src="/js/world.js"></script>      <!-- 7. 世界管理 -->
+<script src="/js/events.js"></script>     <!-- 8. 事件和初始化 -->
 ```
 
 ## 优势

@@ -24,7 +24,8 @@
       style: {
         name: '',
         referenceImageUrl: ''
-      }
+      },
+      defaultWorldId: null
     };
 
     function normalizeVideoUrl(item){

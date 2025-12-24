@@ -2593,6 +2593,7 @@ class VideoWorkflowUpdateRequest(BaseModel):
     workflow_data: Optional[dict] = None
     style: Optional[str] = None
     style_reference_image: Optional[str] = None
+    default_world_id: Optional[int] = None
 
 
 @app.get('/api/video-workflow/list')
@@ -2841,6 +2842,8 @@ async def update_video_workflow(
             update_fields['style'] = request.style
         if request.style_reference_image is not None:
             update_fields['style_reference_image'] = request.style_reference_image
+        if request.default_world_id is not None:
+            update_fields['default_world_id'] = request.default_world_id
         
         if update_fields:
             VideoWorkflowModel.update(workflow_id, **update_fields)

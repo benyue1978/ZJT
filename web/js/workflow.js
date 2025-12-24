@@ -216,6 +216,15 @@
             state.style.referenceImageUrl = workflow.style_reference_image;
           }
           
+          // 加载默认世界
+          if(workflow.default_world_id){
+            state.defaultWorldId = workflow.default_world_id;
+            const defaultWorldSelect = document.getElementById('defaultWorldSelect');
+            if(defaultWorldSelect){
+              defaultWorldSelect.value = workflow.default_world_id;
+            }
+          }
+          
           // 如果有workflow_data，恢复状态
           if(workflow.workflow_data){
             restoreWorkflow(workflow.workflow_data);
