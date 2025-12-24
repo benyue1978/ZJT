@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS `video_workflow` (
     `user_id` INT UNSIGNED NOT NULL COMMENT '创建者用户ID',
     `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态: 0-禁用, 1-启用, 2-草稿',
     `workflow_data` JSON COMMENT '工作流配置数据(JSON格式)',
+    `style` VARCHAR(255) DEFAULT NULL COMMENT '画风',
+    `style_reference_image` VARCHAR(500) DEFAULT NULL COMMENT '画风参考图URL',
     `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),

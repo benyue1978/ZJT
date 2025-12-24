@@ -438,11 +438,37 @@
         <input type="hidden" id="workflowId">
         <div class="form-group">
           <label class="form-label">工作流名称 *</label>
-          <input type="text" class="form-input" id="workflowName" required placeholder="请输入工作流名称">
+          <input type="text" class="form-input" id="workflowName" required>
         </div>
         <div class="form-group">
           <label class="form-label">描述</label>
-          <textarea class="form-input form-textarea" id="workflowDesc" placeholder="请输入工作流描述"></textarea>
+          <textarea class="form-input form-textarea" id="workflowDesc"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">画风</label>
+          <input type="text" class="form-input" id="workflowStyle" list="styleOptions" placeholder="选择或输入画风">
+          <datalist id="styleOptions">
+            <option value="漫画风格">
+            <option value="写实风格">
+            <option value="日漫:新海诚风">
+            <option value="美漫:漫威风">
+            <option value="皮克斯风">
+            <option value="日漫:宫崎骏风">
+            <option value="迪士尼风格">
+            <option value="国漫:3D动画风">
+            <option value="日漫:今敏风">
+            <option value="国漫:2D手绘风">
+            <option value="日漫:细田守风">
+            <option value="赛博朋克风">
+            <option value="美漫:DC风">
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">画风参考图</label>
+          <input type="file" class="form-input" id="workflowStyleImage" accept="image/*">
+          <div id="styleImagePreviewContainer" style="margin-top: 8px; display: none;">
+            <img id="styleImagePreviewImg" style="max-width: 100%; max-height: 120px; border-radius: 8px; border: 1px solid var(--border);">
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">状态</label>
@@ -635,16 +661,43 @@
       document.getElementById('workflowId').value = '';
       document.getElementById('workflowName').value = '';
       document.getElementById('workflowDesc').value = '';
+      document.getElementById('workflowStyle').value = '';
+      document.getElementById('workflowStyleImage').value = '';
+      document.getElementById('styleImagePreviewContainer').style.display = 'none';
       document.getElementById('workflowStatus').value = '1';
       document.getElementById('createModal').classList.add('active');
     }
 
-    function editWorkflow(id, name, desc, status) {
+    async function editWorkflow(id, name, desc, status) {
       document.getElementById('modalTitle').textContent = '编辑工作流';
       document.getElementById('workflowId').value = id;
       document.getElementById('workflowName').value = name;
       document.getElementById('workflowDesc').value = desc;
       document.getElementById('workflowStatus').value = status;
+      
+      // Load style data
+      try {
+        const response = await fetch(`/api/video-workflow/${id}`, {
+          headers: {
+            'Authorization': getAuthToken(),
+            'X-User-Id': getUserId()
+          }
+        });
+        const result = await response.json();
+        if (result.code === 0 && result.data) {
+          document.getElementById('workflowStyle').value = result.data.style || '';
+          if (result.data.style_reference_image) {
+            document.getElementById('styleImagePreviewImg').src = result.data.style_reference_image;
+            document.getElementById('styleImagePreviewContainer').style.display = 'block';
+          } else {
+            document.getElementById('styleImagePreviewContainer').style.display = 'none';
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load workflow details:', error);
+      }
+      
+      document.getElementById('workflowStyleImage').value = '';
       document.getElementById('createModal').classList.add('active');
     }
 
@@ -661,6 +714,8 @@
       const name = document.getElementById('workflowName').value.trim();
       const description = document.getElementById('workflowDesc').value.trim();
       const status = parseInt(document.getElementById('workflowStatus').value);
+      const style = document.getElementById('workflowStyle').value.trim();
+      const styleImageFile = document.getElementById('workflowStyleImage').files[0];
 
       if (!name) {
         showToast('请输入工作流名称', 'error');
@@ -668,6 +723,40 @@
       }
 
       const data = { name, description, status };
+      
+      // Add style if provided
+      if (style) {
+        data.style = style;
+      }
+      
+      // Upload style reference image if provided
+      if (styleImageFile) {
+        try {
+          const formData = new FormData();
+          formData.append('file', styleImageFile);
+          
+          const uploadResponse = await fetch('/api/video-workflow/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': getAuthToken(),
+              'X-User-Id': getUserId()
+            },
+            body: formData
+          });
+          
+          const uploadResult = await uploadResponse.json();
+          if (uploadResult.code === 0 && uploadResult.data && uploadResult.data.url) {
+            data.style_reference_image = uploadResult.data.url;
+          } else {
+            showToast('参考图上传失败', 'error');
+            return;
+          }
+        } catch (error) {
+          showToast('参考图上传失败', 'error');
+          return;
+        }
+      }
+
       const isEdit = !!id;
       const url = isEdit ? `/api/video-workflow/${id}` : '/api/video-workflow/create';
       const method = isEdit ? 'PUT' : 'POST';
@@ -741,6 +830,21 @@
         toast.classList.remove('show');
       }, 3000);
     }
+
+    // Style image preview
+    document.getElementById('workflowStyleImage').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('styleImagePreviewImg').src = e.target.result;
+          document.getElementById('styleImagePreviewContainer').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        document.getElementById('styleImagePreviewContainer').style.display = 'none';
+      }
+    });
 
     // Close modal on overlay click
     document.getElementById('createModal').addEventListener('click', function(e) {

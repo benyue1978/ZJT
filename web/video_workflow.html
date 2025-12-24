@@ -1044,6 +1044,14 @@
           </svg>
           <span id="saveBtnText">保存</span>
         </button>
+        <button class="btn secondary save-btn" id="styleBtn" title="画风设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <span>画风</span>
+        </button>
         <div class="ratio-label">视频比例</div>
         <select id="ratioSelect">
           <option value="9:16">9:16</option>
@@ -1190,6 +1198,50 @@
     </div>
   </div>
 
+  <div class="modal" id="styleModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" style="max-width: 600px; background: #ffffff; color: #111827; border: 1px solid #e5e7eb;">
+      <div class="modal-header" style="background: #f8fafc; border-bottom: 1px solid #e5e7eb;">
+        <div class="modal-title" style="color: #0f172a;">画风设置</div>
+        <button class="modal-close" id="styleModalClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" style="background: #ffffff; padding: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="field">
+            <label class="label" style="color: #0f172a;">画风名称</label>
+            <input type="text" id="styleNameInput" list="stylePresets" placeholder="选择或输入画风" style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px;" />
+            <datalist id="stylePresets">
+              <option value="漫画风格">
+              <option value="写实风格">
+              <option value="日漫:新海诚风">
+              <option value="美漫:漫威风">
+              <option value="皮克斯风">
+              <option value="日漫:宫崎骏风">
+              <option value="迪士尼风格">
+              <option value="国漫:3D动画风">
+              <option value="日漫:今敏风">
+              <option value="国漫:2D手绘风">
+              <option value="日漫:细田守风">
+              <option value="赛博朋克风">
+              <option value="美漫:DC风">
+            </datalist>
+          </div>
+          <div class="field">
+            <label class="label" style="color: #0f172a;">参考图</label>
+            <input type="file" id="styleImageInput" accept="image/*" style="width: 100%; background: #f9fafb; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; font-size: 13px;" />
+            <div id="styleImagePreview" style="margin-top: 12px; display: none;">
+              <img id="styleImagePreviewImg" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 1px solid #e5e7eb; object-fit: contain;" />
+              <button type="button" id="styleImageRemoveBtn" style="margin-top: 8px; padding: 6px 12px; background: #f3f4f6; color: #111827; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; cursor: pointer;">移除图片</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid #e5e7eb;">
+        <button class="mini-btn secondary" id="styleCancelBtn" type="button">取消</button>
+        <button class="mini-btn" id="styleSaveBtn" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 时间轴面板 -->
   <div class="timeline-container" id="timelineContainer" style="display:none;">
     <div class="timeline-header">
@@ -1243,6 +1295,10 @@
         nextClipId: 1,
         selectedClipId: null,
         visible: false,
+      },
+      style: {
+        name: '',
+        referenceImageUrl: ''
       }
     };
 
@@ -2591,6 +2647,14 @@
             document.title = workflow.name + ' - 视频工作流';
           }
           
+          // 加载画风信息
+          if(workflow.style){
+            state.style.name = workflow.style;
+          }
+          if(workflow.style_reference_image){
+            state.style.referenceImageUrl = workflow.style_reference_image;
+          }
+          
           // 如果有workflow_data，恢复状态
           if(workflow.workflow_data){
             restoreWorkflow(workflow.workflow_data);
@@ -2689,6 +2753,142 @@
         createShotGroupNodeWithData(nodeData);
       }
     }
+
+    // ============ 画风管理功能 ============
+    
+    const styleModal = document.getElementById('styleModal');
+    const styleModalClose = document.getElementById('styleModalClose');
+    const styleNameInput = document.getElementById('styleNameInput');
+    const styleImageInput = document.getElementById('styleImageInput');
+    const styleImagePreview = document.getElementById('styleImagePreview');
+    const styleImagePreviewImg = document.getElementById('styleImagePreviewImg');
+    const styleImageRemoveBtn = document.getElementById('styleImageRemoveBtn');
+    const styleSaveBtn = document.getElementById('styleSaveBtn');
+    const styleCancelBtn = document.getElementById('styleCancelBtn');
+    
+    // 打开画风设置模态框
+    function openStyleModal(){
+      styleNameInput.value = state.style.name || '';
+      
+      if(state.style.referenceImageUrl){
+        styleImagePreviewImg.src = state.style.referenceImageUrl;
+        styleImagePreview.style.display = 'block';
+      } else {
+        styleImagePreview.style.display = 'none';
+      }
+      
+      styleModal.classList.add('show');
+      styleModal.setAttribute('aria-hidden', 'false');
+    }
+    
+    // 关闭画风设置模态框
+    function closeStyleModal(){
+      styleModal.classList.remove('show');
+      styleModal.setAttribute('aria-hidden', 'true');
+      styleImageInput.value = '';
+    }
+    
+    // 保存画风设置
+    async function saveStyleSettings(){
+      const workflowId = getWorkflowIdFromUrl();
+      if(!workflowId){
+        showToast('请先从列表创建或选择工作流', 'error');
+        return;
+      }
+      
+      const styleName = styleNameInput.value.trim();
+      let styleImageUrl = state.style.referenceImageUrl;
+      
+      // 如果用户选择了新图片，先上传
+      if(styleImageInput.files && styleImageInput.files.length > 0){
+        const file = styleImageInput.files[0];
+        styleImageUrl = await uploadFile(file);
+        if(!styleImageUrl){
+          showToast('参考图上传失败', 'error');
+          return;
+        }
+      }
+      
+      styleSaveBtn.disabled = true;
+      styleSaveBtn.textContent = '保存中...';
+      
+      try {
+        const response = await fetch(`/api/video-workflow/${workflowId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': getAuthToken(),
+            'X-User-Id': getUserId()
+          },
+          body: JSON.stringify({
+            style: styleName || null,
+            style_reference_image: styleImageUrl || null
+          })
+        });
+        
+        const result = await response.json();
+        
+        if(result.code === 0){
+          state.style.name = styleName;
+          state.style.referenceImageUrl = styleImageUrl;
+          showToast('画风设置已保存', 'success');
+          closeStyleModal();
+        } else {
+          showToast(result.message || '保存失败', 'error');
+        }
+      } catch(error){
+        console.error('Save style error:', error);
+        showToast('保存失败: ' + error.message, 'error');
+      } finally {
+        styleSaveBtn.disabled = false;
+        styleSaveBtn.textContent = '保存';
+      }
+    }
+    
+    // 画风图片选择事件
+    styleImageInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if(file){
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          styleImagePreviewImg.src = e.target.result;
+          styleImagePreview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    // 移除画风参考图
+    styleImageRemoveBtn.addEventListener('click', () => {
+      styleImagePreview.style.display = 'none';
+      styleImageInput.value = '';
+      state.style.referenceImageUrl = '';
+    });
+    
+    // 画风按钮点击事件
+    document.getElementById('styleBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openStyleModal();
+    });
+    
+    // 画风模态框关闭事件
+    styleModalClose.addEventListener('click', () => {
+      closeStyleModal();
+    });
+    
+    styleCancelBtn.addEventListener('click', () => {
+      closeStyleModal();
+    });
+    
+    styleSaveBtn.addEventListener('click', () => {
+      saveStyleSettings();
+    });
+    
+    styleModal.addEventListener('click', (e) => {
+      if(e.target === styleModal) closeStyleModal();
+    });
+    
+    // ============ 画风管理功能结束 ============
 
     async function generateEditedImage(file, prompt, ratio, model, count){
       const userId = localStorage.getItem('user_id');

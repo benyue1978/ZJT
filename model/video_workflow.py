@@ -21,6 +21,8 @@ class VideoWorkflow:
         self.user_id = kwargs.get('user_id')
         self.status = kwargs.get('status')
         self.workflow_data = kwargs.get('workflow_data')
+        self.style = kwargs.get('style')
+        self.style_reference_image = kwargs.get('style_reference_image')
         self.create_time = kwargs.get('create_time')
         self.update_time = kwargs.get('update_time')
     
@@ -41,6 +43,8 @@ class VideoWorkflow:
             'user_id': self.user_id,
             'status': self.status,
             'workflow_data': workflow_data,
+            'style': self.style,
+            'style_reference_image': self.style_reference_image,
             'create_time': self.create_time.isoformat() if self.create_time else None,
             'update_time': self.update_time.isoformat() if self.update_time else None
         }
@@ -56,7 +60,9 @@ class VideoWorkflowModel:
         description: Optional[str] = None,
         cover_image: Optional[str] = None,
         status: int = 1,
-        workflow_data: Optional[Dict] = None
+        workflow_data: Optional[Dict] = None,
+        style: Optional[str] = None,
+        style_reference_image: Optional[str] = None
     ) -> int:
         """
         Create a new video workflow record
@@ -68,17 +74,19 @@ class VideoWorkflowModel:
             cover_image: Cover image URL (optional)
             status: Status (0-disabled, 1-enabled, 2-draft, default: 1)
             workflow_data: Workflow configuration data (optional)
+            style: Style name (optional)
+            style_reference_image: Style reference image URL (optional)
         
         Returns:
             Inserted record ID
         """
         sql = """
             INSERT INTO video_workflow 
-            (name, user_id, description, cover_image, status, workflow_data)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            (name, user_id, description, cover_image, status, workflow_data, style, style_reference_image)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         workflow_data_str = json.dumps(workflow_data) if workflow_data else None
-        params = (name, user_id, description, cover_image, status, workflow_data_str)
+        params = (name, user_id, description, cover_image, status, workflow_data_str, style, style_reference_image)
         
         try:
             record_id = execute_insert(sql, params)
@@ -166,7 +174,7 @@ class VideoWorkflowModel:
         # Get paginated data (exclude workflow_data to reduce memory usage)
         offset = (page - 1) * page_size
         data_sql = f"""
-            SELECT id, name, description, cover_image, user_id, status, create_time, update_time 
+            SELECT id, name, description, cover_image, user_id, status, style, style_reference_image, create_time, update_time 
             FROM video_workflow 
             WHERE {where_clause}
             ORDER BY {order_by} {order_direction}
@@ -240,7 +248,7 @@ class VideoWorkflowModel:
         # Exclude workflow_data to reduce memory usage
         offset = (page - 1) * page_size
         data_sql = f"""
-            SELECT id, name, description, cover_image, user_id, status, create_time, update_time 
+            SELECT id, name, description, cover_image, user_id, status, style, style_reference_image, create_time, update_time 
             FROM video_workflow 
             WHERE {where_clause}
             ORDER BY {order_by} {order_direction}
@@ -273,12 +281,12 @@ class VideoWorkflowModel:
         
         Args:
             record_id: Record ID
-            **kwargs: Fields to update (name, description, cover_image, status, workflow_data)
+            **kwargs: Fields to update (name, description, cover_image, status, workflow_data, style, style_reference_image)
         
         Returns:
             Number of affected rows
         """
-        allowed_fields = ['name', 'description', 'cover_image', 'status', 'workflow_data']
+        allowed_fields = ['name', 'description', 'cover_image', 'status', 'workflow_data', 'style', 'style_reference_image']
         
         update_fields = []
         params = []

@@ -2579,6 +2579,8 @@ class VideoWorkflowCreateRequest(BaseModel):
     cover_image: Optional[str] = None
     status: Optional[int] = 1
     workflow_data: Optional[dict] = None
+    style: Optional[str] = None
+    style_reference_image: Optional[str] = None
 
 class VideoWorkflowUpdateRequest(BaseModel):
     name: Optional[str] = None
@@ -2586,6 +2588,8 @@ class VideoWorkflowUpdateRequest(BaseModel):
     cover_image: Optional[str] = None
     status: Optional[int] = None
     workflow_data: Optional[dict] = None
+    style: Optional[str] = None
+    style_reference_image: Optional[str] = None
 
 
 @app.get('/api/video-workflow/list')
@@ -2773,7 +2777,9 @@ async def create_video_workflow(
             description=request.description,
             cover_image=request.cover_image,
             status=request.status,
-            workflow_data=request.workflow_data
+            workflow_data=request.workflow_data,
+            style=request.style,
+            style_reference_image=request.style_reference_image
         )
         
         return JSONResponse({
@@ -2828,6 +2834,10 @@ async def update_video_workflow(
             update_fields['status'] = request.status
         if request.workflow_data is not None:
             update_fields['workflow_data'] = request.workflow_data
+        if request.style is not None:
+            update_fields['style'] = request.style
+        if request.style_reference_image is not None:
+            update_fields['style_reference_image'] = request.style_reference_image
         
         if update_fields:
             VideoWorkflowModel.update(workflow_id, **update_fields)
