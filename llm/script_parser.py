@@ -78,9 +78,8 @@ JSON_FORMAT_EXAMPLE = """{
     {
       "shot_id": "shot_001",
       "shot_number": 1,
-      "duration": 15,
+      "duration": 15.0,
       "location_id": "loc_001",
-      "time_range": "00:00-00:15",
       "shot_type": "远景/中景/近景/特写",
       "camera_movement": "固定/推进/拉远/跟随/摇移/升降",
       "description": "镜头描述",
@@ -89,8 +88,7 @@ JSON_FORMAT_EXAMPLE = """{
         {
           "character_id": "char_001",
           "character_name": "人物名称",
-          "text": "对话内容",
-          "timestamp": "00:05"
+          "text": "对话内容"
         }
       ],
       "action": "动作描述",
@@ -177,7 +175,11 @@ async def parse_script_to_shots(
    - 禁止直接在顶层使用 "shots" 数组
    - 每个shot必须嵌套在某个shot_group的shots数组中
 
-4. **输出格式**：
+4. **时长要求（非常重要）**：
+   - 每个shot必须包含duration字段，单位为秒，类型为float
+   - 每个shot_group的总时长不得超过max_group_duration秒
+
+5. **输出格式**：
    - 必须严格按照以下JSON格式输出
    - 确保所有ID引用关系正确
    - 只输出JSON内容，不要有markdown代码块标记

@@ -1646,6 +1646,29 @@
               "remark": ""
             }
           ]
+        },
+        {
+          "id": "editor_018",
+          "name": "剧本解析-分镜组duration字段验证",
+          "description": "验证调用 /api/parse-script 解析剧本后，每个shot都包含duration字段（float类型，单位为秒）",
+          "priority": "P0",
+          "page_url": "/video-workflow",
+          "api_endpoint": "POST /api/parse-script",
+          "pass": false,
+          "remark": "",
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "通过接口解析剧本并验证所有shot都包含duration字段",
+              "mcp_tool": "mcp1_browser_evaluate",
+              "mcp_params": {
+                "function": "async () => {\n  const script = '第一幕：清晨，客厅。小李端着咖啡走向沙发并坐下，说：新的一天开始了。随后他望向窗外，听到鸟鸣与远处车辆声。第二幕：同一地点，阳光更强，小李放下杯子起身整理桌面。';\n  const resp = await fetch('/api/parse-script', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ script_content: script, max_group_duration: 15 })\n  });\n  const json = await resp.json();\n  const groups = json && json.data && json.data.shot_groups ? json.data.shot_groups : [];\n  let allShotsHaveDuration = true;\n  let shotCount = 0;\n  let missingDuration = [];\n  for (const group of groups) {\n    if (group.shots && Array.isArray(group.shots)) {\n      for (const shot of group.shots) {\n        shotCount++;\n        if (typeof shot.duration !== 'number' || shot.duration <= 0) {\n          allShotsHaveDuration = false;\n          missingDuration.push(shot.shot_id || 'unknown');\n        }\n      }\n    }\n  }\n  return { ok: allShotsHaveDuration, group_count: groups.length, shot_count: shotCount, missing_duration: missingDuration, response_code: json ? json.code : null };\n}"
+              },
+              "verify": "返回结果 ok=true；所有shot都必须包含有效的duration字段（数字类型且大于0）",
+              "pass": false,
+              "remark": ""
+            }
+          ]
         }
       ]
     },

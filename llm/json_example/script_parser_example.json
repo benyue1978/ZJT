@@ -84,7 +84,7 @@
         {
           "shot_id": "s003",
           "shot_number": 3,
-          "time_range": "00:00.00-00:05.00",
+          "duration": 5.0,
           "location_id": "loc_002",
           "shot_type": "全景",
           "camera_movement": "缓慢推进",
@@ -101,7 +101,7 @@
         {
           "shot_id": "s004",
           "shot_number": 4,
-          "time_range": "00:05.00-00:09.50",
+          "duration": 9.0,
           "location_id": "loc_002",
           "shot_type": "中景",
           "camera_movement": "固定",
@@ -113,8 +113,7 @@
             {
               "character_id": "char_001",
               "character_name": "小李",
-              "text": "新的一天开始了",
-              "timestamp": "00:07.00"
+              "text": "新的一天开始了"
             }
           ],
           "action": "小李坐下品尝咖啡，望向窗外",

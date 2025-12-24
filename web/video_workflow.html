@@ -678,8 +678,18 @@
       border: 1px solid #e5e7eb;
       box-shadow: 0 14px 40px rgba(0,0,0,0.16);
     }
+    #shotGroupEditModal .modal-card{
+      background: #ffffff;
+      color: #111827;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.16);
+    }
     #shotGroupModal .modal-header,
     #shotDetailModal .modal-header{
+      background: #f8fafc;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    #shotGroupEditModal .modal-header{
       background: #f8fafc;
       border-bottom: 1px solid #e5e7eb;
     }
@@ -687,16 +697,59 @@
     #shotDetailModal .modal-title{
       color: #0f172a;
     }
+    #shotGroupEditModal .modal-title{
+      color: #0f172a;
+    }
     #shotGroupModal .modal-body,
     #shotDetailModal .modal-body{
+      background: #ffffff;
+    }
+    #shotGroupEditModal .modal-body{
+      background: #ffffff;
+    }
+
+    #shotGroupModalContent,
+    #shotDetailModalContent,
+    #shotGroupEditModalContent{
+      padding: 16px;
+    }
+
+    #shotGroupModal table{
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+    }
+    #shotGroupModal table th{
+      background: #f1f5f9;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+    }
+    #shotGroupModal table td{
       background: #ffffff;
     }
     #shotGroupModal table th,
     #shotGroupModal table td{
       color: #0f172a;
+      padding: 10px;
     }
     #shotGroupModal table tbody tr:nth-child(2n){
       background: #f8fafc;
+    }
+
+    #shotGroupEditModal input,
+    #shotGroupEditModal textarea{
+      background: #ffffff;
+      color: #0f172a;
+      border: 1px solid #d1d5db;
+      outline: none;
+    }
+    #shotGroupEditModal input:focus,
+    #shotGroupEditModal textarea:focus{
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+    }
+    #shotGroupEditModal label{
+      color: #0f172a;
     }
     .preview{ cursor: zoom-in; }
     .mini-btn{
@@ -1117,6 +1170,22 @@
       </div>
       <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
         <div id="shotDetailModalContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="shotGroupEditModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" style="max-width: 1200px; width: 90%;">
+      <div class="modal-header">
+        <div class="modal-title">编辑分镜组</div>
+        <button class="modal-close" id="shotGroupEditModalClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <div id="shotGroupEditModalContent"></div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid #e5e7eb;">
+        <button class="mini-btn secondary" id="shotGroupEditCancelBtn" type="button">取消</button>
+        <button class="mini-btn" id="shotGroupEditSaveBtn" type="button">保存</button>
       </div>
     </div>
   </div>
@@ -3409,6 +3478,344 @@
       if(e.target === shotDetailModal) closeShotDetailModal();
     });
 
+    const shotGroupEditModal = document.getElementById('shotGroupEditModal');
+    const shotGroupEditModalContent = document.getElementById('shotGroupEditModalContent');
+    const shotGroupEditModalClose = document.getElementById('shotGroupEditModalClose');
+    const shotGroupEditSaveBtn = document.getElementById('shotGroupEditSaveBtn');
+    const shotGroupEditCancelBtn = document.getElementById('shotGroupEditCancelBtn');
+    let currentEditingNodeId = null;
+
+    function openShotGroupEditModal(nodeId, shotGroupData){
+      currentEditingNodeId = nodeId;
+      const node = state.nodes.find(n => n.id === nodeId);
+      let maxGroupDuration = 15;
+      if(node){
+        const incomingConns = state.connections.filter(c => c.to === nodeId);
+        if(incomingConns.length > 0){
+          const scriptNode = state.nodes.find(n => n.id === incomingConns[0].from);
+          if(scriptNode && scriptNode.type === 'script' && scriptNode.data.maxGroupDuration){
+            maxGroupDuration = scriptNode.data.maxGroupDuration;
+          }
+        }
+      }
+      shotGroupEditModalContent.innerHTML = renderShotGroupEditForm(shotGroupData, maxGroupDuration);
+      shotGroupEditModal.classList.add('show');
+      shotGroupEditModal.setAttribute('aria-hidden', 'false');
+      bindShotEditEvents();
+    }
+
+    function closeShotGroupEditModal(){
+      shotGroupEditModal.classList.remove('show');
+      shotGroupEditModal.setAttribute('aria-hidden', 'true');
+      currentEditingNodeId = null;
+    }
+
+    shotGroupEditModalClose.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeShotGroupEditModal();
+    });
+    shotGroupEditCancelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeShotGroupEditModal();
+    });
+    shotGroupEditModal.addEventListener('click', (e) => {
+      if(e.target === shotGroupEditModal) closeShotGroupEditModal();
+    });
+
+    shotGroupEditSaveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      saveShotGroupEdit();
+    });
+
+    function renderShotGroupEditForm(shotGroupData, maxGroupDuration){
+      const groupId = shotGroupData.groupId || shotGroupData.group_id || '';
+      const shots = shotGroupData.shots || [];
+      maxGroupDuration = maxGroupDuration || 15;
+
+      let html = `
+        <div style="margin-bottom: 20px;">
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px;">分镜组ID</label>
+            <input type="text" id="editGroupId" value="${escapeHtml(groupId)}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px;" />
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px;">镜头组最长时长（来自剧本节点）</label>
+            <input type="text" value="${maxGroupDuration}秒" readonly style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #f3f4f6; color: #6b7280; cursor: not-allowed;" />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="margin: 0; font-size: 14px; font-weight: 600;">分镜列表</h3>
+        </div>
+        <div id="shotsEditContainer">
+      `;
+
+      const insertBtnHtml = (insertIndex) => {
+        return `
+          <div style="display:flex; justify-content:center; margin: 10px 0;">
+            <button class="mini-btn secondary insert-shot-btn" data-insert-index="${insertIndex}" type="button">在此处添加分镜</button>
+          </div>
+        `;
+      };
+
+      if(shots.length === 0){
+        html += '<div class="shot-group-empty">暂无分镜，你可以在任意位置添加</div>';
+        html += insertBtnHtml(0);
+      } else {
+        html += insertBtnHtml(0);
+        shots.forEach((shot, idx) => {
+          html += renderShotEditItem(shot, idx);
+          html += insertBtnHtml(idx + 1);
+        });
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderShotEditItem(shot, index){
+      const dialogue = shot.dialogue || [];
+      const dialogueText = dialogue.map(d => `${d.character_name}: ${d.text}`).join('; ');
+      
+      return `
+        <div class="shot-edit-item" data-shot-index="${index}" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #fafafa;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="margin: 0; font-size: 13px; font-weight: 600;">分镜 #${index + 1}</h4>
+            <button class="mini-btn secondary delete-shot-btn" data-shot-index="${index}" type="button">删除</button>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">镜头ID</label>
+              <input type="text" class="shot-field" data-field="shot_id" value="${escapeHtml(shot.shot_id || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">时长(秒)</label>
+              <input type="text" class="shot-field" data-field="duration" value="${escapeHtml(shot.duration || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">场景ID</label>
+              <input type="text" class="shot-field" data-field="location_id" value="${escapeHtml(shot.location_id || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">镜头类型</label>
+              <input type="text" class="shot-field" data-field="shot_type" value="${escapeHtml(shot.shot_type || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">运镜方式</label>
+              <input type="text" class="shot-field" data-field="camera_movement" value="${escapeHtml(shot.camera_movement || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">描述</label>
+              <textarea class="shot-field" data-field="description" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; min-height: 50px; resize: vertical;">${escapeHtml(shot.description || '')}</textarea>
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">起始画面描述</label>
+              <textarea class="shot-field" data-field="opening_frame_description" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; min-height: 60px; resize: vertical;">${escapeHtml(shot.opening_frame_description || '')}</textarea>
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">场景细节</label>
+              <textarea class="shot-field" data-field="scene_detail" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; min-height: 50px; resize: vertical;">${escapeHtml(shot.scene_detail || '')}</textarea>
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">动作</label>
+              <textarea class="shot-field" data-field="action" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; min-height: 50px; resize: vertical;">${escapeHtml(shot.action || '')}</textarea>
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">情绪</label>
+              <input type="text" class="shot-field" data-field="mood" value="${escapeHtml(shot.mood || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">音频备注</label>
+              <input type="text" class="shot-field" data-field="audio_notes" value="${escapeHtml(shot.audio_notes || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">环境音</label>
+              <input type="text" class="shot-field" data-field="environment_sound" value="${escapeHtml(shot.environment_sound || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">背景音乐</label>
+              <input type="text" class="shot-field" data-field="background_music" value="${escapeHtml(shot.background_music || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">出场角色（逗号分隔ID）</label>
+              <input type="text" class="shot-field" data-field="characters_present" value="${escapeHtml(Array.isArray(shot.characters_present) ? shot.characters_present.join(', ') : (shot.characters_present || ''))}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">对话（JSON格式）</label>
+              <textarea class="shot-field" data-field="dialogue" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; min-height: 80px; resize: vertical; font-family: monospace;">${escapeHtml(Array.isArray(shot.dialogue) ? JSON.stringify(shot.dialogue, null, 2) : (shot.dialogue || '[]'))}</textarea>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function bindShotEditEvents(){
+      const insertBtns = shotGroupEditModalContent.querySelectorAll('.insert-shot-btn');
+      insertBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.insertIndex);
+          addNewShot(idx);
+        });
+      });
+
+      const deleteBtns = shotGroupEditModalContent.querySelectorAll('.delete-shot-btn');
+      deleteBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const index = parseInt(btn.dataset.shotIndex);
+          deleteShot(index);
+        });
+      });
+    }
+
+    function renumberShots(shots){
+      if(!Array.isArray(shots)) return;
+      shots.forEach((s, i) => {
+        if(s && typeof s === 'object'){
+          s.shot_number = i + 1;
+        }
+      });
+    }
+
+    function addNewShot(insertIndex){
+      const node = state.nodes.find(n => n.id === currentEditingNodeId);
+      if(!node) return;
+
+      if(!Array.isArray(node.data.shots)) node.data.shots = [];
+      const idx = (typeof insertIndex === 'number' && !Number.isNaN(insertIndex))
+        ? Math.max(0, Math.min(insertIndex, node.data.shots.length))
+        : node.data.shots.length;
+
+      const newShot = {
+        shot_id: `s${Date.now()}`,
+        shot_number: idx + 1,
+        duration: 5.0,
+        location_id: '',
+        shot_type: '中景',
+        camera_movement: '固定',
+        description: '',
+        opening_frame_description: '',
+        scene_detail: '',
+        characters_present: [],
+        dialogue: null,
+        action: '',
+        mood: '',
+        environment_sound: '',
+        background_music: ''
+      };
+
+      node.data.shots.splice(idx, 0, newShot);
+      renumberShots(node.data.shots);
+      shotGroupEditModalContent.innerHTML = renderShotGroupEditForm(node.data);
+      bindShotEditEvents();
+    }
+
+    function deleteShot(index){
+      const node = state.nodes.find(n => n.id === currentEditingNodeId);
+      if(!node) return;
+
+      node.data.shots.splice(index, 1);
+      renumberShots(node.data.shots);
+      shotGroupEditModalContent.innerHTML = renderShotGroupEditForm(node.data);
+      bindShotEditEvents();
+    }
+
+    function saveShotGroupEdit(){
+      const node = state.nodes.find(n => n.id === currentEditingNodeId);
+      if(!node) return;
+
+      const groupId = document.getElementById('editGroupId').value.trim();
+
+      node.data.groupId = groupId;
+      node.data.group_id = groupId;
+      node.title = groupId || '分镜组';
+
+      const shotItems = shotGroupEditModalContent.querySelectorAll('.shot-edit-item');
+      shotItems.forEach((item, idx) => {
+        if(idx < node.data.shots.length){
+          const shot = node.data.shots[idx];
+          const fields = item.querySelectorAll('.shot-field');
+          fields.forEach(field => {
+            const fieldName = field.dataset.field;
+            let value = field.value.trim();
+            if(fieldName === 'characters_present'){
+              shot[fieldName] = value ? value.split(',').map(s => s.trim()).filter(s => s) : [];
+            } else if(fieldName === 'dialogue'){
+              try{
+                shot[fieldName] = value ? JSON.parse(value) : [];
+              } catch(e){
+                shot[fieldName] = [];
+              }
+            } else {
+              shot[fieldName] = value;
+            }
+          });
+        }
+      });
+
+      updateShotGroupNodeDisplay(currentEditingNodeId);
+      closeShotGroupEditModal();
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+
+    function updateShotGroupNodeDisplay(nodeId){
+      const node = state.nodes.find(n => n.id === nodeId);
+      if(!node) return;
+
+      const el = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+      if(!el) return;
+
+      const shotsHtml = node.data.shots.map((shot, idx) => {
+        const duration = shot.duration ? `${shot.duration}秒` : '未知';
+        return `
+          <div style="padding: 8px; background: #f8f9fa; border-radius: 6px; margin-bottom: 6px; font-size: 12px;">
+            <div style="font-weight: 700; margin-bottom: 4px;">${escapeHtml(shot.shot_id || `镜头${idx+1}`)} - ${escapeHtml(shot.description || '')}</div>
+            <div style="color: #666; font-size: 11px;">时长: ${escapeHtml(duration)} | ${escapeHtml(shot.shot_type || '')} | ${escapeHtml(shot.camera_movement || '')}</div>
+            <div style="color: #666; font-size: 11px; margin-top: 2px;">起始画面: ${escapeHtml((shot.opening_frame_description || '').slice(0, 60))}...</div>
+          </div>
+        `;
+      }).join('');
+
+      const nodeBody = el.querySelector('.node-body');
+      if(nodeBody){
+        nodeBody.innerHTML = `
+          <div class="field">
+            <div class="label">分镜组: ${escapeHtml(node.data.groupId || node.data.group_id)}</div>
+            <div class="gen-meta">共 ${node.data.shots.length} 个分镜</div>
+          </div>
+          <div class="field" style="max-height: 300px; overflow-y: auto;">
+            ${shotsHtml || '<div class="shot-group-empty">暂无分镜</div>'}
+          </div>
+          <div class="field btn-row">
+            <button class="mini-btn secondary shot-group-edit-btn" type="button">编辑</button>
+            <button class="mini-btn shot-group-detail-btn" type="button">查看详情</button>
+          </div>
+        `;
+
+        const newEditBtn = nodeBody.querySelector('.shot-group-edit-btn');
+        const newDetailBtn = nodeBody.querySelector('.shot-group-detail-btn');
+
+        if(newEditBtn){
+          newEditBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openShotGroupEditModal(nodeId, node.data);
+          });
+        }
+
+        if(newDetailBtn){
+          newDetailBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openShotGroupModal(node.data);
+          });
+        }
+      }
+
+      const titleEl = el.querySelector('.node-title');
+      if(titleEl){
+        titleEl.textContent = node.title;
+      }
+    }
+
     function renderShotGroupTable(shotGroupData){
       const shots = shotGroupData.shots || [];
       if(shots.length === 0){
@@ -3420,7 +3827,7 @@
           <thead>
             <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">镜头ID</th>
-              <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">时间范围</th>
+              <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">时长(秒)</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">镜头类型</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">运镜</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">描述</th>
@@ -3432,7 +3839,7 @@
 
       shots.forEach((shot, index) => {
         const shotId = shot.shot_id || `shot_${index + 1}`;
-        const timeRange = shot.time_range || '-';
+        const duration = shot.duration ? shot.duration : '-';
         const shotType = shot.shot_type || '-';
         const cameraMovement = shot.camera_movement || '-';
         const description = shot.description || '-';
@@ -3440,7 +3847,7 @@
         tableHtml += `
           <tr style="border-bottom: 1px solid #eee;">
             <td style="padding: 10px; border: 1px solid #ddd; font-weight: 600;">${shotId}</td>
-            <td style="padding: 10px; border: 1px solid #ddd;">${timeRange}</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${duration}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${shotType}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${cameraMovement}</td>
             <td style="padding: 10px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${description}</td>
@@ -3475,8 +3882,7 @@
       const fieldMap = {
         'shot_id': '镜头ID',
         'shot_number': '镜头编号',
-        'time_range': '时间范围',
-        'duration': '时长',
+        'duration': '时长(秒)',
         'location_id': '场景ID',
         'shot_type': '镜头类型',
         'camera_movement': '运镜方式',
@@ -5162,12 +5568,12 @@
       const node = {
         id,
         type: 'shot_group',
-        title: shotGroupData.group_name || '分镜组',
+        title: shotGroupData.group_id || '分镜组',
         x,
         y,
         data: {
           groupId: shotGroupData.group_id || '',
-          groupName: shotGroupData.group_name || '',
+          group_id: shotGroupData.group_id || '',
           shots: shotGroupData.shots || [],
           scriptData: scriptData,
         }
@@ -5183,7 +5589,7 @@
 
       // 构建分镜列表HTML
       const shotsHtml = node.data.shots.map((shot, idx) => {
-        const duration = shot.time_range || '未知';
+        const duration = shot.duration ? `${shot.duration}秒` : '未知';
         return `
           <div style="padding: 8px; background: #f8f9fa; border-radius: 6px; margin-bottom: 6px; font-size: 12px;">
             <div style="font-weight: 700; margin-bottom: 4px;">${escapeHtml(shot.shot_id || `镜头${idx+1}`)} - ${escapeHtml(shot.description || '')}</div>
@@ -5202,13 +5608,14 @@
         </div>
         <div class="node-body">
           <div class="field">
-            <div class="label">分镜组ID: ${node.data.groupId}</div>
+            <div class="label">分镜组: ${escapeHtml(node.data.groupId || node.data.group_id)}</div>
             <div class="gen-meta">共 ${node.data.shots.length} 个分镜</div>
           </div>
           <div class="field" style="max-height: 300px; overflow-y: auto;">
             ${shotsHtml}
           </div>
-          <div class="field">
+          <div class="field btn-row">
+            <button class="mini-btn secondary shot-group-edit-btn" type="button">编辑</button>
             <button class="mini-btn shot-group-detail-btn" type="button">查看详情</button>
           </div>
         </div>
@@ -5217,6 +5624,7 @@
       const headerEl = el.querySelector('.node-header');
       const deleteBtn = el.querySelector('.icon-btn');
       const detailBtn = el.querySelector('.shot-group-detail-btn');
+      const editBtn = el.querySelector('.shot-group-edit-btn');
       const inputPort = el.querySelector('.port.input');
       const outputPort = el.querySelector('.port.output');
 
@@ -5273,6 +5681,11 @@
         openShotGroupModal(node.data);
       });
 
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openShotGroupEditModal(id, node.data);
+      });
+
       canvasEl.appendChild(el);
       setSelected(id);
       return id;
@@ -5312,6 +5725,17 @@
 
     document.getElementById('menuAddAsset').addEventListener('click', () => {
       // 素材库 - 空实现
+      addMenu.classList.remove('show');
+    });
+
+    document.getElementById('menuAddShotGroup').addEventListener('click', () => {
+      const shotGroupData = {
+        group_id: `grp_${Date.now()}`,
+        group_name: '新分镜组',
+        shots: []
+      };
+      createShotGroupNode(shotGroupData, null);
+      renderMinimap();
       addMenu.classList.remove('show');
     });
 
