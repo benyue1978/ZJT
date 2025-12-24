@@ -162,7 +162,10 @@
     <div class="modal-card" role="dialog" aria-modal="true" style="max-width: 1200px; width: 90%;">
       <div class="modal-header">
         <div class="modal-title" id="shotGroupModalTitle">分镜组详情</div>
-        <button class="modal-close" id="shotGroupModalClose" type="button" aria-label="关闭">×</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="mini-btn" id="shotGroupModalEditBtn" type="button">编辑</button>
+          <button class="modal-close" id="shotGroupModalClose" type="button" aria-label="关闭">×</button>
+        </div>
       </div>
       <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
         <div id="shotGroupModalContent"></div>
@@ -379,8 +382,17 @@
             <input type="text" id="createLocationNameInput" placeholder="请输入场景名称..." style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px;" />
           </div>
           <div class="field">
-            <label class="label" style="color: #0f172a;">场景描述</label>
-            <textarea id="createLocationDescInput" placeholder="请输入场景描述..." rows="4" style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px; resize: vertical;"></textarea>
+            <label class="label" style="color: #0f172a;">父场景</label>
+            <select id="createLocationParentSelect" style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px;">
+              <option value="">无（顶层场景）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" style="color: #0f172a;">场景描述 <span style="color: #6b7280; font-size: 12px; font-weight: normal;">(最多100字)</span></label>
+            <textarea id="createLocationDescInput" placeholder="请输入场景描述..." rows="4" maxlength="100" style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px; resize: vertical;"></textarea>
+            <div style="text-align: right; font-size: 12px; color: #6b7280; margin-top: 4px;">
+              <span id="createLocationDescCount">0</span>/100
+            </div>
           </div>
           <div class="field">
             <label class="label" style="color: #0f172a;">参考图</label>
@@ -391,6 +403,46 @@
       <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid #e5e7eb;">
         <button class="mini-btn secondary" id="createLocationCancelBtn" type="button">取消</button>
         <button class="mini-btn" id="createLocationSaveBtn" type="button">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑场景模态框 -->
+  <div class="modal" id="editLocationModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" style="max-width: 600px; background: #ffffff; color: #111827; border: 1px solid #e5e7eb;">
+      <div class="modal-header" style="background: #f8fafc; border-bottom: 1px solid #e5e7eb;">
+        <div class="modal-title" style="color: #0f172a;">编辑场景</div>
+        <button class="modal-close" id="editLocationModalClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body" style="background: #ffffff; padding: 20px;">
+        <input type="hidden" id="editLocationId" />
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="field">
+            <label class="label" style="color: #0f172a;">场景名称 <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="editLocationNameInput" placeholder="请输入场景名称..." style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px;" />
+          </div>
+          <div class="field">
+            <label class="label" style="color: #0f172a;">父场景</label>
+            <select id="editLocationParentSelect" style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px;">
+              <option value="">无（顶层场景）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label" style="color: #0f172a;">场景描述 <span style="color: #6b7280; font-size: 12px; font-weight: normal;">(最多100字)</span></label>
+            <textarea id="editLocationDescInput" placeholder="请输入场景描述..." rows="4" maxlength="100" style="width: 100%; background: #ffffff; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; outline: none; font-size: 14px; resize: vertical;"></textarea>
+            <div style="text-align: right; font-size: 12px; color: #6b7280; margin-top: 4px;">
+              <span id="editLocationDescCount">0</span>/100
+            </div>
+          </div>
+          <div class="field">
+            <label class="label" style="color: #0f172a;">参考图</label>
+            <input type="file" id="editLocationImageInput" accept="image/*" style="width: 100%; background: #f9fafb; color: #0f172a; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px; font-size: 13px;" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid #e5e7eb;">
+        <button class="mini-btn secondary" id="editLocationCancelBtn" type="button">取消</button>
+        <button class="mini-btn" id="editLocationSaveBtn" type="button">保存</button>
       </div>
     </div>
   </div>

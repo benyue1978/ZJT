@@ -2724,6 +2724,7 @@ async def parse_script(
         body = await request.json()
         script_content = body.get('script_content', '')
         max_group_duration = body.get('max_group_duration', 15)
+        world_id = body.get('world_id')
         
         if not script_content:
             return JSONResponse(
@@ -2738,6 +2739,7 @@ async def parse_script(
         parsed_data = await parse_script_to_shots(
             script_content=script_content,
             max_group_duration=max_group_duration,
+            world_id=world_id,
             model=None,
             temperature=0.7
         )
@@ -3288,10 +3290,46 @@ async def get_locations(
         )
 
 
+@app.get('/api/locations/tree')
+async def get_locations_tree(
+    world_id: int = Query(..., description="世界ID"),
+    limit: Optional[int] = Query(None, ge=1, description="最大返回数量，优先保留顶层场景"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    获取场景树形结构
+    返回嵌套的场景树，支持 limit 参数控制返回数量
+    当指定 limit 时，优先保留顶层场景（parent_id 为 null），然后是一级子场景，以此类推
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        tree = LocationModel.get_tree_by_world(world_id=world_id, limit=limit)
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': 'success',
+                'data': tree
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get location tree: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
 @app.post('/api/locations')
 async def create_location(
     world_id: int = Form(..., description="世界ID"),
     name: str = Form(..., description="场景名称"),
+    parent_id: Optional[int] = Form(None, description="父场景ID，为空表示顶层场景"),
     description: Optional[str] = Form(None, description="场景描述"),
     reference_image: Optional[UploadFile] = File(None, description="参考图"),
     auth_token: str = Header(None, alias="Authorization"),
@@ -3299,6 +3337,7 @@ async def create_location(
 ):
     """
     创建场景
+    支持嵌套场景：通过 parent_id 指定父场景，为 null 表示顶层场景
     """
     try:
         user_id = _get_user_id_from_header(user_id)
@@ -3333,6 +3372,7 @@ async def create_location(
             world_id=world_id,
             name=name.strip(),
             user_id=user_id,
+            parent_id=parent_id,
             description=description.strip() if description else None,
             reference_image=image_path
         )
@@ -3349,6 +3389,88 @@ async def create_location(
         )
     except Exception as e:
         logger.error(f"Failed to create location: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
+@app.put('/api/locations/{location_id}')
+async def update_location(
+    location_id: int,
+    name: Optional[str] = Form(None, description="场景名称"),
+    parent_id: Optional[int] = Form(None, description="父场景ID"),
+    description: Optional[str] = Form(None, description="场景描述"),
+    reference_image: Optional[UploadFile] = File(None, description="参考图"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    更新场景信息
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 检查场景是否存在
+        location = LocationModel.get_by_id(location_id)
+        if not location:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    'code': -1,
+                    'message': '场景不存在',
+                    'data': None
+                }
+            )
+        
+        # 准备更新数据
+        update_data = {}
+        
+        if name is not None and name.strip():
+            update_data['name'] = name.strip()
+        
+        if parent_id is not None:
+            update_data['parent_id'] = parent_id
+        
+        if description is not None:
+            update_data['description'] = description.strip() if description else None
+        
+        # 处理图片上传
+        if reference_image and reference_image.filename:
+            file_ext = os.path.splitext(reference_image.filename)[1]
+            filename = f"location_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
+            
+            loc_upload_dir = os.path.join(upload_dir, "location", "pic")
+            os.makedirs(loc_upload_dir, exist_ok=True)
+            
+            file_path = os.path.join(loc_upload_dir, filename)
+            with open(file_path, "wb") as f:
+                content = await reference_image.read()
+                f.write(content)
+            
+            update_data['reference_image'] = f"{SERVER_HOST}/upload/location/pic/{filename}"
+        
+        # 更新场景
+        if update_data:
+            LocationModel.update(location_id, **update_data)
+        
+        # 获取更新后的场景
+        updated_location = LocationModel.get_by_id(location_id)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': '更新成功',
+                'data': updated_location.to_dict() if updated_location else None
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to update location: {e}")
         return JSONResponse(
             status_code=500,
             content={

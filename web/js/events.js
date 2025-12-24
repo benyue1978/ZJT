@@ -914,7 +914,10 @@
       el.innerHTML = `
         <div class="node-header">
           <div class="node-title">场景: ${escapeHtml(location.name)}</div>
-          <button class="icon-btn" data-action="delete" title="删除">×</button>
+          <div style="display: flex; gap: 4px;">
+            <button class="icon-btn" data-action="edit" title="编辑" style="background: #3b82f6; color: white;">✎</button>
+            <button class="icon-btn" data-action="delete" title="删除">×</button>
+          </div>
         </div>
         <div class="node-body">
           ${location.reference_image ? `
@@ -932,8 +935,14 @@
       
       // 绑定事件
       const headerEl = el.querySelector('.node-header');
+      const editBtn = el.querySelector('[data-action="edit"]');
       const deleteBtn = el.querySelector('[data-action="delete"]');
       const outputPort = el.querySelector('.port.output');
+      
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditLocationModal(location.id);
+      });
       
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -997,7 +1006,10 @@
       el.innerHTML = `
         <div class="node-header">
           <div class="node-title">场景: ${escapeHtml(location.name)}</div>
-          <button class="icon-btn" data-action="delete" title="删除">×</button>
+          <div style="display: flex; gap: 4px;">
+            <button class="icon-btn" data-action="edit" title="编辑" style="background: #3b82f6; color: white;">✎</button>
+            <button class="icon-btn" data-action="delete" title="删除">×</button>
+          </div>
         </div>
         <div class="node-body">
           ${location.reference_image ? `
@@ -1015,8 +1027,14 @@
       
       // 绑定事件
       const headerEl = el.querySelector('.node-header');
+      const editBtn = el.querySelector('[data-action="edit"]');
       const deleteBtn = el.querySelector('[data-action="delete"]');
       const outputPort = el.querySelector('.port.output');
+      
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditLocationModal(location.id);
+      });
       
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1371,7 +1389,7 @@
     // ========== 创建场景功能 ==========
     
     // 打开创建场景模态框
-    function openCreateLocationModal() {
+    async function openCreateLocationModal() {
       const worldId = document.getElementById('locationWorldSelect').value;
       if (!worldId) {
         showToast('请先选择世界', 'error');
@@ -1379,15 +1397,48 @@
       }
       
       document.getElementById('createLocationNameInput').value = '';
+      document.getElementById('createLocationParentSelect').value = '';
       document.getElementById('createLocationDescInput').value = '';
       document.getElementById('createLocationImageInput').value = '';
+      
+      // 加载父场景列表
+      await loadParentLocationOptions(worldId);
+      
       document.getElementById('createLocationModal').classList.add('show');
+    }
+    
+    // 加载父场景选项
+    async function loadParentLocationOptions(worldId) {
+      const parentSelect = document.getElementById('createLocationParentSelect');
+      parentSelect.innerHTML = '<option value="">无（顶层场景）</option>';
+      
+      try {
+        const response = await fetch(`/api/locations?world_id=${worldId}&page=1&page_size=100`, {
+          headers: {
+            'Authorization': localStorage.getItem('auth_token') || '',
+            'X-User-Id': localStorage.getItem('user_id') || '1'
+          }
+        });
+        
+        const result = await response.json();
+        if (result.code === 0 && result.data && result.data.data) {
+          result.data.data.forEach(location => {
+            const option = document.createElement('option');
+            option.value = location.id;
+            option.textContent = location.name;
+            parentSelect.appendChild(option);
+          });
+        }
+      } catch (error) {
+        console.error('加载父场景列表失败:', error);
+      }
     }
     
     // 创建场景
     async function createLocation() {
       const worldId = document.getElementById('locationWorldSelect').value;
       const nameInput = document.getElementById('createLocationNameInput');
+      const parentSelect = document.getElementById('createLocationParentSelect');
       const descInput = document.getElementById('createLocationDescInput');
       const imageInput = document.getElementById('createLocationImageInput');
       const saveBtn = document.getElementById('createLocationSaveBtn');
@@ -1406,6 +1457,13 @@
         const formData = new FormData();
         formData.append('world_id', worldId);
         formData.append('name', name);
+        
+        // 添加父场景ID（如果选择了）
+        const parentId = parentSelect.value;
+        if (parentId) {
+          formData.append('parent_id', parentId);
+        }
+        
         if (descInput.value.trim()) formData.append('description', descInput.value.trim());
         if (imageInput.files.length > 0) formData.append('reference_image', imageInput.files[0]);
         
@@ -1436,6 +1494,183 @@
         saveBtn.disabled = false;
         saveBtn.textContent = '创建';
       }
+    }
+    
+    // 编辑场景功能
+    async function openEditLocationModal(locationId) {
+      const worldId = document.getElementById('locationWorldSelect').value;
+      if (!worldId) {
+        showToast('请先选择世界', 'error');
+        return;
+      }
+      
+      try {
+        // 获取场景详情
+        const response = await fetch(`/api/locations?world_id=${worldId}&page=1&page_size=100`, {
+          headers: {
+            'Authorization': localStorage.getItem('auth_token') || '',
+            'X-User-Id': localStorage.getItem('user_id') || '1'
+          }
+        });
+        
+        const result = await response.json();
+        if (result.code === 0 && result.data && result.data.data) {
+          const location = result.data.data.find(l => l.id == locationId);
+          if (!location) {
+            showToast('场景不存在', 'error');
+            return;
+          }
+          
+          // 填充表单
+          document.getElementById('editLocationId').value = location.id;
+          document.getElementById('editLocationNameInput').value = location.name || '';
+          document.getElementById('editLocationDescInput').value = location.description || '';
+          document.getElementById('editLocationImageInput').value = '';
+          
+          // 更新字数统计
+          const descCount = document.getElementById('editLocationDescCount');
+          if (descCount) {
+            descCount.textContent = (location.description || '').length;
+          }
+          
+          // 加载父场景选项
+          await loadEditParentLocationOptions(worldId, locationId, location.parent_id);
+          
+          document.getElementById('editLocationModal').classList.add('show');
+        }
+      } catch (error) {
+        console.error('获取场景详情失败:', error);
+        showToast('获取场景详情失败', 'error');
+      }
+    }
+    
+    // 加载编辑时的父场景选项
+    async function loadEditParentLocationOptions(worldId, currentLocationId, currentParentId) {
+      const parentSelect = document.getElementById('editLocationParentSelect');
+      parentSelect.innerHTML = '<option value="">无（顶层场景）</option>';
+      
+      try {
+        const response = await fetch(`/api/locations?world_id=${worldId}&page=1&page_size=100`, {
+          headers: {
+            'Authorization': localStorage.getItem('auth_token') || '',
+            'X-User-Id': localStorage.getItem('user_id') || '1'
+          }
+        });
+        
+        const result = await response.json();
+        if (result.code === 0 && result.data && result.data.data) {
+          result.data.data.forEach(location => {
+            // 不能选择自己作为父场景
+            if (location.id != currentLocationId) {
+              const option = document.createElement('option');
+              option.value = location.id;
+              option.textContent = location.name;
+              if (location.id == currentParentId) {
+                option.selected = true;
+              }
+              parentSelect.appendChild(option);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('加载父场景列表失败:', error);
+      }
+    }
+    
+    // 更新场景
+    async function updateLocation() {
+      const locationId = document.getElementById('editLocationId').value;
+      const nameInput = document.getElementById('editLocationNameInput');
+      const parentSelect = document.getElementById('editLocationParentSelect');
+      const descInput = document.getElementById('editLocationDescInput');
+      const imageInput = document.getElementById('editLocationImageInput');
+      const saveBtn = document.getElementById('editLocationSaveBtn');
+      
+      const name = nameInput.value.trim();
+      if (!name) {
+        showToast('请输入场景名称', 'error');
+        nameInput.focus();
+        return;
+      }
+      
+      saveBtn.disabled = true;
+      saveBtn.textContent = '保存中...';
+      
+      try {
+        const formData = new FormData();
+        formData.append('name', name);
+        
+        const parentId = parentSelect.value;
+        if (parentId) {
+          formData.append('parent_id', parentId);
+        }
+        
+        if (descInput.value.trim()) formData.append('description', descInput.value.trim());
+        if (imageInput.files.length > 0) formData.append('reference_image', imageInput.files[0]);
+        
+        const response = await fetch(`/api/locations/${locationId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': localStorage.getItem('auth_token') || '',
+            'X-User-Id': localStorage.getItem('user_id') || '1'
+          },
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.code === 0) {
+          showToast('场景更新成功', 'success');
+          document.getElementById('editLocationModal').classList.remove('show');
+          
+          const worldId = document.getElementById('locationWorldSelect').value;
+          loadLocations(worldId);
+        } else {
+          showToast(result.message || '更新失败', 'error');
+        }
+      } catch (error) {
+        console.error('更新场景失败:', error);
+        showToast('更新场景失败', 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '保存';
+      }
+    }
+    
+    // 编辑场景模态框事件
+    document.getElementById('editLocationModalClose').addEventListener('click', () => {
+      document.getElementById('editLocationModal').classList.remove('show');
+    });
+    
+    document.getElementById('editLocationCancelBtn').addEventListener('click', () => {
+      document.getElementById('editLocationModal').classList.remove('show');
+    });
+    
+    document.getElementById('editLocationSaveBtn').addEventListener('click', () => {
+      updateLocation();
+    });
+    
+    document.getElementById('editLocationModal').addEventListener('click', (e) => {
+      if (e.target.id === 'editLocationModal') {
+        document.getElementById('editLocationModal').classList.remove('show');
+      }
+    });
+    
+    // 场景描述字数统计
+    const createDescInput = document.getElementById('createLocationDescInput');
+    const createDescCount = document.getElementById('createLocationDescCount');
+    if (createDescInput && createDescCount) {
+      createDescInput.addEventListener('input', () => {
+        createDescCount.textContent = createDescInput.value.length;
+      });
+    }
+    
+    const editDescInput = document.getElementById('editLocationDescInput');
+    const editDescCount = document.getElementById('editLocationDescCount');
+    if (editDescInput && editDescCount) {
+      editDescInput.addEventListener('input', () => {
+        editDescCount.textContent = editDescInput.value.length;
+      });
     }
     
     // 创建场景按钮事件

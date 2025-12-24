@@ -300,13 +300,16 @@
     const shotGroupModalClose = document.getElementById('shotGroupModalClose');
     const shotGroupModalContent = document.getElementById('shotGroupModalContent');
     const shotGroupModalTitle = document.getElementById('shotGroupModalTitle');
+    const shotGroupModalEditBtn = document.getElementById('shotGroupModalEditBtn');
+    let currentShotGroupNodeId = null;
     
     const shotDetailModal = document.getElementById('shotDetailModal');
     const shotDetailModalClose = document.getElementById('shotDetailModalClose');
     const shotDetailModalContent = document.getElementById('shotDetailModalContent');
     const shotDetailModalTitle = document.getElementById('shotDetailModalTitle');
 
-    function openShotGroupModal(shotGroupData){
+    function openShotGroupModal(shotGroupData, nodeId){
+      currentShotGroupNodeId = nodeId;
       shotGroupModalTitle.textContent = `分镜组详情 - ${shotGroupData.groupName || '未命名'}`;
       shotGroupModalContent.innerHTML = renderShotGroupTable(shotGroupData);
       shotGroupModal.classList.add('show');
@@ -316,6 +319,7 @@
     function closeShotGroupModal(){
       shotGroupModal.classList.remove('show');
       shotGroupModal.setAttribute('aria-hidden', 'true');
+      currentShotGroupNodeId = null;
     }
 
     function openShotDetailModal(shot){
@@ -336,6 +340,17 @@
     });
     shotGroupModal.addEventListener('click', (e) => {
       if(e.target === shotGroupModal) closeShotGroupModal();
+    });
+
+    shotGroupModalEditBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(currentShotGroupNodeId !== null){
+        const node = state.nodes.find(n => n.id === currentShotGroupNodeId);
+        if(node){
+          closeShotGroupModal();
+          openShotGroupEditModal(currentShotGroupNodeId, node.data);
+        }
+      }
     });
 
     shotDetailModalClose.addEventListener('click', (e) => {
@@ -680,26 +695,74 @@
           <div class="field" style="max-height: 300px; overflow-y: auto;">
             ${shotsHtml || '<div class="shot-group-empty">暂无分镜</div>'}
           </div>
+          <div class="field">
+            <div class="label">分镜模型</div>
+            <select class="shot-group-model">
+              <option value="gemini-2.5-pro-image-preview" ${node.data.model === 'gemini-2.5-pro-image-preview' ? 'selected' : ''}>标准版</option>
+              <option value="gemini-3-pro-image-preview" ${node.data.model === 'gemini-3-pro-image-preview' ? 'selected' : ''}>加强版</option>
+            </select>
+          </div>
           <div class="field btn-row">
-            <button class="mini-btn secondary shot-group-edit-btn" type="button">编辑</button>
-            <button class="mini-btn shot-group-detail-btn" type="button">查看详情</button>
+            <button class="mini-btn secondary shot-group-detail-btn" type="button">详情</button>
+            <div class="gen-container" style="flex: 1;">
+              <button class="gen-btn gen-btn-main shot-group-generate-btn" type="button" style="background: #22c55e; color: white;">${node.data.generateMode === 'merged' ? '合并分镜' : '独立分镜'}</button>
+              <button class="gen-btn gen-btn-caret" type="button" aria-label="选择模式">▾</button>
+              <div class="gen-menu">
+                <div class="gen-item" data-mode="independent">独立分镜</div>
+                <div class="gen-item" data-mode="merged">合并分镜</div>
+              </div>
+            </div>
           </div>
         `;
 
-        const newEditBtn = nodeBody.querySelector('.shot-group-edit-btn');
         const newDetailBtn = nodeBody.querySelector('.shot-group-detail-btn');
-
-        if(newEditBtn){
-          newEditBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openShotGroupEditModal(nodeId, node.data);
-          });
-        }
+        const newGenerateBtn = nodeBody.querySelector('.shot-group-generate-btn');
+        const newGenCaretBtn = nodeBody.querySelector('.gen-btn-caret');
+        const newGenMenu = nodeBody.querySelector('.gen-menu');
+        const newGenItems = nodeBody.querySelectorAll('.gen-item');
+        const newModelSelect = nodeBody.querySelector('.shot-group-model');
 
         if(newDetailBtn){
           newDetailBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openShotGroupModal(node.data);
+            openShotGroupModal(node.data, nodeId);
+          });
+        }
+
+        if(newModelSelect){
+          newModelSelect.addEventListener('change', () => {
+            node.data.model = newModelSelect.value;
+          });
+        }
+
+        if(newGenCaretBtn){
+          newGenCaretBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            newGenMenu.classList.toggle('show');
+          });
+        }
+
+        if(newGenItems){
+          newGenItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const mode = item.dataset.mode;
+              node.data.generateMode = mode;
+              newGenerateBtn.textContent = item.textContent;
+              newGenMenu.classList.remove('show');
+            });
+          });
+        }
+
+        if(newGenerateBtn){
+          newGenerateBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const mode = node.data.generateMode;
+            if(mode === 'independent'){
+              generateShotFramesIndependent(nodeId, node);
+            } else {
+              generateShotFramesMerged(nodeId, node);
+            }
           });
         }
       }
@@ -1918,7 +1981,7 @@
                   <div class="gen-item" data-count="4">X4</div>
                 </div>
               </div>
-              <button class="gen-btn image-download-btn" type="button" style="border-radius: 10px;">下载图片</button>
+              <button class="mini-btn image-download-btn" type="button" style="border-radius: 10px;">下载图片</button>
             </div>
             <div class="gen-meta image-draw-count-label"></div>
             <div class="muted image-edit-status" style="display:none;"></div>
@@ -2393,7 +2456,8 @@
             },
             body: JSON.stringify({
               script_content: node.data.scriptContent,
-              max_group_duration: node.data.maxGroupDuration || 15
+              max_group_duration: node.data.maxGroupDuration || 15,
+              world_id: state.defaultWorldId
             })
           });
 
@@ -2459,18 +2523,21 @@
       const shotGroupData = opts && opts.shotGroupData ? opts.shotGroupData : {};
       const scriptData = opts && opts.scriptData ? opts.scriptData : {};
       
+      const groupName = shotGroupData.groupName || shotGroupData.group_name || shotGroupData.group_id || '分镜组';
       const node = {
         id,
         type: 'shot_group',
-        title: shotGroupData.groupName || shotGroupData.group_name || '分镜组',
+        title: groupName,
         x,
         y,
         data: {
           groupId: shotGroupData.group_id || '',
           group_id: shotGroupData.group_id || '',
-          groupName: shotGroupData.groupName || shotGroupData.group_name || '',
+          groupName: groupName,
           shots: shotGroupData.shots || [],
           scriptData: scriptData,
+          model: 'gemini-2.5-pro-image-preview',
+          generateMode: 'independent',
         }
       };
       state.nodes.push(node);
@@ -2498,7 +2565,7 @@
         <div class="port input" title="输入（连接剧本节点）"></div>
         <div class="port output" title="输出"></div>
         <div class="node-header">
-          <div class="node-title">${node.title}</div>
+          <div class="node-title">分镜组: ${escapeHtml(node.title)}</div>
           <button class="icon-btn" title="删除">×</button>
         </div>
         <div class="node-body">
@@ -2509,9 +2576,23 @@
           <div class="field" style="max-height: 300px; overflow-y: auto;">
             ${shotsHtml}
           </div>
+          <div class="field">
+            <div class="label">分镜模型</div>
+            <select class="shot-group-model">
+              <option value="gemini-2.5-pro-image-preview">标准版</option>
+              <option value="gemini-3-pro-image-preview">加强版</option>
+            </select>
+          </div>
           <div class="field btn-row">
-            <button class="mini-btn secondary shot-group-edit-btn" type="button">编辑</button>
-            <button class="mini-btn shot-group-detail-btn" type="button">查看详情</button>
+            <button class="mini-btn secondary shot-group-detail-btn" type="button">详情</button>
+            <div class="gen-container" style="flex: 1;">
+              <button class="gen-btn gen-btn-main shot-group-generate-btn" type="button" style="background: #22c55e; color: white;">独立分镜</button>
+              <button class="gen-btn gen-btn-caret" type="button" aria-label="选择模式">▾</button>
+              <div class="gen-menu">
+                <div class="gen-item" data-mode="independent">独立分镜</div>
+                <div class="gen-item" data-mode="merged">合并分镜</div>
+              </div>
+            </div>
           </div>
         </div>
       `;
@@ -2519,7 +2600,11 @@
       const headerEl = el.querySelector('.node-header');
       const deleteBtn = el.querySelector('.icon-btn');
       const detailBtn = el.querySelector('.shot-group-detail-btn');
-      const editBtn = el.querySelector('.shot-group-edit-btn');
+      const generateBtn = el.querySelector('.shot-group-generate-btn');
+      const genCaretBtn = el.querySelector('.gen-btn-caret');
+      const genMenu = el.querySelector('.gen-menu');
+      const genItems = el.querySelectorAll('.gen-item');
+      const modelSelect = el.querySelector('.shot-group-model');
       const inputPort = el.querySelector('.port.input');
       const outputPort = el.querySelector('.port.output');
 
@@ -2573,12 +2658,245 @@
 
       detailBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openShotGroupModal(node.data);
+        openShotGroupModal(node.data, id);
       });
 
-      editBtn.addEventListener('click', (e) => {
+      modelSelect.addEventListener('change', () => {
+        node.data.model = modelSelect.value;
+      });
+
+      genCaretBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openShotGroupEditModal(id, node.data);
+        genMenu.classList.toggle('show');
+      });
+
+      genItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const mode = item.dataset.mode;
+          node.data.generateMode = mode;
+          generateBtn.textContent = item.textContent;
+          genMenu.classList.remove('show');
+        });
+      });
+
+      generateBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const mode = node.data.generateMode;
+        if(mode === 'independent'){
+          generateShotFramesIndependent(id, node);
+        } else {
+          generateShotFramesMerged(id, node);
+        }
+      });
+
+      canvasEl.appendChild(el);
+      setSelected(id);
+      return id;
+    }
+
+    // 生成分镜图节点 - 独立分镜模式
+    function generateShotFramesIndependent(shotGroupNodeId, shotGroupNode){
+      const shots = shotGroupNode.data.shots || [];
+      if(shots.length === 0){
+        showToast('分镜组中没有分镜数据', 'warning');
+        return;
+      }
+
+      const createdNodeIds = [];
+      const offsetX = 400;
+      const baseY = shotGroupNode.y;
+
+      shots.forEach((shot, index) => {
+        const shotFrameNodeId = createShotFrameNode({
+          x: shotGroupNode.x + offsetX,
+          y: baseY + (index * 280),
+          shotData: shot
+        });
+        createdNodeIds.push(shotFrameNodeId);
+
+        // 创建从分镜组到分镜图节点的连接
+        state.connections.push({
+          id: state.nextConnId++,
+          from: shotGroupNodeId,
+          to: shotFrameNodeId
+        });
+      });
+
+      renderConnections();
+      try{ autoSaveWorkflow(); } catch(e){}
+      showToast(`已生成 ${shots.length} 个独立分镜节点`, 'success');
+    }
+
+    // 生成分镜图节点 - 合并分镜模式（待实现）
+    function generateShotFramesMerged(shotGroupNodeId, shotGroupNode){
+      showToast('合并分镜模式待实现', 'info');
+    }
+
+    // 分镜图节点
+    function createShotFrameNode(opts){
+      const id = state.nextNodeId++;
+      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
+      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const shotData = opts && opts.shotData ? opts.shotData : {};
+      
+      const shotTitle = shotData.shot_id || shotData.shot_number ? `镜头${shotData.shot_number || ''}` : '分镜图';
+      
+      // 过滤掉不需要的字段
+      const filteredShotData = {...shotData};
+      delete filteredShotData.shot_id;
+      delete filteredShotData.shot_number;
+      delete filteredShotData.location_id;
+      delete filteredShotData.opening_frame_description;
+      
+      const videoPromptJson = JSON.stringify(filteredShotData, null, 2);
+      
+      const node = {
+        id,
+        type: 'shot_frame',
+        title: shotTitle,
+        x,
+        y,
+        data: {
+          shotId: shotData.shot_id || '',
+          imagePrompt: shotData.opening_frame_description || '',
+          videoPrompt: videoPromptJson,
+          duration: shotData.duration || 0,
+          shotType: shotData.shot_type || '',
+          cameraMovement: shotData.camera_movement || '',
+          description: shotData.description || '',
+          generatedImage: null,
+          imageUrl: '',
+          shotJson: shotData,
+        }
+      };
+      state.nodes.push(node);
+
+      const el = document.createElement('div');
+      el.className = 'node';
+      el.dataset.nodeId = String(id);
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+      el.style.width = '340px';
+
+      el.innerHTML = `
+        <div class="port input" title="输入（连接分镜组节点）"></div>
+        <div class="port output" title="输出"></div>
+        <div class="node-header">
+          <div class="node-title">镜头: ${node.title}</div>
+          <button class="icon-btn" title="删除">×</button>
+        </div>
+        <div class="node-body">
+          <div class="field">
+            <div class="label">镜头信息</div>
+            <div class="gen-meta">${escapeHtml(node.data.description)}</div>
+            <div class="gen-meta" style="margin-top: 4px;">时长: ${node.data.duration}秒 | ${escapeHtml(node.data.shotType)} | ${escapeHtml(node.data.cameraMovement)}</div>
+          </div>
+          <div class="field">
+            <div class="label">图片提示词</div>
+            <textarea class="shot-frame-image-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.imagePrompt)}</textarea>
+          </div>
+          <div class="field">
+            <div class="label">视频提示词</div>
+            <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPrompt)}</textarea>
+          </div>
+          <div class="field shot-frame-image-field" style="display:${node.data.imageUrl ? 'block' : 'none'};">
+            <div class="label">生成的图片</div>
+            <img class="shot-frame-image" src="${node.data.imageUrl}" style="width: 100%; border-radius: 6px; cursor: pointer;" />
+          </div>
+          <div class="field btn-row">
+            <button class="mini-btn shot-frame-generate-btn" type="button">生成图片</button>
+          </div>
+        </div>
+      `;
+
+      const headerEl = el.querySelector('.node-header');
+      const deleteBtn = el.querySelector('.icon-btn');
+      const imagePromptEl = el.querySelector('.shot-frame-image-prompt');
+      const videoPromptEl = el.querySelector('.shot-frame-video-prompt');
+      const generateBtn = el.querySelector('.shot-frame-generate-btn');
+      const imageEl = el.querySelector('.shot-frame-image');
+      const imageFieldEl = el.querySelector('.shot-frame-image-field');
+      const inputPort = el.querySelector('.port.input');
+      const outputPort = el.querySelector('.port.output');
+
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeNode(id);
+      });
+
+      el.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        setSelected(id);
+      });
+
+      headerEl.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelected(id);
+        state.drag = {
+          nodeId: id,
+          startX: e.clientX,
+          startY: e.clientY,
+          origX: node.x,
+          origY: node.y,
+        };
+      });
+
+      imagePromptEl.addEventListener('input', () => {
+        node.data.imagePrompt = imagePromptEl.value;
+      });
+
+      videoPromptEl.addEventListener('input', () => {
+        node.data.videoPrompt = videoPromptEl.value;
+      });
+
+      generateBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        generateBtn.disabled = true;
+        generateBtn.textContent = '生成中...';
+        
+        try {
+          showToast('图片生成功能待实现', 'info');
+        } catch(error) {
+          console.error('生成图片失败:', error);
+          showToast('生成图片失败', 'error');
+        } finally {
+          generateBtn.disabled = false;
+          generateBtn.textContent = '生成图片';
+        }
+      });
+
+      if(imageEl && node.data.imageUrl){
+        imageEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(node.data.imageUrl, node.title);
+        });
+      }
+
+      inputPort.addEventListener('mouseup', (e) => {
+        if(state.connecting && state.connecting.fromId !== id){
+          const fromNode = state.nodes.find(n => n.id === state.connecting.fromId);
+          if(fromNode && fromNode.type === 'shot_group'){
+            const exists = state.connections.some(c => c.from === state.connecting.fromId && c.to === id);
+            if(!exists){
+              state.connections.push({
+                id: state.nextConnId++,
+                from: state.connecting.fromId,
+                to: id
+              });
+              renderConnections();
+              try{ autoSaveWorkflow(); } catch(e){}
+            }
+          }
+        }
+        state.connecting = null;
+      });
+
+      outputPort.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        state.connecting = { fromId: id, startX: e.clientX, startY: e.clientY };
       });
 
       canvasEl.appendChild(el);
