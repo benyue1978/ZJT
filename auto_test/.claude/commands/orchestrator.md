@@ -126,17 +126,33 @@ LOOP_START:
 [进度] 已完成 X/Y 功能 (Z%)
 ```
 
--## 进度报告格式
+## 进度报告与归档
 
-**重要**: 测试完成后，不要输出长文本报告，而是生成 HTML 文件：
+**重要**: 测试完成后，不要输出长文本报告，而是归档测试结果并重置状态：
 
-```python
-python generate_report.py
+```bash
+# 1. 归档测试结果到时间目录
+python generate_report.py --archive
+
+# 2. 重置测试状态，准备下一轮测试
+python reset_test_session.py
 ```
+
+归档后会在 `test_reports/` 目录下创建格式为 `YYYY-MM-DD_HH-MM[_名称]` 的目录，包含：
+- `test_report.html`: 测试报告
+- `session_data.json`: 测试会话数据
+- `test_progress.json`: 测试进度数据
+- `archive_info.json`: 归档摘要
+
+**重置脚本说明**：
+- `reset_test_session.py`: 会自动归档当前结果，然后重置所有测试状态
+- `reset_test_session.py --force`: 强制重置，不归档
+- `reset_test_session.py --keep-session`: 保留会话文件，只重置状态
 
 ```
 所有模块测试完成！
-详细报告已生成: test_report.html
+测试结果已归档到: test_reports/2024-12-25_23-00/
+测试状态已重置，可以开始新一轮测试
 ```
 
 ## 开始调度

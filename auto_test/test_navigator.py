@@ -42,10 +42,10 @@ class TestNavigator:
         # 尝试加载最新的会话文件
         session_file = self._get_latest_session()
         if session_file:
-            with open(session_file, 'r', encoding='utf-8') as f:
+            with open(session_file, 'r', encoding='utf-8-sig') as f:
                 return json.load(f), session_file
         # 否则加载模板文件
-        with open(self.todo_list_path, 'r', encoding='utf-8') as f:
+        with open(self.todo_list_path, 'r', encoding='utf-8-sig') as f:
             return json.load(f), None
 
     def _get_latest_session(self) -> Optional[Path]:
@@ -172,7 +172,7 @@ class TestNavigator:
             print("[ERROR] 没有找到会话文件")
             return False
 
-        with open(session_file, 'r', encoding='utf-8') as f:
+        with open(session_file, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
 
         found = False

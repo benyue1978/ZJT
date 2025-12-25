@@ -3,17 +3,24 @@
 """
 测试报告生成器
 生成 HTML 格式的测试结果报告，避免 Claude Code 输出 token 限制
+
+用法:
+    python generate_report.py                    # 生成报告到当前目录
+    python generate_report.py --archive          # 生成报告并归档到时间目录
+    python generate_report.py --archive --name "登录测试"  # 指定归档名称
 """
 
 import json
 import os
+import shutil
+import argparse
 from datetime import datetime
 from pathlib import Path
 
 def load_json(file_path):
     """加载 JSON 文件"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             return json.load(f)
     except FileNotFoundError:
         return None
@@ -117,8 +124,17 @@ def count_features(session_data):
     
     return stats
 
-def generate_html_report():
-    """生成 HTML 测试报告"""
+def generate_html_report(output_dir: Path = None):
+    """生成 HTML 测试报告
+
+    Args:
+        output_dir: 输出目录，默认为当前目录
+    """
+    if output_dir is None:
+        output_dir = Path(".")
+    else:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
     
     # 加载数据
     progress = load_json('test_progress.json')
@@ -492,12 +508,108 @@ def generate_html_report():
 """
     
     # 保存 HTML 文件
-    report_path = "test_report.html"
+    report_path = output_dir / "test_report.html"
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
-    
-    return f"[SUCCESS] 测试报告已生成: {os.path.abspath(report_path)}"
+
+    return report_path
+
+def archive_test_results(custom_name: str = None):
+    """归档测试结果到时间目录
+
+    创建格式为 "YYYY-MM-DD_HH-MM[_自定义名称]" 的目录，包含：
+    - test_report.html: 测试报告
+    - session_data.json: 测试会话数据
+    - test_progress.json: 测试进度数据
+
+    Args:
+        custom_name: 可选的自定义名称，会附加到目录名后
+
+    Returns:
+        归档目录的路径
+    """
+    base_dir = Path(__file__).parent
+    reports_dir = base_dir / "test_reports"
+    reports_dir.mkdir(exist_ok=True)
+
+    # 生成时间戳目录名
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    if custom_name:
+        # 清理自定义名称中的特殊字符
+        safe_name = custom_name.replace("/", "-").replace("\\", "-").replace(":", "-")
+        dir_name = f"{timestamp}_{safe_name}"
+    else:
+        dir_name = timestamp
+
+    archive_dir = reports_dir / dir_name
+    archive_dir.mkdir(exist_ok=True)
+
+    print(f"[INFO] 创建归档目录: {archive_dir}")
+
+    # 1. 生成 HTML 报告到归档目录
+    report_path = generate_html_report(archive_dir)
+    print(f"[SUCCESS] 测试报告已生成: {report_path}")
+
+    # 2. 复制最新的会话文件
+    sessions_dir = base_dir / "test_sessions"
+    if sessions_dir.exists():
+        session_files = list(sessions_dir.glob("session_*.json"))
+        if session_files:
+            latest_session = max(session_files, key=lambda x: x.stat().st_mtime)
+            dest_session = archive_dir / "session_data.json"
+            shutil.copy2(latest_session, dest_session)
+            print(f"[SUCCESS] 会话数据已复制: {dest_session}")
+
+    # 3. 复制 test_progress.json
+    progress_file = base_dir / "test_progress.json"
+    if progress_file.exists():
+        dest_progress = archive_dir / "test_progress.json"
+        shutil.copy2(progress_file, dest_progress)
+        print(f"[SUCCESS] 进度数据已复制: {dest_progress}")
+
+    # 4. 生成归档摘要文件
+    summary = {
+        "archive_time": datetime.now().isoformat(),
+        "custom_name": custom_name,
+        "files": [
+            "test_report.html",
+            "session_data.json",
+            "test_progress.json"
+        ]
+    }
+    summary_path = archive_dir / "archive_info.json"
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+
+    print(f"[DONE] 测试结果已归档到: {archive_dir.absolute()}")
+    return archive_dir
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="测试报告生成器 - 生成 HTML 格式的测试结果报告",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python generate_report.py                    # 生成报告到当前目录
+  python generate_report.py --archive          # 生成报告并归档到时间目录
+  python generate_report.py --archive --name "登录测试"  # 指定归档名称
+        """
+    )
+
+    parser.add_argument('--archive', '-a', action='store_true',
+                        help='归档测试结果到时间目录 (test_reports/YYYY-MM-DD_HH-MM/)')
+    parser.add_argument('--name', '-n', type=str,
+                        help='自定义归档名称，会附加到目录名后')
+
+    args = parser.parse_args()
+
+    if args.archive:
+        archive_test_results(args.name)
+    else:
+        report_path = generate_html_report()
+        print(f"[SUCCESS] 测试报告已生成: {report_path.absolute()}")
+
 
 if __name__ == "__main__":
-    result = generate_html_report()
-    print(result)
+    main()
