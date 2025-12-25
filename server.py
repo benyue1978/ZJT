@@ -2710,6 +2710,57 @@ async def upload_workflow_asset(
         )
 
 
+def _match_location_to_db(location_id: str, locations: list, user_id: int) -> tuple[Optional[int], Optional[str], Optional[str]]:
+    """
+    匹配场景到数据库
+    
+    Args:
+        location_id: 场景ID (如 "loc_001")
+        locations: 大模型返回的locations数组
+        user_id: 当前用户ID
+    
+    Returns:
+        (db_location_id, db_location_pic, location_name) 元组，未匹配则返回 (None, None, None)
+    """
+    # 构建location字典以便快速查找
+    location_map = {loc['id']: loc for loc in locations}
+    
+    # 查找当前location
+    current_loc = location_map.get(location_id)
+    if not current_loc:
+        return (None, None, None)
+    
+    # 递归向上查找匹配的location_db_id
+    def find_matching_db_location(loc):
+        if not loc:
+            return (None, None, None)
+        
+        # 检查当前location的location_db_id
+        db_id = loc.get('location_db_id')
+        if db_id is not None:
+            # 验证该location是否属于当前用户
+            try:
+                db_location = LocationModel.get_by_id(db_id)
+                if db_location and db_location.user_id == user_id:
+                    # 匹配成功
+                    return (db_id, db_location.reference_image, db_location.name)
+            except Exception as e:
+                logger.warning(f"Failed to get location {db_id}: {e}")
+        
+        # 如果当前location未匹配，且不是根节点，则查找父节点
+        level = loc.get('level', 0)
+        if level != 0:
+            parent_id = loc.get('parent_id')
+            if parent_id:
+                parent_loc = location_map.get(parent_id)
+                return find_matching_db_location(parent_loc)
+        
+        # 已到根节点仍未匹配
+        return (None, None, None)
+    
+    return find_matching_db_location(current_loc)
+
+
 @app.post('/api/parse-script')
 async def parse_script(
     request: Request,
@@ -2749,6 +2800,24 @@ async def parse_script(
                 status_code=500,
                 content={"code": -1, "message": "剧本解析失败"}
             )
+        
+        # 为每个shot添加db_location_id、db_location_pic和location_name字段
+        locations = parsed_data.get('locations', [])
+        shot_groups = parsed_data.get('shot_groups', [])
+        
+        for group in shot_groups:
+            shots = group.get('shots', [])
+            for shot in shots:
+                location_id = shot.get('location_id')
+                if location_id:
+                    db_location_id, db_location_pic, location_name = _match_location_to_db(location_id, locations, user_id)
+                    shot['db_location_id'] = db_location_id
+                    shot['db_location_pic'] = db_location_pic
+                    shot['location_name'] = location_name
+                else:
+                    shot['db_location_id'] = None
+                    shot['db_location_pic'] = None
+                    shot['location_name'] = None
         
         return JSONResponse({
             "code": 0,
@@ -3287,6 +3356,48 @@ async def get_locations(
                 'message': str(e),
                 'data': None
             }
+        )
+
+
+@app.get('/api/location/{location_id}')
+async def get_location_by_id(
+    location_id: int,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    根据ID获取场景信息
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        location = LocationModel.get_by_id(location_id)
+        
+        if not location:
+            return JSONResponse(
+                status_code=404,
+                content={'code': -1, 'message': '场景不存在'}
+            )
+        
+        # 验证权限
+        if location.user_id != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={'code': -1, 'message': '无权访问此场景'}
+            )
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': 'success',
+                'data': location.to_dict()
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get location {location_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={'code': -1, 'message': f'获取场景失败: {str(e)}'}
         )
 
 

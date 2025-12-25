@@ -344,11 +344,17 @@
 
     shotGroupModalEditBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      e.preventDefault();
       if(currentShotGroupNodeId !== null){
         const node = state.nodes.find(n => n.id === currentShotGroupNodeId);
         if(node){
+          const nodeId = currentShotGroupNodeId;
+          const nodeData = node.data;
           closeShotGroupModal();
-          openShotGroupEditModal(currentShotGroupNodeId, node.data);
+          // 延迟打开编辑弹窗，确保详情弹窗完全关闭
+          setTimeout(() => {
+            openShotGroupEditModal(nodeId, nodeData);
+          }, 100);
         }
       }
     });
@@ -409,6 +415,46 @@
       e.stopPropagation();
       saveShotGroupEdit();
     });
+
+    // 场景选择弹窗事件监听
+    const locationModalClose = document.getElementById('locationModalClose');
+    const locationModal = document.getElementById('locationModal');
+    const locationWorldSelect = document.getElementById('locationWorldSelect');
+    const locationSearchInput = document.getElementById('locationSearchInput');
+
+    if(locationModalClose){
+      locationModalClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeLocationModal();
+      });
+    }
+
+    if(locationModal){
+      locationModal.addEventListener('click', (e) => {
+        if(e.target === locationModal) closeLocationModal();
+      });
+    }
+
+    if(locationWorldSelect){
+      locationWorldSelect.addEventListener('change', (e) => {
+        const worldId = e.target.value;
+        loadLocationsForWorld(worldId);
+      });
+    }
+
+    if(locationSearchInput){
+      let searchTimeout;
+      locationSearchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+          const keyword = e.target.value.trim();
+          const worldId = locationWorldSelect ? locationWorldSelect.value : '';
+          if(worldId){
+            loadLocationsForWorld(worldId, keyword);
+          }
+        }, 300);
+      });
+    }
 
     function renderShotGroupEditForm(shotGroupData, maxGroupDuration){
       const groupId = shotGroupData.groupId || shotGroupData.group_id || '';
@@ -479,6 +525,16 @@
               <input type="text" class="shot-field" data-field="location_id" value="${escapeHtml(shot.location_id || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
             </div>
             <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">参考场景</label>
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <input type="text" data-field="db_location_id" value="${escapeHtml(shot.db_location_id || '')}" placeholder="数据库场景ID" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: #f3f4f6;" readonly />
+                <button class="mini-btn secondary select-location-btn" data-shot-index="${index}" type="button" style="white-space: nowrap;">选择</button>
+              </div>
+              ${shot.db_location_pic ? `<div style="margin-top: 4px;"><img src="${escapeHtml(shot.db_location_pic)}" style="width: 100%; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid #e5e7eb;" alt="参考场景" /><div style="font-size: 11px; color: #6b7280; margin-top: 2px;">${escapeHtml(shot.location_name || '场景')}</div></div>` : '<div style="margin-top: 4px; padding: 8px; background: #f3f4f6; border-radius: 4px; font-size: 11px; color: #6b7280; text-align: center;">未选择参考场景</div>'}
+              <input type="hidden" data-field="db_location_pic" value="${escapeHtml(shot.db_location_pic || '')}" />
+              <input type="hidden" data-field="location_name" value="${escapeHtml(shot.location_name || '')}" />
+            </div>
+            <div>
               <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px;">镜头类型</label>
               <input type="text" class="shot-field" data-field="shot_type" value="${escapeHtml(shot.shot_type || '')}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" />
             </div>
@@ -547,6 +603,15 @@
           e.stopPropagation();
           const index = parseInt(btn.dataset.shotIndex);
           deleteShot(index);
+        });
+      });
+
+      const selectLocationBtns = shotGroupEditModalContent.querySelectorAll('.select-location-btn');
+      selectLocationBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const shotIndex = parseInt(btn.dataset.shotIndex);
+          openLocationSelectorModal(shotIndex);
         });
       });
     }
@@ -629,6 +694,172 @@
       bindShotEditEvents();
     }
 
+    let currentLocationSelectionContext = null;
+
+    async function openLocationSelectorModal(shotIndex){
+      const node = state.nodes.find(n => n.id === currentEditingNodeId);
+      if(!node || !node.data.shots[shotIndex]) return;
+
+      // 保存上下文信息
+      currentLocationSelectionContext = {
+        nodeId: currentEditingNodeId,
+        shotIndex: shotIndex,
+        isEditModal: true
+      };
+
+      // 打开场景选择弹窗
+      openLocationModal();
+    }
+
+    function openLocationModal(){
+      const locationModal = document.getElementById('locationModal');
+      const locationWorldSelect = document.getElementById('locationWorldSelect');
+      const locationList = document.getElementById('locationList');
+      
+      if(!locationModal) return;
+
+      // 加载世界列表
+      loadWorldsForLocationModal();
+
+      locationModal.classList.add('show');
+      locationModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeLocationModal(){
+      const locationModal = document.getElementById('locationModal');
+      if(locationModal){
+        locationModal.classList.remove('show');
+        locationModal.setAttribute('aria-hidden', 'true');
+      }
+      currentLocationSelectionContext = null;
+    }
+
+    async function loadWorldsForLocationModal(){
+      const locationWorldSelect = document.getElementById('locationWorldSelect');
+      if(!locationWorldSelect) return;
+
+      try{
+        const response = await fetch('/api/worlds?page=1&page_size=100', {
+          headers: {
+            'Authorization': localStorage.getItem('auth_token') || '',
+            'X-User-Id': localStorage.getItem('user_id') || '1'
+          }
+        });
+
+        if(!response.ok) throw new Error('获取世界列表失败');
+
+        const result = await response.json();
+        if(result.code === 0 && result.data && result.data.data){
+          locationWorldSelect.innerHTML = '<option value="">请选择世界...</option>';
+          result.data.data.forEach(world => {
+            const option = document.createElement('option');
+            option.value = world.id;
+            option.textContent = world.name;
+            locationWorldSelect.appendChild(option);
+          });
+        }
+      } catch(e){
+        console.error('加载世界列表失败:', e);
+        showToast('加载世界列表失败', 'error');
+      }
+    }
+
+    async function loadLocationsForWorld(worldId, keyword = ''){
+      const locationList = document.getElementById('locationList');
+      if(!locationList) return;
+
+      if(!worldId){
+        locationList.innerHTML = '<div style="text-align: center; color: #9ca3af; padding: 40px 20px;">请先选择世界</div>';
+        return;
+      }
+
+      locationList.innerHTML = '<div style="text-align: center; color: #9ca3af; padding: 40px 20px;">加载中...</div>';
+
+      try{
+        let url = `/api/locations?world_id=${worldId}&page=1&page_size=100`;
+        if(keyword){
+          url += `&keyword=${encodeURIComponent(keyword)}`;
+        }
+
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': localStorage.getItem('auth_token') || '',
+            'X-User-Id': localStorage.getItem('user_id') || '1'
+          }
+        });
+
+        if(!response.ok) throw new Error('获取场景列表失败');
+
+        const result = await response.json();
+        if(result.code === 0 && result.data && result.data.data){
+          const locations = result.data.data;
+          
+          if(locations.length === 0){
+            locationList.innerHTML = `<div style="text-align: center; color: #9ca3af; padding: 40px 20px;">${keyword ? '未找到匹配的场景' : '该世界暂无场景'}</div>`;
+            return;
+          }
+
+          locationList.innerHTML = '';
+          locations.forEach(location => {
+            const locationCard = document.createElement('div');
+            locationCard.className = 'location-card';
+            locationCard.style.cssText = 'display: flex; gap: 12px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s;';
+            
+            locationCard.innerHTML = `
+              ${location.reference_image ? `<img src="${location.reference_image}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" alt="${escapeHtml(location.name)}" />` : '<div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 12px; flex-shrink: 0;">无图片</div>'}
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 600; color: #111827; margin-bottom: 4px;">${escapeHtml(location.name)}</div>
+                <div style="font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(location.description || '暂无描述')}</div>
+                <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">ID: ${location.id}</div>
+              </div>
+            `;
+
+            locationCard.addEventListener('mouseenter', () => {
+              locationCard.style.background = '#f9fafb';
+            });
+            locationCard.addEventListener('mouseleave', () => {
+              locationCard.style.background = '';
+            });
+            locationCard.addEventListener('click', () => {
+              selectLocation(location);
+            });
+
+            locationList.appendChild(locationCard);
+          });
+        }
+      } catch(e){
+        console.error('加载场景列表失败:', e);
+        locationList.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 40px 20px;">加载失败，请重试</div>';
+      }
+    }
+
+    function selectLocation(location){
+      if(!currentLocationSelectionContext) return;
+
+      const { nodeId, shotIndex, isEditModal } = currentLocationSelectionContext;
+      const node = state.nodes.find(n => n.id === nodeId);
+      if(!node || !node.data.shots[shotIndex]) return;
+
+      // 更新分镜的场景信息
+      node.data.shots[shotIndex].db_location_id = location.id;
+      node.data.shots[shotIndex].db_location_pic = location.reference_image;
+      node.data.shots[shotIndex].location_name = location.name;
+
+      // 关闭场景选择弹窗
+      closeLocationModal();
+
+      // 根据上下文重新渲染对应的界面
+      if(isEditModal){
+        shotGroupEditModalContent.innerHTML = renderShotGroupEditForm(node.data);
+        bindShotEditEvents();
+      } else {
+        shotGroupModalContent.innerHTML = renderShotGroupTable(node.data);
+      }
+
+      showToast('场景设置成功', 'success');
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+
     function saveShotGroupEdit(){
       const node = state.nodes.find(n => n.id === currentEditingNodeId);
       if(!node) return;
@@ -643,9 +874,10 @@
       shotItems.forEach((item, idx) => {
         if(idx < node.data.shots.length){
           const shot = node.data.shots[idx];
-          const fields = item.querySelectorAll('.shot-field');
+          const fields = item.querySelectorAll('.shot-field, input[data-field], textarea[data-field]');
           fields.forEach(field => {
             const fieldName = field.dataset.field;
+            if(!fieldName) return;
             let value = field.value.trim();
             if(fieldName === 'characters_present'){
               shot[fieldName] = value ? value.split(',').map(s => s.trim()).filter(s => s) : [];
@@ -655,6 +887,8 @@
               } catch(e){
                 shot[fieldName] = [];
               }
+            } else if(fieldName === 'db_location_id'){
+              shot[fieldName] = value ? parseInt(value) : null;
             } else {
               shot[fieldName] = value;
             }
@@ -779,7 +1013,52 @@
         return '<p style="text-align: center; color: #999;">暂无分镜数据</p>';
       }
 
-      let tableHtml = `
+      // 收集所有参考场景
+      const referenceLocations = new Map();
+      shots.forEach(shot => {
+        if(shot.db_location_id && shot.db_location_pic){
+          const locationName = shot.location_name || shot.location_id || '未命名场景';
+          if(!referenceLocations.has(shot.db_location_id)){
+            referenceLocations.set(shot.db_location_id, {
+              id: shot.db_location_id,
+              name: locationName,
+              pic: shot.db_location_pic
+            });
+          }
+        }
+      });
+
+      let html = '';
+
+      // 参考场景区域
+      if(referenceLocations.size > 0){
+        html += `
+          <div style="margin-bottom: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">参考场景</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+        `;
+        
+        referenceLocations.forEach(loc => {
+          html += `
+            <div style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; background: white;">
+              ${loc.pic ? `<img src="${escapeHtml(loc.pic)}" style="width: 100%; height: 120px; object-fit: cover;" alt="${escapeHtml(loc.name)}" />` : '<div style="width: 100%; height: 120px; background: #e5e7eb; display: flex; align-items: center; justify-content: center; color: #9ca3af;">无图片</div>'}
+              <div style="padding: 8px;">
+                <div style="font-size: 13px; font-weight: 500; color: #111827;">${escapeHtml(loc.name)}</div>
+                <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">ID: ${loc.id}</div>
+              </div>
+            </div>
+          `;
+        });
+        
+        html += `
+            </div>
+          </div>
+        `;
+      }
+
+      // 分镜列表
+      html += `
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">分镜列表</h3>
         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
@@ -787,8 +1066,9 @@
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">时长(秒)</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">镜头类型</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">运镜</th>
+              <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">参考场景</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">描述</th>
-              <th style="padding: 10px; text-align: center; border: 1px solid #ddd; width: 60px;">操作</th>
+              <th style="padding: 10px; text-align: center; border: 1px solid #ddd; width: 100px;">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -800,22 +1080,27 @@
         const shotType = shot.shot_type || '-';
         const cameraMovement = shot.camera_movement || '-';
         const description = shot.description || '-';
+        const locationDisplay = shot.db_location_id 
+          ? `<div style="display: flex; align-items: center; gap: 4px;">${shot.db_location_pic ? `<img src="${escapeHtml(shot.db_location_pic)}" style="width: 30px; height: 30px; object-fit: cover; border-radius: 4px;" alt="场景" />` : ''}<span style="font-size: 11px;">${escapeHtml(shot.location_name || 'ID:' + shot.db_location_id)}</span></div>`
+          : '<span style="color: #9ca3af; font-size: 11px;">未匹配</span>';
         
-        tableHtml += `
+        html += `
           <tr style="border-bottom: 1px solid #eee;">
             <td style="padding: 10px; border: 1px solid #ddd; font-weight: 600;">${shotId}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${duration}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${shotType}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${cameraMovement}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${description}</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${locationDisplay}</td>
+            <td style="padding: 10px; border: 1px solid #ddd; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${description}</td>
             <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
-              <button class="mini-btn view-shot-detail" data-shot-index="${index}" style="padding: 4px 8px; font-size: 12px;">👁️ 查看</button>
+              <button class="mini-btn view-shot-detail" data-shot-index="${index}" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;">查看</button>
+              <button class="mini-btn secondary select-shot-location" data-shot-index="${index}" style="padding: 4px 8px; font-size: 12px;">选择场景</button>
             </td>
           </tr>
         `;
       });
 
-      tableHtml += `
+      html += `
           </tbody>
         </table>
       `;
@@ -830,9 +1115,34 @@
             }
           });
         });
+
+        document.querySelectorAll('.select-shot-location').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.shotIndex);
+            if(shots[index]){
+              await selectLocationForShot(currentShotGroupNodeId, index);
+            }
+          });
+        });
       }, 0);
 
-      return tableHtml;
+      return html;
+    }
+
+    async function selectLocationForShot(nodeId, shotIndex){
+      const node = state.nodes.find(n => n.id === nodeId);
+      if(!node || !node.data.shots[shotIndex]) return;
+
+      // 保存上下文信息
+      currentLocationSelectionContext = {
+        nodeId: nodeId,
+        shotIndex: shotIndex,
+        isEditModal: false
+      };
+
+      // 打开场景选择弹窗
+      openLocationModal();
     }
 
     function renderShotDetail(shot){
