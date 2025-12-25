@@ -2270,7 +2270,7 @@
             <input class="image-file" type="file" accept="image/*" />
             <div class="preview-row image-preview-row" style="display:none;">
               <img class="preview image-preview" />
-              <button class="mini-btn image-clear" type="button">清除</button>
+              <button class="mini-btn image-clear" type="button">×</button>
             </div>
           </div>
           <div class="field">
@@ -3055,7 +3055,8 @@
         const shotFrameNodeId = createShotFrameNode({
           x: shotGroupNode.x + offsetX,
           y: baseY + (index * 280),
-          shotData: shot
+          shotData: shot,
+          model: shotGroupNode.data.model
         });
         createdNodeIds.push(shotFrameNodeId);
 
@@ -3083,6 +3084,7 @@
       const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
       const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
       const shotData = opts && opts.shotData ? opts.shotData : {};
+      const inheritedModel = opts && opts.model ? opts.model : 'gemini-2.5-pro-image-preview';
       
       const shotTitle = shotData.shot_id || shotData.shot_number ? `镜头${shotData.shot_number || ''}` : '分镜图';
       
@@ -3129,6 +3131,8 @@
           generatedImage: null,
           imageUrl: '',
           shotJson: shotData,
+          model: inheritedModel,
+          drawCount: 1,
         }
       };
       state.nodes.push(node);
@@ -3166,6 +3170,13 @@
             <img class="shot-frame-image" src="${node.data.imageUrl}" style="width: 100%; border-radius: 6px; cursor: pointer;" />
           </div>
           <div class="field">
+            <div class="label">分镜模型</div>
+            <select class="shot-frame-model">
+              <option value="gemini-2.5-pro-image-preview">标准版 (2算力)</option>
+              <option value="gemini-3-pro-image-preview">加强版 (6算力)</option>
+            </select>
+          </div>
+          <div class="field">
             <div class="btn-row" style="display: flex; gap: 8px; justify-content: flex-start;">
               <div class="gen-container">
                 <button class="gen-btn gen-btn-main shot-frame-generate-btn" type="button">生成分镜图</button>
@@ -3195,6 +3206,10 @@
       const genCaret = el.querySelector('.shot-frame-caret');
       const genMenu = el.querySelector('.shot-frame-menu');
       const drawCountLabel = el.querySelector('.shot-frame-draw-count-label');
+      const modelEl = el.querySelector('.shot-frame-model');
+
+      // 设置模型选择器的初始值
+      if(modelEl) modelEl.value = node.data.model;
 
       // 初始化抽卡次数
       if(!node.data.drawCount){
@@ -3205,6 +3220,11 @@
         drawCountLabel.textContent = `抽卡次数：X${node.data.drawCount}`;
       }
       updateDrawCountLabel();
+
+      // 模型选择
+      modelEl.addEventListener('change', () => {
+        node.data.model = modelEl.value;
+      });
 
       // 抽卡次数选择
       genCaret.addEventListener('click', (e) => {

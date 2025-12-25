@@ -117,7 +117,7 @@ async function generateShotFrameImage(nodeId, node){
     form.append('prompt', finalPrompt);
     form.append('ratio', '16:9'); // 分镜图默认横屏
     form.append('count', node.data.drawCount || 1);
-    form.append('model', 'gemini-2.5-pro-image-preview');
+    form.append('model', node.data.model || 'gemini-2.5-pro-image-preview');
     
     if(userId){
       form.append('user_id', userId);
