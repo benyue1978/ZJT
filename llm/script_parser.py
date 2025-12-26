@@ -68,6 +68,139 @@ ID格式规范：
 """
 
 # JSON格式示例模板
+def reorganize_shot_groups(parsed_data: Dict[str, Any], max_group_duration: int, log_dir=None, timestamp=None) -> Dict[str, Any]:
+    """
+    重新组合分镜组，确保每个分镜组的总时长不超过max_group_duration秒
+    
+    策略：
+    1. 将所有shots按照location_id分组
+    2. 对于每个location，将shots按照shot_number排序
+    3. 按照max_group_duration秒的限制，将同一location的shots重新分组
+    4. 尽量让每个分镜组接近max_group_duration秒（贪心算法）
+    
+    Args:
+        parsed_data: 解析后的剧本数据
+        max_group_duration: 每个分镜组的最大时长（秒）
+        log_dir: 日志目录
+        timestamp: 时间戳
+    
+    Returns:
+        重新组合后的剧本数据
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    shot_groups = parsed_data.get("shot_groups", [])
+    if not shot_groups:
+        return parsed_data
+    
+    # 提取所有shots并按location_id分组
+    location_shots = {}  # {location_id: [shots]}
+    
+    for group in shot_groups:
+        shots = group.get("shots", [])
+        for shot in shots:
+            location_id = shot.get("location_id", "unknown")
+            if location_id not in location_shots:
+                location_shots[location_id] = []
+            location_shots[location_id].append(shot)
+    
+    # 对每个location的shots按shot_number排序
+    for location_id in location_shots:
+        location_shots[location_id].sort(key=lambda s: s.get("shot_number", 0))
+    
+    # 重新组合分镜组
+    new_shot_groups = []
+    group_counter = 1
+    
+    for location_id, shots in location_shots.items():
+        # 对当前location的shots进行分组
+        current_group_shots = []
+        current_group_duration = 0.0
+        
+        for shot in shots:
+            shot_duration = float(shot.get("duration", 0))
+            
+            # 如果加入当前镜头会超过限制，则创建新组
+            if current_group_shots and (current_group_duration + shot_duration) > max_group_duration:
+                # 保存当前组
+                location_name = shot.get("location_id", "unknown")
+                group_name = f"分镜组{group_counter}"
+                new_shot_groups.append({
+                    "group_id": f"grp_{group_counter:03d}",
+                    "group_name": group_name,
+                    "shots": current_group_shots
+                })
+                group_counter += 1
+                
+                # 开始新组
+                current_group_shots = [shot]
+                current_group_duration = shot_duration
+            else:
+                # 加入当前组
+                current_group_shots.append(shot)
+                current_group_duration += shot_duration
+        
+        # 保存最后一组
+        if current_group_shots:
+            group_name = f"分镜组{group_counter}"
+            new_shot_groups.append({
+                "group_id": f"grp_{group_counter:03d}",
+                "group_name": group_name,
+                "shots": current_group_shots
+            })
+            group_counter += 1
+    
+    # 统计重组信息
+    original_group_count = len(shot_groups)
+    new_group_count = len(new_shot_groups)
+    
+    # 检查是否有超过限制的分镜组
+    over_limit_groups = []
+    for group in new_shot_groups:
+        group_duration = sum(float(s.get("duration", 0)) for s in group.get("shots", []))
+        if group_duration > max_group_duration:
+            over_limit_groups.append({
+                "group_id": group.get("group_id"),
+                "duration": group_duration,
+                "shot_count": len(group.get("shots", []))
+            })
+    
+    reorganize_info = f"""分镜组重组信息
+{'='*80}
+
+原始分镜组数量: {original_group_count}
+重组后分镜组数量: {new_group_count}
+最大时长限制: {max_group_duration}秒
+
+重组后各分镜组时长:
+"""
+    
+    for group in new_shot_groups:
+        group_duration = sum(float(s.get("duration", 0)) for s in group.get("shots", []))
+        shot_count = len(group.get("shots", []))
+        status = "超限" if group_duration > max_group_duration else "正常"
+        reorganize_info += f"  - {group.get('group_id')}: {group_duration:.1f}秒 ({shot_count}个镜头) [{status}]\n"
+    
+    if over_limit_groups:
+        reorganize_info += f"\n警告: 仍有{len(over_limit_groups)}个分镜组超过时长限制:\n"
+        for g in over_limit_groups:
+            reorganize_info += f"  - {g['group_id']}: {g['duration']:.1f}秒 ({g['shot_count']}个镜头)\n"
+        reorganize_info += "\n原因: 单个镜头时长超过限制，无法进一步拆分\n"
+    else:
+        reorganize_info += f"\n所有分镜组均符合{max_group_duration}秒时长限制\n"
+    
+    logger.info(f"分镜组重组完成: {original_group_count} -> {new_group_count}")
+    
+    # 保存重组信息到日志
+    _save_log_file(log_dir, f"{timestamp}_07_reorganize_info.txt", reorganize_info)
+    
+    # 更新parsed_data
+    parsed_data["shot_groups"] = new_shot_groups
+    
+    return parsed_data
+
+
 JSON_FORMAT_EXAMPLE = """{
   "script_title": "剧本标题",
   "total_duration": 总时长（秒）,
@@ -264,12 +397,21 @@ async def parse_script_to_shots(
 
 **【核心要求 - 必须严格遵守】**
 
-1. **镜头组时长限制（最重要）**：
-   - 每个shot_group内所有shots的duration总和不能超过{max_group_duration}秒
-   - 如果一个场景需要超过{max_group_duration}秒，必须拆分成多个shot_group
-   - 示例：如果max={max_group_duration}秒，一个场景有3个镜头分别为5秒、6秒、7秒（总计18秒），必须拆分为两组：
-     * 第一组：5秒+6秒=11秒
-     * 第二组：7秒
+1. **镜头组时长限制与分组规则（最重要 - 违反此规则将导致严重成本浪费）**：
+   - **【硬性规则】每个shot_group内所有shots的duration总和绝对不能超过{max_group_duration}秒**
+   - **【强制分组规则】相同地点(location_id相同)的连续镜头，只要总时长不超过{max_group_duration}秒，必须强制放在同一个shot_group中，禁止拆分**
+   - **【成本优化要求】每个shot_group的总时长应该尽可能接近{max_group_duration}秒（建议≥12秒），避免浪费**
+   - **【禁止行为】严禁将相同地点、总时长未超限的镜头拆分到不同的shot_group中**
+   - 只有当一个地点的镜头总时长超过{max_group_duration}秒时，才允许拆分成多个shot_group
+   
+   **正确示例：**
+   - 示例1：镜头1(地点A, 8秒) + 镜头2(地点A, 7秒) = 15秒 → 必须放在同一个shot_group中 ✓
+   - 示例2：镜头1(地点A, 5秒) + 镜头2(地点A, 6秒) + 镜头3(地点A, 4秒) = 15秒 → 必须放在同一个shot_group中 ✓
+   - 示例3：镜头1(地点A, 8秒) + 镜头2(地点B, 7秒) = 15秒 → 因为地点不同，可以分成两个shot_group ✓
+   
+   **错误示例（严禁）：**
+   - 错误1：镜头1(地点A, 8秒)单独一组，镜头2(地点A, 7秒)单独一组 → 违反规则，浪费成本 ✗
+   - 错误2：镜头1(地点A, 5秒) + 镜头2(地点A, 6秒)一组，镜头3(地点A, 4秒)单独一组 → 违反规则，应该合并 ✗
 
 2. **镜头时长必须合理**：
    - 禁止每个镜头都是{max_group_duration}秒，这不切实际
@@ -436,6 +578,9 @@ JSON格式示例：
         if missing_keys:
             raise Exception(f"返回的JSON缺少必需字段: {', '.join(missing_keys)}")
         
+        # 重新组合分镜组，确保每组不超过max_group_duration秒
+        parsed_data = reorganize_shot_groups(parsed_data, max_group_duration, log_dir, timestamp)
+        
         # 计算总分镜数
         total_shots = sum(len(group.get("shots", [])) for group in parsed_data.get("shot_groups", []))
         
@@ -592,5 +737,6 @@ async def parse_script_file(
     return await parse_script_to_shots(
         script_content=script_content,
         max_group_duration=max_group_duration,
-        model=model
+        model=model,
+        temperature=0.2
     )
