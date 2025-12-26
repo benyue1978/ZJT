@@ -489,7 +489,8 @@ async def image_edit(
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token"),
-    model: str = Form("gemini-2.5-pro-image-preview", description="Model type: gemini-2.5-pro-image-preview, gemini-3-pro-image-preview")
+    model: str = Form("gemini-2.5-pro-image-preview", description="Model type: gemini-2.5-pro-image-preview, gemini-3-pro-image-preview"),
+    image_size: str = Form("1K", description="Image resolution: 1K, 2K, 4K")
 ):
     """
     Submit image editing task to RunningHub nanobanana service
@@ -540,7 +541,7 @@ async def image_edit(
             #用uuid生成交易id
             transaction_id = str(uuid.uuid4())
 
-            response = create_ai_image(model, prompt, ratio, image_urls)
+            response = create_ai_image(model, prompt, ratio, image_urls, image_size)
             logger.info(response)
             project_id = response.get("data", {}).get("task_id")
             if not project_id:
