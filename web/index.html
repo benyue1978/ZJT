@@ -236,7 +236,7 @@
           </div>
         </div>
         
-        <!-- Payment QR Code -->
+        <!-- Payment Processing -->
         <div v-else style="padding: 20px;">
           <div style="text-align: center; margin-bottom: 20px;">
             <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">
@@ -248,12 +248,9 @@
           </div>
           
           <div v-if="paymentLoading" style="text-align: center; padding: 40px;">
-            <p>正在生成支付二维码...</p>
-          </div>
-          <div v-else-if="paymentQrCode" style="text-align: center;">
-            <img :src="paymentQrCode" alt="支付二维码" style="max-width: 300px; height: auto; border-radius: 8px; margin-bottom: 16px;" />
-            <p style="font-size: 14px; color: var(--text);">请使用微信扫码支付</p>
-            <p style="font-size: 12px; color: var(--muted);">订单号: {{ paymentOrderId }}</p>
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 16px;">正在创建支付订单...</p>
+            <p style="font-size: 12px; color: var(--muted); margin-top: 8px;">请稍候</p>
           </div>
           <div v-else-if="paymentError" style="text-align: center; padding: 20px;">
             <p style="color: var(--danger); margin-bottom: 16px;">{{ paymentError }}</p>
@@ -4675,8 +4672,24 @@
           });
           
           if (response.data.success) {
-            this.paymentQrCode = response.data.qr_code_url;
             this.paymentOrderId = response.data.order_id;
+            const paymentType = response.data.payment_type;
+            
+            // 根据支付类型调起不同的支付方式
+            if (paymentType === 'JSAPI') {
+              // 微信内浏览器，调用JSAPI支付
+              this.invokeWechatJSAPI(response.data.jsapi_params);
+            } else if (paymentType === 'H5') {
+              // 外部浏览器，跳转到H5支付页面
+              const h5Url = response.data.h5_url;
+              if (h5Url) {
+                window.location.href = h5Url;
+              } else {
+                this.paymentError = '获取支付链接失败';
+              }
+            } else {
+              this.paymentError = '不支持的支付类型';
+            }
           } else {
             this.paymentError = response.data.message || '创建支付订单失败';
           }
@@ -4686,6 +4699,44 @@
         } finally {
           this.paymentLoading = false;
         }
+      },
+      
+      invokeWechatJSAPI(jsapiParams) {
+        // 检查是否在微信环境中
+        if (typeof WeixinJSBridge === 'undefined') {
+          this.paymentError = '请在微信中打开';
+          return;
+        }
+        
+        // 调用微信支付JSAPI
+        WeixinJSBridge.invoke(
+          'getBrandWCPayRequest',
+          {
+            appId: jsapiParams.appId,
+            timeStamp: jsapiParams.timeStamp,
+            nonceStr: jsapiParams.nonceStr,
+            package: jsapiParams.package,
+            signType: jsapiParams.signType,
+            paySign: jsapiParams.paySign
+          },
+          (res) => {
+            if (res.err_msg === 'get_brand_wcpay_request:ok') {
+              // 支付成功
+              alert('支付成功！算力将在几秒内到账');
+              this.closeRechargeModal();
+              // 刷新算力
+              setTimeout(() => {
+                this.fetchComputingPower();
+              }, 2000);
+            } else if (res.err_msg === 'get_brand_wcpay_request:cancel') {
+              // 用户取消支付
+              this.paymentError = '支付已取消';
+            } else {
+              // 支付失败
+              this.paymentError = '支付失败: ' + res.err_msg;
+            }
+          }
+        );
       },
       
       backToPackageSelection() {
