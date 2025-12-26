@@ -383,10 +383,10 @@ def _save_uploaded_image(upload_file: UploadFile) -> str:
 
 def _save_uploaded_audio(upload_file: UploadFile) -> str:
     """
-    Save uploaded audio to /home/appuser/share_appuser/comfyui_upload/tts/tmp_ref_audio directory and return the file path
+    Save uploaded audio to /nas/comfyui_upload/tts/tmp_ref_audio directory and return the file path
     """
     # Ensure audio upload directory exists
-    audio_dir = os.path.expanduser("/home/appuser/share_appuser/comfyui_upload/tts/tmp_ref_audio")
+    audio_dir = "/nas/comfyui_upload/tts/tmp_ref_audio"
     os.makedirs(audio_dir, exist_ok=True)
     
     # Generate unique filename
