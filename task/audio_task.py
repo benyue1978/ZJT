@@ -38,6 +38,8 @@ def _submit_new_task(ai_audio):
     task_id = ai_audio.id
     
     try:
+        AIAudioModel.update(task_id, status=1, message="任务处理中")
+        TasksModel.update_by_task_id(task_id, status=1)
         # Prepare parameters for generate_audio
         text = ai_audio.text
         
@@ -126,8 +128,6 @@ def _submit_new_task(ai_audio):
         logger.error(f"Task {task_id}: Failed to submit audio generation task - {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
-        AIAudioModel.update(task_id, status=-1, message=f"任务提交失败: {str(e)}")
-        TasksModel.update_by_task_id(task_id, status=-1)
         return False
 
 
