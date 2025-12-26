@@ -3604,7 +3604,10 @@
             <textarea class="shot-frame-image-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.imagePrompt)}</textarea>
           </div>
           <div class="field">
-            <div class="label">视频提示词</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div class="label" style="margin: 0;">视频提示词</div>
+              <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">优化提示词，降低违规</button>
+            </div>
             <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPromptText || node.data.videoPrompt)}</textarea>
           </div>
           <div class="field shot-frame-image-field" style="display:${node.data.imageUrl ? 'block' : 'none'};">
@@ -3961,6 +3964,50 @@
       videoPromptEl.addEventListener('input', () => {
         node.data.videoPromptText = videoPromptEl.value;
       });
+
+      const reduceViolationBtn = el.querySelector('.reduce-violation-btn');
+      if(reduceViolationBtn){
+        reduceViolationBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          
+          const currentPrompt = videoPromptEl.value.trim();
+          if(!currentPrompt){
+            showToast('视频提示词为空', 'warning');
+            return;
+          }
+          
+          try {
+            reduceViolationBtn.disabled = true;
+            reduceViolationBtn.textContent = '改写中...';
+            
+            const response = await fetch('/api/reduce-violation', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': getAuthToken(),
+                'X-User-Id': getUserId()
+              },
+              body: JSON.stringify({ prompt: currentPrompt })
+            });
+            
+            const result = await response.json();
+            
+            if(result.code === 0 && result.data && result.data.prompt){
+              videoPromptEl.value = result.data.prompt;
+              node.data.videoPromptText = result.data.prompt;
+              showToast('提示词已改写', 'success');
+            } else {
+              throw new Error(result.message || '改写失败');
+            }
+          } catch(error){
+            console.error('降低违规失败:', error);
+            showToast('降低违规失败: ' + error.message, 'error');
+          } finally {
+            reduceViolationBtn.disabled = false;
+            reduceViolationBtn.textContent = '提示词已优化，再次优化';
+          }
+        });
+      }
 
       generateBtn.addEventListener('click', async (e) => {
         e.stopPropagation();

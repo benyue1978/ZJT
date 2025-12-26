@@ -2838,6 +2838,53 @@ async def parse_script(
         )
 
 
+class ReduceViolationRequest(BaseModel):
+    prompt: str
+
+@app.post('/api/reduce-violation')
+async def reduce_violation(
+    request: ReduceViolationRequest,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: Optional[int] = Header(None, alias="X-User-Id")
+):
+    """
+    降低提示词违规风险
+    """
+    try:
+        from llm.qwen import call_qwen_chat_async
+        
+        user_prompt = f"""以上提示词中触发了 sora的 This content may violate our content policies. 请你修改以上提示词，避免触发违禁
+
+原提示词：
+{request.prompt}
+
+请直接输出修改后的提示词，不要添加任何解释。"""
+        
+        messages = [
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        rewritten_prompt = await call_qwen_chat_async(
+            messages=messages,
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "改写成功",
+            "data": {"prompt": rewritten_prompt.strip()}
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to reduce violation: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"改写失败: {str(e)}"}
+        )
+
+
 @app.post('/api/video-workflow/create')
 async def create_video_workflow(
     request: VideoWorkflowCreateRequest,
