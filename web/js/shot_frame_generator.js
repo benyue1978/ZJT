@@ -73,27 +73,56 @@ async function generateShotFrameImage(nodeId, node){
     
     // 3. 添加场景参考图
     const shotData = node.data.shotJson || {};
-    if(shotData.db_location_id && shotData.db_location_pic){
-      try {
-        const locationFile = await fetchFileFromUrl(shotData.db_location_pic);
-        if(locationFile){
-          referenceImages.push(locationFile);
-          const locationName = shotData.location_name || '场景';
-          promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
-          imageIndex++;
+    
+    // 检查是否是合并分镜模式
+    const isMerged = node.data.isMerged || false;
+    
+    if(isMerged){
+      // 合并分镜模式：收集所有场景的参考图
+      const allLocationInfo = shotData.allLocationInfo || [];
+      for(const locInfo of allLocationInfo){
+        if(locInfo.pic){
+          try {
+            const locationFile = await fetchFileFromUrl(locInfo.pic);
+            if(locationFile){
+              referenceImages.push(locationFile);
+              promptSuffix.push(`图${imageIndex}是${locInfo.name}所在地点`);
+              imageIndex++;
+            }
+          } catch(error){
+            console.error('添加场景参考图失败:', error);
+          }
         }
-      } catch(error){
-        console.error('添加场景参考图失败:', error);
+      }
+    } else {
+      // 独立分镜模式：只添加单个场景参考图
+      if(shotData.db_location_id && shotData.db_location_pic){
+        try {
+          const locationFile = await fetchFileFromUrl(shotData.db_location_pic);
+          if(locationFile){
+            referenceImages.push(locationFile);
+            const locationName = shotData.location_name || '场景';
+            promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
+            imageIndex++;
+          }
+        } catch(error){
+          console.error('添加场景参考图失败:', error);
+        }
       }
     }
     
     // 4. 构建最终提示词
     let finalPrompt = imagePrompt;
-    if(promptSuffix.length > 0){
+    
+    // 4.5. 如果是合并分镜模式，添加角色和场景说明
+    if(isMerged && promptSuffix.length > 0){
+      finalPrompt = `${imagePrompt}\n\n${promptSuffix.join('。')}。`;
+    } else if(!isMerged && promptSuffix.length > 0){
+      // 独立分镜模式，使用逗号分隔
       finalPrompt = `${imagePrompt}\n\n${promptSuffix.join('，')}。`;
     }
     
-    // 4.5. 添加画风文字描述
+    // 4.6. 添加画风文字描述
     if(state.style && state.style.name){
       finalPrompt = `${finalPrompt}\n\n图片风格：${state.style.name}`;
     }
@@ -120,7 +149,9 @@ async function generateShotFrameImage(nodeId, node){
     });
     
     form.append('prompt', finalPrompt);
-    form.append('ratio', '16:9'); // 分镜图默认横屏
+    // 合并分镜使用1:1比例，独立分镜使用16:9
+    const ratio = isMerged ? '1:1' : '16:9';
+    form.append('ratio', ratio);
     form.append('count', node.data.drawCount || 1);
     form.append('model', node.data.model || 'gemini-2.5-pro-image-preview');
     
@@ -182,6 +213,7 @@ async function generateShotFrameImage(nodeId, node){
         console.log('Creating image node with URL:', imageUrls[0]);
         
         // 为每个生成的图片创建新的图片节点
+        const createdImageNodeIds = [];
         imageUrls.forEach((imageUrl, index) => {
           const offsetY = index * 280; // 每个节点垂直间隔280px
           const newNodeId = createImageNode({ 
@@ -218,9 +250,33 @@ async function generateShotFrameImage(nodeId, node){
               to: newNodeId
             });
             
+            createdImageNodeIds.push(newNodeId);
             console.log(`Created image node ${newNodeId} with URL:`, imageUrl);
           }
         });
+        
+        // 自动为视频节点选择首帧图片（如果视频首帧不存在）
+        const connectedVideoNodes = state.connections
+          .filter(c => c.from === nodeId)
+          .map(c => state.nodes.find(n => n.id === c.to))
+          .filter(n => n && n.type === 'video');
+        
+        if(connectedVideoNodes.length > 0 && createdImageNodeIds.length > 0){
+          connectedVideoNodes.forEach(videoNode => {
+            // 检查该视频节点是否已有首帧连接
+            const hasFirstFrame = state.firstFrameConnections.some(fc => fc.to === videoNode.id);
+            if(!hasFirstFrame){
+              // 随机选择一个图片节点作为首帧
+              const randomImageNodeId = createdImageNodeIds[Math.floor(Math.random() * createdImageNodeIds.length)];
+              state.firstFrameConnections.push({
+                id: state.nextFirstFrameConnId++,
+                from: randomImageNodeId,
+                to: videoNode.id
+              });
+              console.log(`Auto-selected image node ${randomImageNodeId} as first frame for video node ${videoNode.id}`);
+            }
+          });
+        }
         
         // 重新渲染连接线
         renderConnections();

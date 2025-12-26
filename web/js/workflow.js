@@ -224,6 +224,10 @@
             const defaultWorldSelect = document.getElementById('defaultWorldSelect');
             if(defaultWorldSelect){
               defaultWorldSelect.value = workflow.default_world_id;
+              // 更新视觉状态（移除红色警告）
+              if(typeof updateWorldSelectorState === 'function'){
+                updateWorldSelectorState();
+              }
             }
           }
           

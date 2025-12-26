@@ -1283,6 +1283,11 @@
             const event = new Event('change');
             currentWorldSelectElement.dispatchEvent(event);
           }
+          
+          // 同时更新左上角的世界选择器（如果从左上角创建的）
+          if (typeof onWorldCreated === 'function') {
+            await onWorldCreated(result.data.id);
+          }
         } else {
           showToast(result.message || '创建失败', 'error');
         }

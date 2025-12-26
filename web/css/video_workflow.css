@@ -96,6 +96,7 @@ select{
 .world-selector{
   display: flex;
   align-items: center;
+  gap: 6px;
   padding-left: 10px;
   border-left: 1px solid var(--border);
 }
@@ -103,6 +104,16 @@ select{
   font-size: 13px;
   padding: 6px 10px;
   min-width: 140px;
+}
+.world-selector select.no-world-selected{
+  border-color: var(--danger);
+  color: var(--danger);
+  background: #fef2f2;
+}
+.world-selector .mini-btn{
+  padding: 4px 10px;
+  font-size: 14px;
+  font-weight: 700;
 }
 .ratio-floating{
   position: absolute;

@@ -17,7 +17,7 @@ async function generateShotFrameVideo(nodeId, node){
     
     // 直接使用视频提示词的JSON字符串
     const videoPrompt = node.data.videoPrompt || '{}';
-    const duration = node.data.duration || 5;
+    const duration = node.data.videoDuration || 15;
     const count = node.data.videoDrawCount || 1;
 
     showToast(`正在生成 ${count} 个视频...`, 'info');

@@ -3087,8 +3087,8 @@
           groupName: groupName,
           shots: shotGroupData.shots || [],
           scriptData: scriptData,
-          model: 'gemini-2.5-pro-image-preview',
-          generateMode: 'independent',
+          model: shotGroupData.model || 'gemini-2.5-pro-image-preview',
+          generateMode: shotGroupData.generateMode || 'independent',
         }
       };
       state.nodes.push(node);
@@ -3213,6 +3213,11 @@
       modelSelect.addEventListener('change', () => {
         node.data.model = modelSelect.value;
       });
+      
+      // 恢复保存的模型选择
+      if(node.data.model){
+        modelSelect.value = node.data.model;
+      }
 
       genCaretBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3226,8 +3231,16 @@
           node.data.generateMode = mode;
           generateBtn.textContent = item.textContent;
           genMenu.classList.remove('show');
+          try{ autoSaveWorkflow(); } catch(e){}
         });
       });
+      
+      // 恢复保存的生成模式
+      if(node.data.generateMode === 'merged'){
+        generateBtn.textContent = '合并分镜';
+      } else {
+        generateBtn.textContent = '独立分镜';
+      }
 
       generateBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3260,12 +3273,29 @@
       const createdNodeIds = [];
       const offsetX = 400;
       const baseY = shotGroupNode.y;
+      
+      // 从第一个镜头获取场景信息（所有镜头使用同一个场景）
+      const firstShot = shots[0];
+      const locationInfo = [];
+      if(firstShot.db_location_id && firstShot.location_name){
+        locationInfo.push({
+          name: firstShot.location_name,
+          pic: firstShot.db_location_pic,
+          id: firstShot.db_location_id
+        });
+      }
 
       shots.forEach((shot, index) => {
+        // 为每个镜头添加场景信息
+        const shotDataWithLocation = {
+          ...shot,
+          allLocationInfo: locationInfo
+        };
+        
         const shotFrameNodeId = createShotFrameNode({
           x: shotGroupNode.x + offsetX,
           y: baseY + (index * 280),
-          shotData: shot,
+          shotData: shotDataWithLocation,
           model: shotGroupNode.data.model
         });
         createdNodeIds.push(shotFrameNodeId);
@@ -3285,9 +3315,116 @@
       showToast(`已生成 ${shots.length} 个独立分镜节点`, 'success');
     }
 
-    // 生成分镜图节点 - 合并分镜模式（待实现）
+    // 生成分镜图节点 - 合并分镜模式
     function generateShotFramesMerged(shotGroupNodeId, shotGroupNode){
-      showToast('合并分镜模式待实现', 'info');
+      const shots = shotGroupNode.data.shots || [];
+      if(shots.length === 0){
+        showToast('分镜组中没有分镜数据', 'warning');
+        return;
+      }
+
+      // 获取当前画布的视频比例
+      const currentRatio = state.ratio || '16:9';
+      
+      // 判断是横屏还是竖屏
+      const [width, height] = currentRatio.split(':').map(Number);
+      const isLandscape = width > height;
+      const arrangement = isLandscape ? '从上到下' : '从左到右';
+      
+      // 构建合并分镜的提示词
+      const shotDescriptions = [];
+      const allCharacterNames = new Set();
+      const allLocationInfo = [];
+      
+      // 用于记录角色出现的顺序
+      const characterOrder = [];
+      const characterSet = new Set();
+      
+      shots.forEach((shot, index) => {
+        // 构建镜头描述（从各个字段组合）
+        const descParts = [];
+        if(shot.opening_frame_description) descParts.push(shot.opening_frame_description);
+        if(shot.description) descParts.push(shot.description);
+        if(shot.action) descParts.push(shot.action);
+        if(shot.scene_detail) descParts.push(shot.scene_detail);
+        
+        let imagePrompt = descParts.join('，');
+        
+        // 收集角色名（按出现顺序）
+        const characterPattern = /【【([^】]+)】】/g;
+        let match;
+        while((match = characterPattern.exec(imagePrompt)) !== null){
+          const name = match[1].trim();
+          if(name && !characterSet.has(name)){
+            characterSet.add(name);
+            characterOrder.push(name);
+          }
+        }
+        
+        // 收集场景信息（去重）
+        if(shot.db_location_id && shot.location_name){
+          const exists = allLocationInfo.find(loc => loc.id === shot.db_location_id);
+          if(!exists){
+            allLocationInfo.push({
+              name: shot.location_name,
+              pic: shot.db_location_pic,
+              id: shot.db_location_id
+            });
+          }
+        }
+        
+        // 保留完整的镜头描述（包含角色标记）
+        shotDescriptions.push(`第${index + 1}镜头：${imagePrompt.trim()}`);
+      });
+      
+      // 构建图片提示词（不包含角色和场景说明，这部分在生成时动态添加）
+      let imagePrompt = `**任务**：生成一张垂直排列的多格电影分镜图（Filmstrip Storyboard）。**要求**：按照${arrangement}的顺序排列排列，画面间有细微黑线分隔，严禁出现任何文字、数字或水印。\n\n`;
+      imagePrompt += shotDescriptions.join('\n');
+      
+      // 计算合并分镜的总时长（所有镜头时长累加）
+      const totalDuration = shots.reduce((sum, shot) => {
+        const duration = parseFloat(shot.duration) || 0;
+        return sum + duration;
+      }, 0);
+
+      // 构建合并分镜的shotData
+      const mergedShotData = {
+        shot_id: 'merged',
+        shot_number: 'merged',
+        description: `包含${shots.length}个镜头的合并分镜`,
+        opening_frame_description: imagePrompt,
+        duration: totalDuration,
+        shot_type: '合并分镜',
+        camera_movement: '',
+        // 存储所有角色和场景信息，用于生成图片时使用
+        allCharacterNames: characterOrder,
+        allLocationInfo: allLocationInfo,
+        arrangement: arrangement,
+        isMerged: true,
+        // 存储完整的shots数组，用于视频提示词
+        shots: shots
+      };
+
+      // 创建一个合并分镜节点
+      const shotFrameNodeId = createShotFrameNode({
+        x: shotGroupNode.x + 400,
+        y: shotGroupNode.y,
+        shotData: mergedShotData,
+        model: shotGroupNode.data.model
+      });
+
+      // 创建从分镜组到分镜图节点的连接
+      state.connections.push({
+        id: state.nextConnId++,
+        from: shotGroupNodeId,
+        to: shotFrameNodeId
+      });
+
+      renderConnections();
+      renderImageConnections();
+      renderFirstFrameConnections();
+      try{ autoSaveWorkflow(); } catch(e){}
+      showToast('已创建合并分镜节点', 'success');
     }
 
     // 分镜图节点
@@ -3317,14 +3454,45 @@
         }
       }
       
-      // 过滤掉不需要的字段
-      const filteredShotData = {...shotData};
-      delete filteredShotData.shot_id;
-      delete filteredShotData.shot_number;
-      delete filteredShotData.location_id;
-      delete filteredShotData.opening_frame_description;
-      
-      const videoPromptJson = JSON.stringify(filteredShotData, null, 2);
+      // 构建视频提示词
+      let videoPromptJson;
+      if(shotData.isMerged && shotData.shots){
+        // 合并分镜模式：过滤每个shot的无用字段
+        const filteredShots = shotData.shots.map(shot => {
+          const filtered = {...shot};
+          delete filtered.shot_id;
+          delete filtered.shot_number;
+          delete filtered.location_id;
+          delete filtered.opening_frame_description;
+          delete filtered.allCharacterNames;
+          delete filtered.allLocationInfo;
+          delete filtered.arrangement;
+          delete filtered.isMerged;
+          delete filtered.shots;
+          delete filtered.db_location_pic;
+          delete filtered.characters_present;
+          delete filtered.db_location_id;
+          return filtered;
+        });
+        videoPromptJson = JSON.stringify(filteredShots, null, 2);
+      } else {
+        // 独立分镜模式：过滤掉不需要的字段
+        const filteredShotData = {...shotData};
+        delete filteredShotData.shot_id;
+        delete filteredShotData.shot_number;
+        delete filteredShotData.location_id;
+        delete filteredShotData.opening_frame_description;
+        delete filteredShotData.allCharacterNames;
+        delete filteredShotData.allLocationInfo;
+        delete filteredShotData.arrangement;
+        delete filteredShotData.isMerged;
+        delete filteredShotData.shots;
+        delete filteredShotData.db_location_pic;
+        delete filteredShotData.characters_present;
+        delete filteredShotData.db_location_id;
+        
+        videoPromptJson = JSON.stringify(filteredShotData, null, 2);
+      }
       
       const node = {
         id,
@@ -3343,10 +3511,12 @@
           generatedImage: null,
           imageUrl: '',
           shotJson: shotData,
+          isMerged: shotData.isMerged || false,
           model: inheritedModel,
           drawCount: 1,
           previewImageUrl: '',
           videoDrawCount: 1,
+          videoDuration: 15,
         }
       };
       state.nodes.push(node);
@@ -3419,6 +3589,13 @@
             <img class="shot-frame-preview-image" src="${node.data.previewImageUrl || ''}" style="width: 100%; border-radius: 6px; cursor: pointer; display: ${node.data.previewImageUrl ? 'block' : 'none'};" />
           </div>
           <div class="field">
+            <div class="label">视频时长</div>
+            <select class="shot-frame-video-duration">
+              <option value="10">10秒</option>
+              <option value="15" selected>15秒</option>
+            </select>
+          </div>
+          <div class="field">
             <div class="btn-row" style="display: flex; gap: 8px; justify-content: flex-start;">
               <div class="gen-container">
                 <button class="gen-btn gen-btn-main shot-frame-generate-video-btn" type="button" style="background: #22c55e; color: white;">生成视频</button>
@@ -3460,9 +3637,16 @@
       const imageSelectorCaret = imageSelectorContainer ? imageSelectorContainer.querySelector('.gen-btn-caret') : null;
       const imageMenu = el.querySelector('.shot-frame-image-menu');
       const firstFramePort = el.querySelector('.first-frame-port');
+      const videoDurationEl = el.querySelector('.shot-frame-video-duration');
 
       // 设置模型选择器的初始值
       if(modelEl) modelEl.value = node.data.model;
+      
+      // 设置视频时长选择器的初始值
+      if(!node.data.videoDuration){
+        node.data.videoDuration = 15;
+      }
+      if(videoDurationEl) videoDurationEl.value = node.data.videoDuration;
 
       // 初始化抽卡次数
       if(!node.data.drawCount){
@@ -3571,9 +3755,11 @@
           }
           
           previewImageEl.src = proxyImageUrl(node.data.previewImageUrl);
+          previewImageEl.style.display = 'block';
           previewFieldEl.style.display = 'block';
         } else {
           node.data.previewImageUrl = '';
+          previewImageEl.style.display = 'none';
           previewFieldEl.style.display = 'none';
         }
         
@@ -3621,6 +3807,11 @@
       // 模型选择
       modelEl.addEventListener('change', () => {
         node.data.model = modelEl.value;
+      });
+      
+      // 视频时长选择
+      videoDurationEl.addEventListener('change', () => {
+        node.data.videoDuration = Number(videoDurationEl.value);
       });
 
       // 抽卡次数选择
