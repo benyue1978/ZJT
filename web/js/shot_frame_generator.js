@@ -93,6 +93,11 @@ async function generateShotFrameImage(nodeId, node){
       finalPrompt = `${imagePrompt}\n\n${promptSuffix.join('，')}。`;
     }
     
+    // 4.5. 添加画风文字描述
+    if(state.style && state.style.name){
+      finalPrompt = `${finalPrompt}\n\n图片风格：${state.style.name}`;
+    }
+    
     // 5. 检查是否有参考图
     if(referenceImages.length === 0){
       showToast('未找到角色或场景参考图，无法生成', 'warning');

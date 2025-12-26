@@ -1081,6 +1081,10 @@ async def ai_app_run_image_url(
     This is optimized for workflow where images are already on the server.
     """
     try:
+        # logger.info(f"ai_app_run_image_url called with image_url: {image_url}")
+        # logger.info(f"prompt: {prompt}")
+        # logger.info(f"ratio: {ratio}, duration_seconds: {duration_seconds}, count: {count}")
+
         if CHECK_AUTH_TOKEN and auth_token is None:
             raise HTTPException(
                 status_code=400, 

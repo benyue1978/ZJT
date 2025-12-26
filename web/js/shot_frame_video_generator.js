@@ -15,23 +15,8 @@ async function generateShotFrameVideo(nodeId, node){
     // 获取预览图的URL
     const imageUrl = node.data.previewImageUrl;
     
-    // 解析视频提示词
-    let videoPromptData = {};
-    try {
-      videoPromptData = JSON.parse(node.data.videoPrompt || '{}');
-    } catch(e){
-      console.error('Failed to parse video prompt:', e);
-    }
-
-    // 构建视频提示词文本
-    const promptParts = [];
-    if(videoPromptData.description) promptParts.push(videoPromptData.description);
-    if(videoPromptData.shot_type) promptParts.push(`镜头类型: ${videoPromptData.shot_type}`);
-    if(videoPromptData.camera_movement) promptParts.push(`镜头运动: ${videoPromptData.camera_movement}`);
-    if(videoPromptData.time_of_day) promptParts.push(`时间: ${videoPromptData.time_of_day}`);
-    if(videoPromptData.weather) promptParts.push(`天气: ${videoPromptData.weather}`);
-    
-    const videoPrompt = promptParts.join('，');
+    // 直接使用视频提示词的JSON字符串
+    const videoPrompt = node.data.videoPrompt || '{}';
     const duration = node.data.duration || 5;
     const count = node.data.videoDrawCount || 1;
 
@@ -47,10 +32,11 @@ async function generateShotFrameVideo(nodeId, node){
     const authToken = localStorage.getItem('auth_token') || '';
     const form = new FormData();
     
-    form.append('image', file);
+    form.append('image_url', imageUrl);
     form.append('prompt', videoPrompt);
-    form.append('duration', duration);
+    form.append('duration_seconds', duration);
     form.append('count', count);
+    form.append('ratio', '16:9');
     
     if(userId){
       form.append('user_id', userId);
@@ -59,7 +45,7 @@ async function generateShotFrameVideo(nodeId, node){
       form.append('auth_token', authToken);
     }
 
-    const res = await fetch('/api/image-to-video', {
+    const res = await fetch('/api/ai-app-run-image-url', {
       method: 'POST',
       body: form
     });

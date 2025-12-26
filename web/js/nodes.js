@@ -286,7 +286,7 @@
       e.stopPropagation();
       closeVideoModal();
     });
-    videoModal.addEventListener('click', (e) => {
+    videoModal.addEventListener('mousedown', (e) => {
       if(e.target === videoModal) closeVideoModal();
     });
 
@@ -294,7 +294,7 @@
       e.stopPropagation();
       closeImageModal();
     });
-    imageModal.addEventListener('click', (e) => {
+    imageModal.addEventListener('mousedown', (e) => {
       if(e.target === imageModal) closeImageModal();
     });
 
@@ -340,7 +340,7 @@
       e.stopPropagation();
       closeShotGroupModal();
     });
-    shotGroupModal.addEventListener('click', (e) => {
+    shotGroupModal.addEventListener('mousedown', (e) => {
       if(e.target === shotGroupModal) closeShotGroupModal();
     });
 
@@ -365,7 +365,7 @@
       e.stopPropagation();
       closeShotDetailModal();
     });
-    shotDetailModal.addEventListener('click', (e) => {
+    shotDetailModal.addEventListener('mousedown', (e) => {
       if(e.target === shotDetailModal) closeShotDetailModal();
     });
 
@@ -409,7 +409,7 @@
       e.stopPropagation();
       closeShotGroupEditModal();
     });
-    shotGroupEditModal.addEventListener('click', (e) => {
+    shotGroupEditModal.addEventListener('mousedown', (e) => {
       if(e.target === shotGroupEditModal) closeShotGroupEditModal();
     });
 
@@ -432,7 +432,7 @@
     }
 
     if(locationModal){
-      locationModal.addEventListener('click', (e) => {
+      locationModal.addEventListener('mousedown', (e) => {
         if(e.target === locationModal) closeLocationModal();
       });
     }
@@ -3237,6 +3237,11 @@
         } else {
           generateShotFramesMerged(id, node);
         }
+      });
+
+      detailBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openShotGroupModal(node.data, id);
       });
 
       canvasEl.appendChild(el);
