@@ -1,7 +1,8 @@
     function createVideoNode(opts){
       const id = state.nextNodeId++;
-      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
-      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const viewportPos = getViewportNodePosition();
+      const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
+      const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const node = {
         id,
         type: 'video',
@@ -1615,8 +1616,9 @@
 
     function createImageToVideoNode(opts){
       const id = state.nextNodeId++;
-      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
-      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const viewportPos = getViewportNodePosition();
+      const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
+      const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const node = {
         id,
         type: 'image_to_video',
@@ -2371,8 +2373,9 @@
 
     function createImageNode(opts){
       const id = state.nextNodeId++;
-      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
-      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const viewportPos = getViewportNodePosition();
+      const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
+      const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const defaultRatio = state.ratio || ratioSelectEl.value || '9:16';
       const node = {
         id,
@@ -2801,8 +2804,9 @@
     // 剧本节点
     function createScriptNode(opts){
       const id = state.nextNodeId++;
-      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
-      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const viewportPos = getViewportNodePosition();
+      const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
+      const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const node = {
         id,
         type: 'script',
@@ -3069,8 +3073,9 @@
     // 分镜组节点
     function createShotGroupNode(opts){
       const id = state.nextNodeId++;
-      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
-      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const viewportPos = getViewportNodePosition();
+      const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
+      const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const shotGroupData = opts && opts.shotGroupData ? opts.shotGroupData : {};
       const scriptData = opts && opts.scriptData ? opts.scriptData : {};
       
@@ -3484,8 +3489,9 @@
     // 分镜图节点
     function createShotFrameNode(opts){
       const id = state.nextNodeId++;
-      const x = opts && typeof opts.x === 'number' ? opts.x : (60 + (state.nodes.length % 3) * 340);
-      const y = opts && typeof opts.y === 'number' ? opts.y : (60 + Math.floor(state.nodes.length / 3) * 280);
+      const viewportPos = getViewportNodePosition();
+      const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
+      const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const shotData = opts && opts.shotData ? opts.shotData : {};
       const inheritedModel = opts && opts.model ? opts.model : 'gemini-2.5-pro-image-preview';
       

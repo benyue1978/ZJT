@@ -102,6 +102,22 @@
       setSelected(null);
     }
 
+    function getViewportNodePosition(){
+      const containerRect = canvasContainer.getBoundingClientRect();
+      const viewportWidth = containerRect.width / state.zoom;
+      const viewportHeight = containerRect.height / state.zoom;
+      const viewportLeft = -state.panX / state.zoom;
+      const viewportTop = -state.panY / state.zoom;
+      
+      const marginLeft = 100;
+      const marginTop = 80;
+      
+      const x = Math.max(marginLeft, viewportLeft + marginLeft);
+      const y = Math.max(marginTop, viewportTop + marginTop);
+      
+      return { x, y };
+    }
+
     function removeNode(id){
       const node = state.nodes.find(n => n.id === id);
       

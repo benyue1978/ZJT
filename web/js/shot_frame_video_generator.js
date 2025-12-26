@@ -22,8 +22,8 @@ async function generateShotFrameVideo(nodeId, node){
     // 获取预览图的URL
     const imageUrl = node.data.previewImageUrl;
     
-    // 使用JSON格式的视频提示词（用于API调用）
-    const videoPrompt = node.data.videoPrompt || '{}';
+    // 使用节点中用户编辑的视频提示词文本，而不是JSON格式
+    const videoPrompt = node.data.videoPromptText || node.data.videoPrompt || '';
     const duration = node.data.videoDuration || 15;
     const count = node.data.videoDrawCount || 1;
 

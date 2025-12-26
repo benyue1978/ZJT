@@ -896,8 +896,9 @@
     // 创建角色节点
     function createCharacterNode(character) {
       const id = state.nextNodeId++;
-      const x = 60 + (state.nodes.length % 3) * 340;
-      const y = 60 + Math.floor(state.nodes.length / 3) * 280;
+      const viewportPos = getViewportNodePosition();
+      const x = viewportPos.x;
+      const y = viewportPos.y;
       
       const node = {
         id,
@@ -1087,8 +1088,9 @@
     // 创建场景节点
     function createLocationNode(location) {
       const id = state.nextNodeId++;
-      const x = 60 + (state.nodes.length % 3) * 340;
-      const y = 60 + Math.floor(state.nodes.length / 3) * 280;
+      const viewportPos = getViewportNodePosition();
+      const x = viewportPos.x;
+      const y = viewportPos.y;
       
       const node = {
         id,
