@@ -16,13 +16,14 @@ from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
 from config_util import get_config_path, is_dev_environment
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
-from model import AIToolsModel, TasksModel, AIAudioModel
+from model import AIToolsModel, TasksModel, AIAudioModel, PaymentOrdersModel
 import uuid
 from duomi_api_requset import create_video_remix, create_character, get_character_task_result
 from PIL import Image
 from baidu import call_ernie_vl_api
 from task.scheduler import init_scheduler
 from config.constant import TASK_COMPUTING_POWER, TASK_TYPE_GENERATE_VIDEO, TASK_TYPE_GENERATE_AUDIO, RECHARGE_PACKAGES
+from utils.wechat_pay_util import WechatPayUtil
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -42,6 +43,14 @@ if https_config.get("enabled", False) and "https_host" in config["server"]:
 else:
     SERVER_HOST = config["server"]["host"]
 API_KEY = config["runninghub"]["api_key"]
+
+# 初始化微信支付工具
+wechat_pay_config = config.get("pay", {}).get("wxpay", {})
+wechat_pay_util = WechatPayUtil(
+    app_id=wechat_pay_config.get("appId"),
+    mch_id=wechat_pay_config.get("mchId"),
+    api_key=wechat_pay_config.get("api_key")
+)
 
 # Default ComfyUI server address; can be overridden by request field
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
@@ -2528,65 +2537,91 @@ async def create_wechat_payment(request: WechatPayRequest):
             )
         
         # 生成订单ID
-        order_id = f"ORDER_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        order_id = wechat_pay_util.generate_order_id()
+        
+        # 计算支付金额（单位：分）
+        total_fee = int(package_info["price"] * 100)
+        body = f"算力充值-{package_info['computing_power']}算力"
+        
+        # TODO: 配置回调URL
+        notify_url = f"{SERVER_HOST}/api/recharge/wechat-callback"
         
         # 根据浏览器类型选择支付方式
-        payment_type = "JSAPI" if request.is_wechat_browser else "H5"
+        payment_result = {}
+        payment_type = ""
         
-        # TODO: 调用微信支付API
-        # 微信内浏览器使用JSAPI支付
         if request.is_wechat_browser:
-            # JSAPI支付流程:
-            # 1. 调用微信统一下单接口，trade_type=JSAPI
-            # 2. 获取预支付交易会话标识 prepay_id
-            # 3. 生成JSAPI支付参数（appId, timeStamp, nonceStr, package, signType, paySign）
-            # 示例代码:
-            # wechat_pay_result = call_wechat_jsapi_pay(
-            #     order_id=order_id,
-            #     total_fee=int(package_info["price"] * 100),  # 单位：分
-            #     body=f"算力充值-{package_info['computing_power']}算力",
-            #     user_id=request.user_id,
-            #     openid=get_user_openid(request.user_id)  # 需要获取用户的openid
-            # )
-            pass
+            # 微信内浏览器使用JSAPI支付
+            payment_type = "JSAPI"
+            # TODO: 获取用户的openid
+            # openid = get_user_openid(request.user_id)
+            openid = f"mock_openid_{request.user_id}"
+            
+            # TODO: 获取真实的客户端IP
+            payer_client_ip = "127.0.0.1"
+            
+            payment_result = wechat_pay_util.create_jsapi_payment(
+                order_id=order_id,
+                total_fee=total_fee,
+                body=body,
+                openid=openid,
+                notify_url=notify_url,
+                payer_client_ip=payer_client_ip
+            )
         else:
-            # 外部浏览器使用H5支付或Native支付
-            # H5支付流程:
-            # 1. 调用微信统一下单接口，trade_type=MWEB
-            # 2. 获取支付跳转URL mweb_url
-            # 示例代码:
-            # wechat_pay_result = call_wechat_h5_pay(
-            #     order_id=order_id,
-            #     total_fee=int(package_info["price"] * 100),  # 单位：分
-            #     body=f"算力充值-{package_info['computing_power']}算力",
-            #     user_id=request.user_id
-            # )
-            pass
+            # 外部浏览器使用H5支付
+            payment_type = "H5"
+            
+            # TODO: 获取真实的客户端IP
+            payer_client_ip = "127.0.0.1"
+            
+            payment_result = wechat_pay_util.create_h5_payment(
+                order_id=order_id,
+                total_fee=total_fee,
+                body=body,
+                notify_url=notify_url,
+                payer_client_ip=payer_client_ip
+            )
         
-        # TODO: 保存订单记录到数据库
-        # order_record = {
-        #     "order_id": order_id,
-        #     "user_id": request.user_id,
-        #     "package_id": request.package_id,
-        #     "computing_power": package_info["computing_power"],
-        #     "price": package_info["price"],
-        #     "status": 0,  # 0-待支付
-        #     "created_at": datetime.now()
-        # }
-        # save_order_to_database(order_record)
+        # 保存订单记录到数据库
+        try:
+            record_id = PaymentOrdersModel.create(
+                order_id=order_id,
+                user_id=request.user_id,
+                package_id=request.package_id,
+                computing_power=package_info["computing_power"],
+                price=package_info["price"],
+                payment_type=payment_type,
+                status=0  # 0-待支付
+            )
+            logger.info(f"Saved payment order {record_id} to database")
+        except Exception as e:
+            logger.error(f"Failed to save payment order to database: {e}")
+            # 继续执行，不影响支付流程
         
-        logger.info(f"Created payment order {order_id} for user {request.user_id}, package {request.package_id}")
+        logger.info(f"Created {payment_type} payment order {record_id} for user {request.user_id}, package {request.package_id}")
         
-        # 返回模拟数据（实际应返回微信支付二维码）
-        return JSONResponse({
+        # 返回支付信息
+        response_data = {
             "success": True,
-            "order_id": order_id,
+            "order_id": record_id,
             "package_id": request.package_id,
             "computing_power": package_info["computing_power"],
             "price": package_info["price"],
-            "qr_code_url": f"https://example.com/qrcode/{order_id}",  # TODO: 替换为真实的微信支付二维码URL
-            "message": "订单创建成功，请扫码支付"
-        })
+            "payment_type": payment_type
+        }
+        
+        # 根据支付类型返回不同的数据
+        if payment_type == "JSAPI":
+            # JSAPI支付返回支付参数，前端调用微信JSAPI
+            response_data["jsapi_params"] = payment_result
+            response_data["message"] = "订单创建成功，请在微信中完成支付"
+        else:
+            # H5支付返回跳转URL
+            response_data["h5_url"] = payment_result.get("h5_url")
+            response_data["message"] = "订单创建成功，即将跳转到支付页面"
+        
+        return JSONResponse(response_data)
         
     except HTTPException:
         raise
@@ -2599,59 +2634,108 @@ async def create_wechat_payment(request: WechatPayRequest):
 @app.post("/api/recharge/wechat-callback")
 async def wechat_payment_callback(request: Request):
     """
-    微信支付回调接口
+    微信支付回调接口（V3 API）
     
     接收微信支付成功后的异步通知
     
-    TODO: 实现具体的回调处理逻辑
-    - 验证微信签名
-    - 解析支付结果
-    - 更新订单状态
-    - 增加用户算力
-    - 返回成功响应给微信
+    回调数据格式：
+    {
+        "id": "事件ID",
+        "create_time": "创建时间",
+        "resource_type": "encrypt-resource",
+        "event_type": "TRANSACTION.SUCCESS",
+        "summary": "支付成功",
+        "resource": {
+            "original_type": "transaction",
+            "algorithm": "AEAD_AES_256_GCM",
+            "ciphertext": "加密数据",
+            "associated_data": "附加数据",
+            "nonce": "随机串"
+        }
+    }
     """
     try:
-        # TODO: 获取微信回调数据
-        # body = await request.body()
-        # callback_data = parse_wechat_callback(body)
+        # 获取回调数据
+        body = await request.body()
+        callback_data = json.loads(body.decode('utf-8'))
         
-        # TODO: 验证签名
-        # if not verify_wechat_signature(callback_data):
-        #     raise HTTPException(status_code=400, detail="Invalid signature")
+        logger.info(f"Received wechat payment callback: {callback_data.get('id')}")
+        logger.info(f"Event type: {callback_data.get('event_type')}")
         
-        # TODO: 获取订单信息
-        # order_id = callback_data.get("out_trade_no")
-        # transaction_id = callback_data.get("transaction_id")
-        # result_code = callback_data.get("result_code")
+        # TODO: 验证回调签名
+        # 从请求头获取签名信息
+        # timestamp = request.headers.get("Wechatpay-Timestamp")
+        # nonce = request.headers.get("Wechatpay-Nonce")
+        # signature = request.headers.get("Wechatpay-Signature")
+        # serial = request.headers.get("Wechatpay-Serial")
+        # 
+        # if not wechat_pay_util.verify_callback_signature(timestamp, nonce, body, signature):
+        #     logger.error("Invalid callback signature")
+        #     return JSONResponse({"code": "FAIL", "message": "签名验证失败"}, status_code=400)
         
-        # TODO: 如果支付成功，增加用户算力
-        # if result_code == "SUCCESS":
-        #     order = get_order_from_database(order_id)
-        #     if order and order["status"] == 0:  # 待支付状态
-        #         # 增加用户算力
-        #         add_computing_power(
-        #             user_id=order["user_id"],
-        #             computing_power=order["computing_power"],
-        #             order_id=order_id
-        #         )
-        #         # 更新订单状态
-        #         update_order_status(order_id, status=1)  # 1-已支付
+        # 检查事件类型
+        event_type = callback_data.get("event_type")
+        if event_type != "TRANSACTION.SUCCESS":
+            logger.warning(f"Unsupported event type: {event_type}")
+            return JSONResponse({"code": "SUCCESS", "message": "OK"})
         
-        logger.info("Received wechat payment callback")
+        # TODO: 解密资源数据
+        # resource = callback_data.get("resource", {})
+        # ciphertext = resource.get("ciphertext")
+        # associated_data = resource.get("associated_data")
+        # nonce = resource.get("nonce")
+        # 
+        # # 使用APIv3密钥解密
+        # decrypted_data = wechat_pay_util.decrypt_callback_resource(
+        #     ciphertext=ciphertext,
+        #     associated_data=associated_data,
+        #     nonce=nonce
+        # )
+        # 
+        # # 解析交易数据
+        # transaction_data = json.loads(decrypted_data)
+        # order_id = transaction_data.get("out_trade_no")
+        # transaction_id = transaction_data.get("transaction_id")
+        # trade_state = transaction_data.get("trade_state")
+        # 
+        # logger.info(f"Decrypted transaction: order_id={order_id}, transaction_id={transaction_id}, state={trade_state}")
+        # 
+        # # 如果支付成功，处理订单
+        # if trade_state == "SUCCESS":
+        #     # 查询订单
+        #     order = PaymentOrdersModel.get_by_order_id(order_id)
+        #     
+        #     if not order:
+        #         logger.error(f"Order not found: {order_id}")
+        #         return JSONResponse({"code": "FAIL", "message": "订单不存在"}, status_code=400)
+        #     
+        #     # 检查订单状态，避免重复处理
+        #     if order.status == 1:
+        #         logger.info(f"Order already paid: {order_id}")
+        #         return JSONResponse({"code": "SUCCESS", "message": "OK"})
+        #     
+        #     # 更新订单状态为已支付
+        #     PaymentOrdersModel.update_paid(order_id, transaction_id)
+        #     
+        #     # TODO: 增加用户算力
+        #     # add_computing_power(
+        #     #     user_id=order.user_id,
+        #     #     computing_power=order.computing_power,
+        #     #     order_id=order_id
+        #     # )
+        #     
+        #     logger.info(f"Payment processed successfully: order_id={order_id}, user_id={order.user_id}, computing_power={order.computing_power}")
         
-        # TODO: 返回微信要求的XML格式响应
-        return JSONResponse({
-            "return_code": "SUCCESS",
-            "return_msg": "OK"
-        })
+        # 返回成功响应（V3 API使用JSON格式）
+        return JSONResponse({"code": "SUCCESS", "message": "OK"})
         
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse callback data: {str(e)}")
+        return JSONResponse({"code": "FAIL", "message": "数据格式错误"}, status_code=400)
     except Exception as e:
         logger.error(f"Wechat payment callback failed: {str(e)}")
         logger.error(traceback.format_exc())
-        return JSONResponse({
-            "return_code": "FAIL",
-            "return_msg": str(e)
-        })
+        return JSONResponse({"code": "FAIL", "message": str(e)}, status_code=500)
 
 
 # Serve upload directory for static file access

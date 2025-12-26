@@ -1,0 +1,361 @@
+"""
+微信支付工具类
+封装微信支付相关的API调用逻辑
+"""
+import time
+import uuid
+from typing import Dict, Optional
+import logging
+import json
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class WechatPayUtil:
+    """微信支付工具类"""
+    
+    def __init__(self, app_id: str = None, mch_id: str = None, api_key: str = None):
+        """
+        初始化微信支付工具
+        
+        Args:
+            app_id: 微信公众号/小程序的AppID
+            mch_id: 微信支付商户号
+        """
+        self.app_id = app_id
+        self.mch_id = mch_id
+        self.api_key = api_key    
+    
+    def generate_order_id(self) -> str:
+        """
+        生成订单ID
+        
+        Returns:
+            订单ID，格式: ORDER_时间戳_随机字符串
+        """
+        return f"ORDER_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+    
+    def create_jsapi_payment(
+        self,
+        order_id: str,
+        total_fee: int,
+        body: str,
+        openid: str,
+        notify_url: str,
+        payer_client_ip: str = "127.0.0.1"
+    ) -> Dict:
+        """
+        创建JSAPI支付订单（微信内浏览器支付）- 使用微信支付V3 API
+        
+        Args:
+            order_id: 商户订单号
+            total_fee: 支付金额（单位：分）
+            body: 商品描述
+            openid: 用户的openid
+            notify_url: 支付结果通知回调URL
+            payer_client_ip: 用户终端IP
+        
+        Returns:
+            包含支付参数的字典
+            {
+                "appId": "微信公众号AppID",
+                "timeStamp": "时间戳",
+                "nonceStr": "随机字符串",
+                "package": "prepay_id=xxx",
+                "signType": "RSA",
+                "paySign": "签名"
+            }
+        
+        TODO: 实现具体的JSAPI支付逻辑
+        - 调用微信支付V3统一下单接口
+        - 获取预支付交易会话标识 prepay_id
+        - 生成JSAPI支付参数并签名
+        """
+        logger.info(f"Creating JSAPI payment for order {order_id}, amount: {total_fee}")
+        
+        # TODO: 实现微信JSAPI支付V3 API调用
+        # 1. 构建请求体（JSON格式）
+        # request_body = {
+        #     "appid": self.app_id,
+        #     "mchid": self.mch_id,
+        #     "description": body,
+        #     "out_trade_no": order_id,
+        #     "notify_url": notify_url,
+        #     "amount": {
+        #         "total": total_fee,
+        #         "currency": "CNY"
+        #     },
+        #     "payer": {
+        #         "openid": openid
+        #     },
+        #     "scene_info": {
+        #         "payer_client_ip": payer_client_ip
+        #     }
+        # }
+        # 
+        # 2. 生成V3签名（使用商户私钥）
+        # import json
+        # timestamp = str(int(time.time()))
+        # nonce_str = uuid.uuid4().hex
+        # request_body_json = json.dumps(request_body)
+        # 
+        # # 构造签名串
+        # sign_str = f"POST\n/v3/pay/transactions/jsapi\n{timestamp}\n{nonce_str}\n{request_body_json}\n"
+        # signature = self._generate_v3_signature(sign_str)
+        # 
+        # # 构造Authorization头
+        # auth_header = (
+        #     f'WECHATPAY2-SHA256-RSA2048 '
+        #     f'mchid="{self.mch_id}",'
+        #     f'nonce_str="{nonce_str}",'
+        #     f'timestamp="{timestamp}",'
+        #     f'serial_no="证书序列号",'
+        #     f'signature="{signature}"'
+        # )
+        # 
+        # 3. 调用微信支付V3统一下单接口
+        # import requests
+        # response = requests.post(
+        #     "https://api.mch.weixin.qq.com/v3/pay/transactions/jsapi",
+        #     headers={
+        #         "Authorization": auth_header,
+        #         "Accept": "application/json",
+        #         "Content-Type": "application/json"
+        #     },
+        #     json=request_body
+        # )
+        # 
+        # 4. 解析返回结果，获取prepay_id
+        # result = response.json()
+        # prepay_id = result.get("prepay_id")
+        # 
+        # 5. 生成JSAPI支付参数（前端调用微信支付需要）
+        # timestamp = str(int(time.time()))
+        # nonce_str = uuid.uuid4().hex
+        # package = f"prepay_id={prepay_id}"
+        # 
+        # # 构造签名串
+        # sign_str = f"{self.app_id}\n{timestamp}\n{nonce_str}\n{package}\n"
+        # pay_sign = self._generate_v3_signature(sign_str)
+        # 
+        # jsapi_params = {
+        #     "appId": self.app_id,
+        #     "timeStamp": timestamp,
+        #     "nonceStr": nonce_str,
+        #     "package": package,
+        #     "signType": "RSA",
+        #     "paySign": pay_sign
+        # }
+        # 
+        # return jsapi_params
+        
+        # 临时返回模拟数据
+        return {
+            "appId": self.app_id or "wx_app_id_placeholder",
+            "timeStamp": str(int(time.time())),
+            "nonceStr": uuid.uuid4().hex,
+            "package": f"prepay_id=mock_prepay_id_{order_id}",
+            "signType": "RSA",
+            "paySign": "mock_pay_sign"
+        }
+    
+    def create_h5_payment(
+        self,
+        order_id: str,
+        total_fee: int,
+        body: str,
+        notify_url: str,
+        payer_client_ip: str = "127.0.0.1",
+        scene_info: Optional[Dict] = None
+    ) -> Dict:
+        """
+        创建H5支付订单（外部浏览器支付）- 使用微信支付V3 API
+        
+        Args:
+            order_id: 商户订单号
+            total_fee: 支付金额（单位：分）
+            body: 商品描述
+            notify_url: 支付结果通知回调URL
+            payer_client_ip: 用户终端IP
+            scene_info: 场景信息（H5支付必填），包含h5_info
+        
+        Returns:
+            包含支付跳转URL的字典
+            {
+                "h5_url": "https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb?prepay_id=xxx"
+            }
+        
+        TODO: 实现具体的H5支付逻辑
+        - 调用微信支付V3统一下单接口
+        - 获取支付跳转URL h5_url
+        """
+        logger.info(f"Creating H5 payment for order {order_id}, amount: {total_fee}")
+        
+        request_body = {
+            "appid": self.app_id,
+            "mchid": self.mch_id,
+            "description": body,
+            "out_trade_no": order_id,
+            "notify_url": notify_url,
+            "amount": {
+                "total": total_fee,
+                "currency": "CNY"
+            },
+            "scene_info": scene_info
+        }
+        
+        timestamp = str(int(time.time()))
+        nonce_str = uuid.uuid4().hex
+        request_body_json = json.dumps(request_body)
+        
+        # 生成签名
+        signature = self._generate_sign(
+            http_method="POST",
+            url_path="/v3/pay/transactions/h5",
+            timestamp=timestamp,
+            nonce_str=nonce_str,
+            request_body=request_body_json
+        )
+        
+        # 构造Authorization头
+        auth_header = (
+            f'WECHATPAY2-SHA256-RSA2048 '
+            f'mchid="{self.mch_id}",'
+            f'nonce_str="{nonce_str}",'
+            f'timestamp="{timestamp}",'
+            f'serial_no="{self.api_key}",'
+            f'signature="{signature}"'
+        )
+        
+        # 3. 调用微信支付V3统一下单接口
+        import requests
+        response = requests.post(
+            "https://api.mch.weixin.qq.com/v3/pay/transactions/h5",
+            headers={
+                "Authorization": auth_header,
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            json=request_body
+        )
+        
+        # 解析返回结果，获取h5_url
+        result = response.json()
+        h5_url = result.get("h5_url")
+        
+        return {"h5_url": h5_url}
+          
+    def create_native_payment(
+        self,
+        order_id: str,
+        total_fee: int,
+        body: str,
+        notify_url: str
+    ) -> Dict:
+        """
+        创建Native支付订单（扫码支付）
+        
+        Args:
+            order_id: 商户订单号
+            total_fee: 支付金额（单位：分）
+            body: 商品描述
+            notify_url: 支付结果通知回调URL
+        
+        Returns:
+            包含支付二维码URL的字典
+            {
+                "code_url": "weixin://wxpay/bizpayurl?pr=xxx"
+            }
+        
+        TODO: 实现具体的Native支付逻辑
+        - 调用微信统一下单接口，trade_type=NATIVE
+        - 获取支付二维码URL code_url
+        """
+        logger.info(f"Creating Native payment for order {order_id}, amount: {total_fee}")
+        
+        # TODO: 实现微信Native支付API调用
+        # 类似H5支付，但trade_type=NATIVE
+        # 返回的是code_url，前端需要将其生成二维码供用户扫描
+        
+        # 临时返回模拟数据
+        return {
+            "code_url": f"weixin://wxpay/bizpayurl?pr=mock_{order_id}"
+        }
+    
+    def _generate_sign(
+        self,
+        http_method: str,
+        url_path: str,
+        timestamp: str,
+        nonce_str: str,
+        request_body: str
+    ) -> str:
+        """
+        生成微信支付V3 API签名
+        
+        步骤：
+        1. 构建签名串（5个部分，每部分以\n结尾）
+        2. 使用商户私钥进行RSA-SHA256签名
+        3. 对签名结果进行Base64编码
+        
+        Args:
+            http_method: HTTP请求方法（如：POST、GET）
+            url_path: URL路径（如：/v3/pay/transactions/jsapi）
+            timestamp: 请求时间戳（10位，单位：秒）
+            nonce_str: 请求随机串
+            request_body: 请求报文主体（JSON字符串）
+        
+        Returns:
+            Base64编码的签名字符串
+        """
+        # 第一步：构建签名串，每个部分后面都要加换行符
+        signature_string = (
+            f"{http_method}\n"
+            f"{url_path}\n"
+            f"{timestamp}\n"
+            f"{nonce_str}\n"
+            f"{request_body}\n"
+        )
+        
+        # 第二步：使用商户私钥进行RSA-SHA256签名
+        try:
+            import os
+            import base64
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import padding
+            from cryptography.hazmat.backends import default_backend
+            
+            # 读取私钥文件
+            private_key_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "secret/wechat/apiclient_key.pem"
+            )
+            
+            with open(private_key_path, 'rb') as f:
+                private_key = serialization.load_pem_private_key(
+                    f.read(),
+                    password=None,
+                    backend=default_backend()
+                )
+            
+            # 使用私钥对签名串进行SHA256签名
+            signature = private_key.sign(
+                signature_string.encode('utf-8'),
+                padding.PKCS1v15(),
+                hashes.SHA256()
+            )
+            
+            # 第三步：Base64编码
+            signature_base64 = base64.b64encode(signature).decode('utf-8')
+            
+            return signature_base64
+            
+        except FileNotFoundError:
+            logger.error(f"Private key file not found: {private_key_path}")
+            logger.warning("Using mock signature for development")
+            return "mock_signature"
+        except Exception as e:
+            logger.error(f"Failed to generate signature: {str(e)}")
+            logger.warning("Using mock signature for development")
+            return "mock_signature"
+      
