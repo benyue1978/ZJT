@@ -29,7 +29,7 @@
                   ↻
                 </button>
               </div>
-              <button class="btn secondary" @click="showRechargePowerModal = true" style="margin-top: 8px; font-size: 12px; padding: 4px 12px;">算力充值</button>
+              <button class="btn secondary" @click="showRechargePowerModal = true; fetchRechargePackages()" style="margin-top: 8px; font-size: 12px; padding: 4px 12px;">算力充值</button>
             </div>
             <button class="btn secondary" @click="handleLogout">登出</button>
           </template>
@@ -192,13 +192,77 @@
     </div>
     
     <!-- Recharge Computing Power Modal -->
-    <div class="modal-overlay" v-if="showRechargePowerModal" @click.self="showRechargePowerModal = false">
-      <div class="modal" style="position: relative; max-width: 500px;">
-        <button class="modal-close" @click="showRechargePowerModal = false">×</button>
+    <div class="modal-overlay" v-if="showRechargePowerModal" @click.self="closeRechargeModal">
+      <div class="modal" style="position: relative; max-width: 600px;">
+        <button class="modal-close" @click="closeRechargeModal">×</button>
         <div class="modal-title">算力充值</div>
-        <div style="padding: 20px; text-align: center;">
-          <img src="/files/二维码.jpg" alt="客服微信二维码" style="max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 16px;" />
-          <p style="font-size: 16px; color: var(--text); margin: 0;">请添加客服微信充值算力</p>
+        
+        <!-- Package Selection -->
+        <div v-if="!selectedPackage" style="padding: 20px;">
+          <div class="package-intro">
+            <p class="package-intro-text">选择适合您的算力套餐</p>
+            <p class="package-intro-subtext">支持微信支付，充值后立即到账</p>
+          </div>
+          
+          <div v-if="rechargePackagesLoading" style="text-align: center; padding: 40px;">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 16px; color: var(--muted);">加载套餐中...</p>
+          </div>
+          <div v-else-if="rechargePackages.length > 0" class="package-list">
+            <div 
+              v-for="(pkg, index) in rechargePackages" 
+              :key="pkg.package_id" 
+              class="package-item"
+              @click="selectPackage(pkg)"
+            >
+              <div class="package-header">
+                <div class="package-title-section">
+                  <span class="package-name">{{ pkg.description }}</span>
+                  <span class="package-computing-power">{{ pkg.computing_power }} 算力</span>
+                </div>
+                <div class="package-price-section">
+                  <span class="package-price">¥{{ pkg.price }}</span>
+                  <span class="package-unit-price">{{ (pkg.price / pkg.computing_power * 100).toFixed(2) }}元/百算力</span>
+                </div>
+              </div>
+              <div class="package-footer">
+                <span class="package-select-hint">点击选择</span>
+                <span class="package-arrow">→</span>
+              </div>
+            </div>
+          </div>
+          <div v-else style="text-align: center; padding: 40px; color: var(--muted);">
+            <p>暂无可用套餐</p>
+          </div>
+        </div>
+        
+        <!-- Payment QR Code -->
+        <div v-else style="padding: 20px;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">
+              {{ selectedPackage.description }}
+            </div>
+            <div style="font-size: 16px; color: var(--muted);">
+              {{ selectedPackage.computing_power }} 算力 - ¥{{ selectedPackage.price }}
+            </div>
+          </div>
+          
+          <div v-if="paymentLoading" style="text-align: center; padding: 40px;">
+            <p>正在生成支付二维码...</p>
+          </div>
+          <div v-else-if="paymentQrCode" style="text-align: center;">
+            <img :src="paymentQrCode" alt="支付二维码" style="max-width: 300px; height: auto; border-radius: 8px; margin-bottom: 16px;" />
+            <p style="font-size: 14px; color: var(--text);">请使用微信扫码支付</p>
+            <p style="font-size: 12px; color: var(--muted);">订单号: {{ paymentOrderId }}</p>
+          </div>
+          <div v-else-if="paymentError" style="text-align: center; padding: 20px;">
+            <p style="color: var(--danger); margin-bottom: 16px;">{{ paymentError }}</p>
+            <button class="btn secondary" @click="retryPayment">重试</button>
+          </div>
+          
+          <div style="margin-top: 20px; text-align: center;">
+            <button class="btn secondary" @click="backToPackageSelection">返回选择套餐</button>
+          </div>
         </div>
       </div>
     </div>
@@ -4019,7 +4083,14 @@
       resetCountdownTimer: null,
       showTermsModal: false,
       termsContent: '',
-      showWechatGuideModal: false
+      showWechatGuideModal: false,
+      rechargePackages: [],
+      rechargePackagesLoading: false,
+      selectedPackage: null,
+      paymentLoading: false,
+      paymentQrCode: '',
+      paymentOrderId: '',
+      paymentError: ''
     } },
     mounted() {
       // Extract auth_token from URL query parameters at app level
@@ -4557,6 +4628,84 @@
       isWechatBrowser() {
         const ua = navigator.userAgent.toLowerCase();
         return /micromessenger/.test(ua);
+      },
+      
+      async fetchRechargePackages() {
+        this.rechargePackagesLoading = true;
+        try {
+          const response = await axios.get('/api/recharge/packages');
+          if (response.data.success) {
+            this.rechargePackages = response.data.packages || [];
+          } else {
+            console.error('Failed to fetch recharge packages:', response.data);
+          }
+        } catch (error) {
+          console.error('Error fetching recharge packages:', error);
+        } finally {
+          this.rechargePackagesLoading = false;
+        }
+      },
+      
+      async selectPackage(pkg) {
+        if (!this.authToken || !this.userId) {
+          alert('请先登录');
+          this.showRechargePowerModal = false;
+          this.showLoginModal = true;
+          return;
+        }
+        
+        this.selectedPackage = pkg;
+        this.paymentError = '';
+        this.paymentQrCode = '';
+        this.paymentOrderId = '';
+        
+        await this.createPaymentOrder();
+      },
+      
+      async createPaymentOrder() {
+        this.paymentLoading = true;
+        this.paymentError = '';
+        
+        try {
+          const response = await axios.post('/api/recharge/wechat-pay', {
+            package_id: this.selectedPackage.package_id,
+            user_id: parseInt(this.userId, 10),
+            auth_token: this.authToken,
+            is_wechat_browser: this.isWechatBrowser()
+          });
+          
+          if (response.data.success) {
+            this.paymentQrCode = response.data.qr_code_url;
+            this.paymentOrderId = response.data.order_id;
+          } else {
+            this.paymentError = response.data.message || '创建支付订单失败';
+          }
+        } catch (error) {
+          console.error('Error creating payment order:', error);
+          this.paymentError = error?.response?.data?.detail || '创建支付订单失败，请重试';
+        } finally {
+          this.paymentLoading = false;
+        }
+      },
+      
+      backToPackageSelection() {
+        this.selectedPackage = null;
+        this.paymentQrCode = '';
+        this.paymentOrderId = '';
+        this.paymentError = '';
+      },
+      
+      retryPayment() {
+        this.createPaymentOrder();
+      },
+      
+      closeRechargeModal() {
+        this.showRechargePowerModal = false;
+        this.selectedPackage = null;
+        this.paymentQrCode = '';
+        this.paymentOrderId = '';
+        this.paymentError = '';
+        this.rechargePackages = [];
       }
     },
     

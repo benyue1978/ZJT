@@ -20,3 +20,36 @@ TASK_COMPUTING_POWER = {
 }
 
 AUTHENTICATION_ID = 'aa63d4090d59401b9862223087c25b98'
+
+RECHARGE_PACKAGES = [
+    {
+        "package_id": 1,
+        "computing_power": 100,
+        "price": 0.1,
+        "description": "首充福利"
+    },
+    {
+        "package_id": 2,
+        "computing_power": 300,
+        "price": 29.9,
+        "description": "标准套餐"
+    },
+    {
+        "package_id": 3,
+        "computing_power": 500,
+        "price": 49.9,
+        "description": "进阶套餐"
+    },
+    {
+        "package_id": 4,
+        "computing_power": 1000,
+        "price": 99.9,
+        "description": "专业套餐"
+    },
+    {
+        "package_id": 5,
+        "computing_power": 3000,
+        "price": 299.9,
+        "description": "企业套餐"
+    }
+]

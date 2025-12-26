@@ -22,7 +22,7 @@ from duomi_api_requset import create_video_remix, create_character, get_characte
 from PIL import Image
 from baidu import call_ernie_vl_api
 from task.scheduler import init_scheduler
-from config.constant import TASK_COMPUTING_POWER, TASK_TYPE_GENERATE_VIDEO, TASK_TYPE_GENERATE_AUDIO
+from config.constant import TASK_COMPUTING_POWER, TASK_TYPE_GENERATE_VIDEO, TASK_TYPE_GENERATE_AUDIO, RECHARGE_PACKAGES
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
@@ -2450,6 +2450,208 @@ async def api_character_status(
         logger.error(f"Character status check failed: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"查询角色状态失败: {str(e)}")
+
+
+class RechargePackage(BaseModel):
+    """算力充值套餐"""
+    package_id: int
+    computing_power: int
+    price: float
+    description: Optional[str] = None
+
+
+class WechatPayRequest(BaseModel):
+    """微信支付请求"""
+    package_id: int
+    user_id: int
+    auth_token: str
+    is_wechat_browser: bool = False
+
+
+@app.get("/api/recharge/packages")
+async def get_recharge_packages():
+    """
+    获取算力充值套餐列表
+    
+    Returns:
+        List of recharge packages with computing power and pricing
+    """
+    try:
+        return JSONResponse({
+            "success": True,
+            "packages": RECHARGE_PACKAGES
+        })
+    except Exception as e:
+        logger.error(f"Failed to get recharge packages: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取充值套餐失败: {str(e)}")
+
+
+@app.post("/api/recharge/wechat-pay")
+async def create_wechat_payment(request: WechatPayRequest):
+    """
+    创建微信支付订单
+    
+    Args:
+        request: 包含套餐ID、用户ID、认证token和浏览器类型的请求
+    
+    Returns:
+        微信支付二维码URL/JSAPI支付参数和订单信息
+    
+    TODO: 实现具体的微信支付逻辑
+    - 调用微信支付API创建订单
+    - 根据is_wechat_browser参数选择支付方式：
+      * True: 使用JSAPI支付（微信内浏览器）
+      * False: 使用H5支付或Native支付（外部浏览器）
+    - 保存订单记录到数据库
+    - 实现支付回调处理
+    - 支付成功后增加用户算力
+    """
+    try:
+        # 验证用户token
+        if not request.auth_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Authentication token is required"
+            )
+        
+        # 验证套餐ID
+        package_info = None
+        for package in RECHARGE_PACKAGES:
+            if package["package_id"] == request.package_id:
+                package_info = package
+                break
+        
+        if not package_info:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid package ID"
+            )
+        
+        # 生成订单ID
+        order_id = f"ORDER_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        
+        # 根据浏览器类型选择支付方式
+        payment_type = "JSAPI" if request.is_wechat_browser else "H5"
+        
+        # TODO: 调用微信支付API
+        # 微信内浏览器使用JSAPI支付
+        if request.is_wechat_browser:
+            # JSAPI支付流程:
+            # 1. 调用微信统一下单接口，trade_type=JSAPI
+            # 2. 获取预支付交易会话标识 prepay_id
+            # 3. 生成JSAPI支付参数（appId, timeStamp, nonceStr, package, signType, paySign）
+            # 示例代码:
+            # wechat_pay_result = call_wechat_jsapi_pay(
+            #     order_id=order_id,
+            #     total_fee=int(package_info["price"] * 100),  # 单位：分
+            #     body=f"算力充值-{package_info['computing_power']}算力",
+            #     user_id=request.user_id,
+            #     openid=get_user_openid(request.user_id)  # 需要获取用户的openid
+            # )
+            pass
+        else:
+            # 外部浏览器使用H5支付或Native支付
+            # H5支付流程:
+            # 1. 调用微信统一下单接口，trade_type=MWEB
+            # 2. 获取支付跳转URL mweb_url
+            # 示例代码:
+            # wechat_pay_result = call_wechat_h5_pay(
+            #     order_id=order_id,
+            #     total_fee=int(package_info["price"] * 100),  # 单位：分
+            #     body=f"算力充值-{package_info['computing_power']}算力",
+            #     user_id=request.user_id
+            # )
+            pass
+        
+        # TODO: 保存订单记录到数据库
+        # order_record = {
+        #     "order_id": order_id,
+        #     "user_id": request.user_id,
+        #     "package_id": request.package_id,
+        #     "computing_power": package_info["computing_power"],
+        #     "price": package_info["price"],
+        #     "status": 0,  # 0-待支付
+        #     "created_at": datetime.now()
+        # }
+        # save_order_to_database(order_record)
+        
+        logger.info(f"Created payment order {order_id} for user {request.user_id}, package {request.package_id}")
+        
+        # 返回模拟数据（实际应返回微信支付二维码）
+        return JSONResponse({
+            "success": True,
+            "order_id": order_id,
+            "package_id": request.package_id,
+            "computing_power": package_info["computing_power"],
+            "price": package_info["price"],
+            "qr_code_url": f"https://example.com/qrcode/{order_id}",  # TODO: 替换为真实的微信支付二维码URL
+            "message": "订单创建成功，请扫码支付"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create wechat payment: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"创建支付订单失败: {str(e)}")
+
+
+@app.post("/api/recharge/wechat-callback")
+async def wechat_payment_callback(request: Request):
+    """
+    微信支付回调接口
+    
+    接收微信支付成功后的异步通知
+    
+    TODO: 实现具体的回调处理逻辑
+    - 验证微信签名
+    - 解析支付结果
+    - 更新订单状态
+    - 增加用户算力
+    - 返回成功响应给微信
+    """
+    try:
+        # TODO: 获取微信回调数据
+        # body = await request.body()
+        # callback_data = parse_wechat_callback(body)
+        
+        # TODO: 验证签名
+        # if not verify_wechat_signature(callback_data):
+        #     raise HTTPException(status_code=400, detail="Invalid signature")
+        
+        # TODO: 获取订单信息
+        # order_id = callback_data.get("out_trade_no")
+        # transaction_id = callback_data.get("transaction_id")
+        # result_code = callback_data.get("result_code")
+        
+        # TODO: 如果支付成功，增加用户算力
+        # if result_code == "SUCCESS":
+        #     order = get_order_from_database(order_id)
+        #     if order and order["status"] == 0:  # 待支付状态
+        #         # 增加用户算力
+        #         add_computing_power(
+        #             user_id=order["user_id"],
+        #             computing_power=order["computing_power"],
+        #             order_id=order_id
+        #         )
+        #         # 更新订单状态
+        #         update_order_status(order_id, status=1)  # 1-已支付
+        
+        logger.info("Received wechat payment callback")
+        
+        # TODO: 返回微信要求的XML格式响应
+        return JSONResponse({
+            "return_code": "SUCCESS",
+            "return_msg": "OK"
+        })
+        
+    except Exception as e:
+        logger.error(f"Wechat payment callback failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse({
+            "return_code": "FAIL",
+            "return_msg": str(e)
+        })
 
 
 # Serve upload directory for static file access
