@@ -6,7 +6,14 @@ async function generateShotFrameVideo(nodeId, node){
   }
 
   const generateBtn = document.querySelector(`.node[data-node-id="${nodeId}"] .shot-frame-generate-video-btn`);
+  const errorEl = document.querySelector(`.node[data-node-id="${nodeId}"] .shot-frame-video-error`);
   if(!generateBtn) return;
+
+  // 清除之前的错误信息
+  if(errorEl){
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  }
 
   try {
     generateBtn.disabled = true;
@@ -15,7 +22,7 @@ async function generateShotFrameVideo(nodeId, node){
     // 获取预览图的URL
     const imageUrl = node.data.previewImageUrl;
     
-    // 直接使用视频提示词的JSON字符串
+    // 使用JSON格式的视频提示词（用于API调用）
     const videoPrompt = node.data.videoPrompt || '{}';
     const duration = node.data.videoDuration || 15;
     const count = node.data.videoDrawCount || 1;
@@ -85,7 +92,12 @@ async function generateShotFrameVideo(nodeId, node){
         console.log('Extracted video URLs:', videoUrls);
         
         if(videoUrls.length === 0){
-          showToast('视频生成失败，未获取到结果', 'error');
+          const errorMsg = '视频生成失败，未获取到结果';
+          showToast(errorMsg, 'error');
+          if(errorEl){
+            errorEl.textContent = errorMsg;
+            errorEl.style.display = 'block';
+          }
           generateBtn.disabled = false;
           generateBtn.textContent = '生成视频';
           return;
@@ -146,7 +158,12 @@ async function generateShotFrameVideo(nodeId, node){
         try{ autoSaveWorkflow(); } catch(e){ console.error('Auto save failed:', e); }
       },
       (error) => {
-        showToast(`生成失败: ${error}`, 'error');
+        const errorMsg = `生成失败: ${error}`;
+        showToast(errorMsg, 'error');
+        if(errorEl){
+          errorEl.textContent = errorMsg;
+          errorEl.style.display = 'block';
+        }
         generateBtn.disabled = false;
         generateBtn.textContent = '生成视频';
       }
@@ -154,7 +171,12 @@ async function generateShotFrameVideo(nodeId, node){
     
   } catch(error){
     console.error('生成分镜视频失败:', error);
-    showToast(`生成失败: ${error.message || error}`, 'error');
+    const errorMsg = `生成失败: ${error.message || error}`;
+    showToast(errorMsg, 'error');
+    if(errorEl){
+      errorEl.textContent = errorMsg;
+      errorEl.style.display = 'block';
+    }
     generateBtn.disabled = false;
     generateBtn.textContent = '生成视频';
   }

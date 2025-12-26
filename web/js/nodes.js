@@ -3427,6 +3427,60 @@
       showToast('已创建合并分镜节点', 'success');
     }
 
+    // 将视频提示词JSON转换为可读文本格式
+    function convertVideoPromptToText(jsonString){
+      try {
+        const data = JSON.parse(jsonString);
+        
+        // 如果是数组（合并分镜模式）
+        if(Array.isArray(data)){
+          return data.map((shot, index) => {
+            let text = `【镜头${index + 1}】\n`;
+            if(shot.duration) text += `时长：${shot.duration}秒\n`;
+            if(shot.time_of_day) text += `时间：${shot.time_of_day}\n`;
+            if(shot.weather) text += `天气：${shot.weather}\n`;
+            if(shot.location_name) text += `场景：${shot.location_name}\n`;
+            if(shot.shot_type) text += `镜头类型：${shot.shot_type}\n`;
+            if(shot.camera_movement) text += `运镜：${shot.camera_movement}\n`;
+            if(shot.description) text += `描述：${shot.description}\n`;
+            if(shot.scene_detail) text += `场景细节：${shot.scene_detail}\n`;
+            if(shot.action) text += `动作：${shot.action}\n`;
+            if(shot.mood) text += `情绪：${shot.mood}\n`;
+            if(shot.dialogue && Array.isArray(shot.dialogue) && shot.dialogue.length > 0){
+              text += `对话：${shot.dialogue.map(d => `${d.character_name}: ${d.text}`).join('; ')}\n`;
+            }
+            if(shot.audio_notes) text += `音频备注：${shot.audio_notes}\n`;
+            if(shot.environment_sound) text += `环境音：${shot.environment_sound}\n`;
+            if(shot.background_music) text += `背景音乐：${shot.background_music}\n`;
+            return text;
+          }).join('\n');
+        }
+        
+        // 如果是单个对象（独立分镜模式）
+        let text = '';
+        if(data.duration) text += `时长：${data.duration}秒\n`;
+        if(data.time_of_day) text += `时间：${data.time_of_day}\n`;
+        if(data.weather) text += `天气：${data.weather}\n`;
+        if(data.location_name) text += `场景：${data.location_name}\n`;
+        if(data.shot_type) text += `镜头类型：${data.shot_type}\n`;
+        if(data.camera_movement) text += `运镜：${data.camera_movement}\n`;
+        if(data.description) text += `描述：${data.description}\n`;
+        if(data.scene_detail) text += `场景细节：${data.scene_detail}\n`;
+        if(data.action) text += `动作：${data.action}\n`;
+        if(data.mood) text += `情绪：${data.mood}\n`;
+        if(data.dialogue && Array.isArray(data.dialogue) && data.dialogue.length > 0){
+          text += `对话：${data.dialogue.map(d => `${d.character_name}: ${d.text}`).join('; ')}\n`;
+        }
+        if(data.audio_notes) text += `音频备注：${data.audio_notes}\n`;
+        if(data.environment_sound) text += `环境音：${data.environment_sound}\n`;
+        if(data.background_music) text += `背景音乐：${data.background_music}\n`;
+        return text;
+      } catch(e){
+        console.error('Failed to convert video prompt to text:', e);
+        return jsonString;
+      }
+    }
+
     // 分镜图节点
     function createShotFrameNode(opts){
       const id = state.nextNodeId++;
@@ -3454,7 +3508,7 @@
         }
       }
       
-      // 构建视频提示词
+      // 构建视频提示词JSON（用于API调用）
       let videoPromptJson;
       if(shotData.isMerged && shotData.shots){
         // 合并分镜模式：过滤每个shot的无用字段
@@ -3494,6 +3548,9 @@
         videoPromptJson = JSON.stringify(filteredShotData, null, 2);
       }
       
+      // 将JSON转换为可读文本格式
+      const videoPromptText = convertVideoPromptToText(videoPromptJson);
+      
       const node = {
         id,
         type: 'shot_frame',
@@ -3504,6 +3561,7 @@
           shotId: shotData.shot_id || '',
           imagePrompt: imagePrompt,
           videoPrompt: videoPromptJson,
+          videoPromptText: videoPromptText,
           duration: shotData.duration || 0,
           shotType: shotData.shot_type || '',
           cameraMovement: shotData.camera_movement || '',
@@ -3547,7 +3605,7 @@
           </div>
           <div class="field">
             <div class="label">视频提示词</div>
-            <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPrompt)}</textarea>
+            <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPromptText || node.data.videoPrompt)}</textarea>
           </div>
           <div class="field shot-frame-image-field" style="display:${node.data.imageUrl ? 'block' : 'none'};">
             <div class="label">生成的图片</div>
@@ -3609,6 +3667,7 @@
               </div>
             </div>
             <div class="gen-meta shot-frame-video-draw-count-label"></div>
+            <div class="shot-frame-video-error" style="display: none; margin-top: 8px; padding: 8px; background: #fee; border: 1px solid #fcc; border-radius: 6px; color: #c33; font-size: 12px; word-break: break-word;"></div>
           </div>
         </div>
       `;
@@ -3900,7 +3959,7 @@
       });
 
       videoPromptEl.addEventListener('input', () => {
-        node.data.videoPrompt = videoPromptEl.value;
+        node.data.videoPromptText = videoPromptEl.value;
       });
 
       generateBtn.addEventListener('click', async (e) => {
