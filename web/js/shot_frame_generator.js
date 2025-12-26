@@ -1,3 +1,48 @@
+// 计算合并分镜的最佳比例
+function calculateMergedShotRatio(shotCount, canvasRatio) {
+  if (!shotCount || shotCount <= 0) {
+    return '1:1';
+  }
+
+  const availableRatios = [
+    { name: '16:9', width: 16, height: 9 },
+    { name: '4:3', width: 4, height: 3 },
+    { name: '1:1', width: 1, height: 1 },
+    { name: '3:4', width: 3, height: 4 },
+    { name: '9:16', width: 9, height: 16 }
+  ];
+
+  const canvasRatioObj = availableRatios.find(r => r.name === canvasRatio) || { width: 16, height: 9 };
+  
+  const isVerticalStacking = canvasRatioObj.width >= canvasRatioObj.height;
+  
+  let mergedWidth, mergedHeight;
+  if (isVerticalStacking) {
+    mergedWidth = canvasRatioObj.width;
+    mergedHeight = canvasRatioObj.height * shotCount;
+  } else {
+    mergedWidth = canvasRatioObj.width * shotCount;
+    mergedHeight = canvasRatioObj.height;
+  }
+  
+  const mergedAspectRatio = mergedWidth / mergedHeight;
+  
+  let closestRatio = availableRatios[0];
+  let minDifference = Math.abs(mergedAspectRatio - (closestRatio.width / closestRatio.height));
+  
+  for (const ratio of availableRatios) {
+    const ratioValue = ratio.width / ratio.height;
+    const difference = Math.abs(mergedAspectRatio - ratioValue);
+    
+    if (difference < minDifference) {
+      minDifference = difference;
+      closestRatio = ratio;
+    }
+  }
+  
+  return closestRatio.name;
+}
+
 // 生成分镜图功能
 async function generateShotFrameImage(nodeId, node){
   const generateBtn = document.querySelector(`.node[data-node-id="${nodeId}"] .shot-frame-generate-btn`);
@@ -149,8 +194,19 @@ async function generateShotFrameImage(nodeId, node){
     });
     
     form.append('prompt', finalPrompt);
-    // 合并分镜使用1:1比例，独立分镜使用16:9
-    const ratio = isMerged ? '1:1' : '16:9';
+    
+    let ratio;
+    if (isMerged) {
+      const canvasRatio = state.ratio || '16:9';
+      const mergedShots = shotData.mergedShots || [];
+      const shotCount = mergedShots.length || 1;
+      ratio = calculateMergedShotRatio(shotCount, canvasRatio);
+      console.log(`Merged shot frame: ${shotCount} shots with canvas ratio ${canvasRatio} -> using ratio ${ratio}`);
+    } else {
+      const canvasRatio = state.ratio || '16:9';
+      ratio = canvasRatio;
+    }
+    
     form.append('ratio', ratio);
     form.append('count', node.data.drawCount || 1);
     form.append('model', node.data.model || 'gemini-2.5-pro-image-preview');
