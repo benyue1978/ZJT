@@ -848,4 +848,171 @@
       try{ autoSaveWorkflow(); } catch(e){}
     }
     
+    // Cookie工具函数
+    function setCookie(name, value, days) {
+      const expires = new Date();
+      expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+      document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/`;
+    }
+    
+    function getCookie(name) {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for(let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+      }
+      return null;
+    }
+    
+    // 导出时间轴到剪影草稿
+    function exportTimelineToDraft() {
+      if (!state.timeline.clips || state.timeline.clips.length === 0) {
+        showToast('时间轴为空，无法导出', 'error');
+        return;
+      }
+      
+      // 从cookie获取上次保存的路径
+      const savedPath = getCookie('jianying_draft_path') || '';
+      
+      // 创建输入对话框
+      const dialog = document.createElement('div');
+      dialog.className = 'modal show';
+      dialog.innerHTML = `
+        <div class="modal-card" style="max-width: 700px; background: white;">
+          <div class="modal-header" style="background: white; border-bottom: 1px solid #e5e7eb;">
+            <div class="modal-title" style="color: #111827;">导出剪影草稿</div>
+            <button class="modal-close" type="button" aria-label="关闭">×</button>
+          </div>
+          <div class="modal-body" style="padding: 20px; background: white;">
+            <div style="margin-bottom: 20px;">
+              <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #111827;">剪影草稿路径前缀</label>
+              <input type="text" id="draftPathInput" class="input" 
+                     value="${savedPath}"
+                     placeholder="例如: C:\\Users\\Administrator\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft"
+                     style="width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: white; color: #111827;">
+              <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
+                提示: 请输入剪影草稿的完整路径前缀，草稿将以此作为路径。后续你只需要将草稿导入该路径后，就可以直接打开使用。
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+              <div style="font-weight: 500; margin-bottom: 12px; color: #111827;">如何获取剪影草稿路径：</div>
+              <div style="margin-bottom: 12px;">
+                <img src="http://ailive.perseids.cn/upload/assert/how_to_get_jianying_draft_path.jpg" 
+                     alt="如何获取剪影草稿路径" 
+                     style="width: 60%; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer;"
+                     onclick="window.open(this.src, '_blank')">
+              </div>
+              <div style="margin-bottom: 12px;">
+                <img src="http://ailive.perseids.cn/upload/assert/where_is_jianying_draft_path.png" 
+                     alt="剪影草稿路径位置" 
+                     style="width: 60%; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer;"
+                     onclick="window.open(this.src, '_blank')">
+              </div>
+            </div>
+            
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button class="mini-btn btn-secondary" id="cancelExportBtn" type="button">取消</button>
+              <button class="btn btn-primary" id="confirmExportBtn" type="button">开始导出</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(dialog);
+      
+      const pathInput = dialog.querySelector('#draftPathInput');
+      const confirmBtn = dialog.querySelector('#confirmExportBtn');
+      const cancelBtn = dialog.querySelector('#cancelExportBtn');
+      
+      const closeDialog = () => {
+        dialog.classList.remove('show');
+        setTimeout(() => dialog.remove(), 300);
+      };
+      
+      cancelBtn.addEventListener('click', closeDialog);
+      dialog.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', closeDialog);
+      });
+      
+      confirmBtn.addEventListener('click', async () => {
+        const draftPath = pathInput.value.trim();
+        if (!draftPath) {
+          showToast('请输入草稿路径', 'error');
+          return;
+        }
+        
+        // 保存路径到cookie，有效期3个月（90天）
+        setCookie('jianying_draft_path', draftPath, 90);
+        
+        closeDialog();
+        
+        // 准备时间轴数据
+        const sortedClips = [...state.timeline.clips].sort((a, b) => a.order - b.order);
+        const timelineData = sortedClips.map(clip => ({
+          url: clip.url,
+          name: clip.name,
+          duration: clip.duration,
+          startTime: clip.startTime || 0,
+          endTime: clip.endTime || clip.duration
+        }));
+        
+        // 获取工作流名称
+        const workflowName = document.querySelector('.brand-title')?.textContent || '未命名工作流';
+        
+        try {
+          showToast('正在导出草稿，请稍候...', 'info');
+          
+          const response = await fetch('/api/export_timeline_draft', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-User-Id': window.USER_ID || '1'
+            },
+            body: JSON.stringify({
+              draft_path: draftPath,
+              timeline_clips: timelineData,
+              workflow_name: workflowName
+            })
+          });
+          
+          const result = await response.json();
+          console.log('导出结果:', result);
+          
+          if (response.ok && result.success) {
+            showToast('草稿导出成功，正在下载...', 'success');
+            
+            // 自动触发下载
+            if (result.download_url) {
+              console.log('下载URL:', result.download_url);
+              console.log('文件名:', result.zip_filename);
+              
+              // 使用window.location.href直接下载，更可靠
+              window.location.href = result.download_url;
+              
+              setTimeout(() => {
+                showToast('草稿已下载: ' + result.zip_filename, 'success');
+              }, 1000);
+            } else {
+              console.warn('没有返回下载URL');
+              showToast('草稿导出成功，但未返回下载链接', 'warning');
+            }
+          } else {
+            showToast('导出失败: ' + (result.error || '未知错误'), 'error');
+          }
+        } catch (error) {
+          console.error('导出草稿失败:', error);
+          showToast('导出失败: ' + error.message, 'error');
+        }
+      });
+      
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+          closeDialog();
+        }
+      });
+    }
+    
     // ============ 时间轴功能结束 ============

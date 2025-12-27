@@ -5,3 +5,5 @@ python-multipart==0.0.9
 pyyaml==6.0.1
 openai>=1.0.0
 httpx>=0.24.0
+# 草稿导出
+pyJianYingDraft>=0.2.5

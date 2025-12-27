@@ -3697,6 +3697,247 @@ async def update_location(
         )
 
 
+class ExportTimelineDraftRequest(BaseModel):
+    draft_path: str
+    timeline_clips: List[dict]
+    workflow_name: Optional[str] = "未命名工作流"
+
+
+@app.post('/api/export_timeline_draft')
+async def export_timeline_draft(
+    request: ExportTimelineDraftRequest,
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    导出时间轴到剪影草稿
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        if not request.timeline_clips or len(request.timeline_clips) == 0:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'error': '时间轴为空，无法导出'
+                }
+            )
+        
+        # 导入jianying库
+        import sys
+        jianying_path = os.path.join(APP_DIR, 'jianying', 'src')
+        if jianying_path not in sys.path:
+            sys.path.insert(0, jianying_path)
+        
+        from core import JianyingMultiTrackLibrary
+        from draft_generator import DraftGenerator
+        from utils import seconds_to_microseconds
+        
+        # 生成唯一的草稿名称（使用工作流名称作为前缀）
+        # 清理工作流名称，移除不适合文件名的字符
+        safe_workflow_name = "".join(c for c in request.workflow_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_workflow_name = safe_workflow_name.replace(' ', '_') or 'workflow'
+        draft_name = f"{safe_workflow_name}_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # 创建临时下载目录（使用/tmp目录，按日期分组）
+        date_folder = datetime.now().strftime('%Y-%m-%d')
+        temp_download_dir = os.path.join('/tmp', 'jianying_export', date_folder, draft_name)
+        os.makedirs(temp_download_dir, exist_ok=True)
+        
+        logger.info(f"开始导出草稿: {draft_name}")
+        logger.info(f"临时下载目录: {temp_download_dir}")
+        logger.info(f"草稿路径前缀: {request.draft_path}")
+        
+        # 下载所有视频
+        downloaded_files = []
+        for idx, clip in enumerate(request.timeline_clips):
+            video_url = clip.get('url')
+            video_name = clip.get('name', f'video_{idx}')
+            
+            if not video_url:
+                logger.warning(f"跳过没有URL的片段: {video_name}")
+                continue
+            
+            try:
+                logger.info(f"正在下载视频 {idx + 1}/{len(request.timeline_clips)}: {video_name}")
+                
+                # 下载视频
+                response = requests.get(video_url, stream=True, timeout=300)
+                response.raise_for_status()
+                
+                # 确定文件扩展名
+                file_ext = '.mp4'
+                if 'content-type' in response.headers:
+                    content_type = response.headers['content-type']
+                    if 'video/quicktime' in content_type or video_url.endswith('.mov'):
+                        file_ext = '.mov'
+                    elif 'video/x-msvideo' in content_type or video_url.endswith('.avi'):
+                        file_ext = '.avi'
+                
+                # 保存文件
+                safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
+                file_path = os.path.join(temp_download_dir, safe_name)
+                
+                with open(file_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                
+                logger.info(f"视频下载完成: {safe_name}")
+                
+                downloaded_files.append({
+                    'file_path': file_path,
+                    'clip': clip,
+                    'filename': safe_name
+                })
+                
+            except Exception as e:
+                logger.error(f"下载视频失败 {video_name}: {e}")
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        'success': False,
+                        'error': f'下载视频失败: {video_name} - {str(e)}'
+                    }
+                )
+        
+        if not downloaded_files:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'success': False,
+                    'error': '没有成功下载任何视频'
+                }
+            )
+        
+        # 创建剪影草稿
+        logger.info("开始生成剪影草稿...")
+        
+        # 创建库实例
+        library = JianyingMultiTrackLibrary(
+            draft_name=draft_name,
+            output_dir=request.draft_path
+        )
+        
+        # 创建视频轨道
+        video_track = library.create_video_track("主轨道")
+        
+        # 添加视频片段到轨道
+        current_time = 0
+        for item in downloaded_files:
+            clip = item['clip']
+            file_path = item['file_path']
+            
+            # 获取视频时长
+            duration = library.get_media_duration(file_path)
+            
+            # 计算剪切后的时长
+            start_time = clip.get('startTime', 0)
+            end_time = clip.get('endTime', clip.get('duration', 0))
+            
+            # 转换为微秒
+            source_start = seconds_to_microseconds(start_time)
+            clip_duration = seconds_to_microseconds(end_time - start_time)
+            
+            # 添加到轨道
+            library.add_video_to_track(
+                track_id=video_track,
+                file_path=file_path,
+                start_time=seconds_to_microseconds(current_time),
+                duration=clip_duration,
+                source_start=source_start
+            )
+            
+            current_time += (end_time - start_time)
+        
+        # 生成草稿
+        generator = DraftGenerator(library)
+        draft_path = generator.generate_draft(
+            copy_media_files=True,
+            media_source_dir=temp_download_dir
+        )
+        
+        logger.info(f"草稿生成成功: {draft_path}")
+        
+        # 创建导入指南HTML文件（从模板读取）
+        template_path = os.path.join(APP_DIR, 'templates', 'jianying_import_guide.html')
+        with open(template_path, 'r', encoding='utf-8') as f:
+            html_guide_content = f.read()
+        
+        # 将HTML文件写入草稿的父目录（与草稿文件夹同级）
+        html_guide_path = os.path.join(os.path.dirname(draft_path), "如何导入到剪影.html")
+        with open(html_guide_path, 'w', encoding='utf-8') as f:
+            f.write(html_guide_content)
+        logger.info(f"已创建导入指南: {html_guide_path}")
+        
+        # 创建草稿压缩包
+        logger.info("开始创建草稿压缩包...")
+        # 使用日期分组目录
+        draft_upload_dir = os.path.join(UPLOAD_DIR, 'draft', date_folder)
+        os.makedirs(draft_upload_dir, exist_ok=True)
+        
+        zip_filename = f"{draft_name}.zip"
+        zip_path = os.path.join(draft_upload_dir, zip_filename)
+        
+        import shutil
+        import zipfile
+        
+        # 手动创建压缩包，包含HTML指南和草稿文件夹
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 添加HTML指南到压缩包根目录
+            zipf.write(html_guide_path, "如何导入到剪影.html")
+            
+            # 添加草稿文件夹及其所有内容
+            for root, dirs, files in os.walk(draft_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.join(os.path.basename(draft_path), os.path.relpath(file_path, draft_path))
+                    zipf.write(file_path, arcname)
+        
+        logger.info(f"压缩包已创建: {zip_path}")
+        
+        # 生成下载URL（包含日期路径）
+        download_url = f"{SERVER_HOST}/upload/draft/{date_folder}/{zip_filename}"
+        logger.info(f"下载地址: {download_url}")
+        
+        # 清理临时文件
+        try:
+            shutil.rmtree(temp_download_dir)
+            logger.info("临时下载文件已清理")
+        except Exception as e:
+            logger.warning(f"清理临时文件失败: {e}")
+        
+        # 清理生成的草稿目录（因为已经打包）
+        try:
+            shutil.rmtree(draft_path)
+            logger.info("草稿临时目录已清理")
+        except Exception as e:
+            logger.warning(f"清理草稿目录失败: {e}")
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'success': True,
+                'draft_name': draft_name,
+                'draft_path': draft_path,
+                'video_count': len(downloaded_files),
+                'download_url': download_url,
+                'zip_filename': zip_filename
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"导出草稿失败: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'error': str(e)
+            }
+        )
+
+
 @app.get("/video-workflow-list")
 async def serve_video_workflow_list():
     file_path = os.path.join(static_dir, "video_workflow_list.html")

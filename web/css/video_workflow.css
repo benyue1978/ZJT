@@ -818,6 +818,27 @@ textarea:focus{ border-color: var(--primary); }
 .mini-btn + .mini-btn{
   margin-left: 8px;
 }
+.mini-btn.btn-success{
+  background: #10b981;
+  color: white;
+  border-color: #059669;
+}
+.mini-btn.btn-success:hover{
+  background: #059669;
+  border-color: #047857;
+}
+.mini-btn.btn-danger{
+  background: #ef4444;
+  color: white;
+  border-color: #dc2626;
+}
+.mini-btn.btn-danger:hover{
+  background: #dc2626;
+  border-color: #b91c1c;
+}
+#timelineExportDraftBtn{
+  margin-right: 16px;
+}
 .shot-group-empty{
   padding: 12px;
   border-radius: 8px;
