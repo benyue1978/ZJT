@@ -1329,6 +1329,11 @@
         const fromNode = state.nodes.find(n => n.id === conn.from);
         const toNode = state.nodes.find(n => n.id === conn.to);
         
+        // 如果删除的连接涉及角色节点，更新角色卡按钮状态
+        if(fromNode && fromNode.type === 'character' && typeof updateCharacterCardButtonState === 'function'){
+          updateCharacterCardButtonState(conn.from);
+        }
+        
         // 如果是分镜节点连接到图片节点，或图片节点连接到分镜节点
         if(fromNode && fromNode.type === 'shot_frame' && fromNode.updatePreview){
           fromNode.updatePreview();
@@ -3612,7 +3617,7 @@
           <div class="field">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <div class="label" style="margin: 0;">视频提示词</div>
-              <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">优化提示词，降低违规</button>
+              <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">视频生成失败，请点此次按钮</button>
             </div>
             <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPromptText || node.data.videoPrompt)}</textarea>
           </div>
@@ -3663,6 +3668,12 @@
             </select>
           </div>
           <div class="field">
+            <div class="label">视频模型</div>
+            <select class="shot-frame-video-model">
+              <option value="sora">Sora</option>
+            </select>
+          </div>
+          <div class="field">
             <div class="btn-row" style="display: flex; gap: 8px; justify-content: flex-start;">
               <div class="gen-container">
                 <button class="gen-btn gen-btn-main shot-frame-generate-video-btn" type="button" style="background: #22c55e; color: white;">生成视频</button>
@@ -3706,6 +3717,7 @@
       const imageMenu = el.querySelector('.shot-frame-image-menu');
       const firstFramePort = el.querySelector('.first-frame-port');
       const videoDurationEl = el.querySelector('.shot-frame-video-duration');
+      const videoModelEl = el.querySelector('.shot-frame-video-model');
 
       // 设置模型选择器的初始值
       if(modelEl) modelEl.value = node.data.model;
@@ -3715,6 +3727,12 @@
         node.data.videoDuration = 15;
       }
       if(videoDurationEl) videoDurationEl.value = node.data.videoDuration;
+      
+      // 设置视频模型选择器的初始值
+      if(!node.data.videoModel){
+        node.data.videoModel = 'sora';
+      }
+      if(videoModelEl) videoModelEl.value = node.data.videoModel;
 
       // 初始化抽卡次数
       if(!node.data.drawCount){
@@ -3881,6 +3899,11 @@
       videoDurationEl.addEventListener('change', () => {
         node.data.videoDuration = Number(videoDurationEl.value);
       });
+      
+      // 视频模型选择
+      videoModelEl.addEventListener('change', () => {
+        node.data.videoModel = videoModelEl.value;
+      });
 
       // 抽卡次数选择
       genCaret.addEventListener('click', (e) => {
@@ -3984,7 +4007,7 @@
           
           try {
             reduceViolationBtn.disabled = true;
-            reduceViolationBtn.textContent = '改写中...';
+            reduceViolationBtn.textContent = '改写提示词，修改违规内容...';
             
             const response = await fetch('/api/reduce-violation', {
               method: 'POST',

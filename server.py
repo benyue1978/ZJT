@@ -3174,6 +3174,56 @@ async def get_characters(
         )
 
 
+@app.get('/api/character/search')
+async def search_character(
+    user_id: int = Query(..., description="用户ID"),
+    world_id: int = Query(..., description="世界ID"),
+    name: str = Query(..., description="角色名称")
+):
+    """
+    根据角色名称和世界ID搜索角色，返回角色的sora_character字段
+    """
+    try:
+        result = CharacterModel.list_by_world(
+            world_id=world_id,
+            page=1,
+            page_size=1,
+            keyword=name
+        )
+        
+        if result and result.get('data') and len(result['data']) > 0:
+            character = result['data'][0]
+            if character.get('name') == name:
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        'code': 0,
+                        'message': 'success',
+                        'data': character,
+                        'sora_character': character.get('sora_character')
+                    }
+                )
+        
+        return JSONResponse(
+            status_code=404,
+            content={
+                'code': -1,
+                'message': 'Character not found',
+                'data': None
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to search character: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
 @app.post('/api/characters')
 async def create_character(
     world_id: int = Form(..., description="世界ID"),
@@ -3280,6 +3330,7 @@ async def update_character(
     personality: Optional[str] = Form(None, description="性格"),
     behavior: Optional[str] = Form(None, description="行为习惯"),
     other_info: Optional[str] = Form(None, description="其他信息"),
+    sora_character: Optional[str] = Form(None, description="Sora角色卡ID"),
     reference_image: Optional[UploadFile] = File(None, description="参考图"),
     default_voice: Optional[UploadFile] = File(None, description="参考音频"),
     auth_token: str = Header(None, alias="Authorization"),
@@ -3341,6 +3392,7 @@ async def update_character(
             'personality': personality.strip() if personality else None,
             'behavior': behavior.strip() if behavior else None,
             'other_info': other_info.strip() if other_info else None,
+            'sora_character': sora_character.strip() if sora_character else None,
         }
         
         if image_path:

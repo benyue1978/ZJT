@@ -500,6 +500,12 @@
                 from: state.connecting.fromId,
                 to: nearestPort.nodeId
               });
+              
+              // 如果连接涉及角色节点，更新角色卡按钮状态
+              const fromNode = state.nodes.find(n => n.id === state.connecting.fromId);
+              if(fromNode && fromNode.type === 'character'){
+                updateCharacterCardButtonState(state.connecting.fromId);
+              }
             }
           }
         }
@@ -838,8 +844,13 @@
           ${character.other_info ? `<div class="field"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
           <div class="field btn-row">
             <button class="mini-btn character-edit-btn" type="button">编辑</button>
-            <button class="mini-btn character-sora-video-btn" type="button" style="background: #8b5cf6; color: white;">生成sora角色视频</button>
+            <button class="mini-btn character-sora-video-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #8b5cf6; color: white;'}">${character.sora_character ? '重新生成sora角色视频' : '生成sora角色视频'}</button>
           </div>
+          <div class="field btn-row" style="display: flex; align-items: center; gap: 8px;">
+            <button class="mini-btn character-create-card-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #10b981; color: white;'} opacity: 0.5; cursor: not-allowed;" data-can-click="false">${character.sora_character ? '重新生成sora角色卡' : '创建sora角色卡'}</button>
+            <span class="character-card-help-icon" style="display: none; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; color: white; font-size: 12px; line-height: 16px; text-align: center; cursor: help; flex-shrink: 0;" title="如果角色持续创建失败，请尝试更改角色图片 并 重新生成角色视频">?</span>
+          </div>
+          <div class="character-sora-video-error" style="display: none; color: #dc2626; font-size: 12px; margin-top: 8px; padding: 8px; background: #fee2e2; border-radius: 6px; border: 1px solid #fecaca;"></div>
         </div>
         <div class="port output" data-port="output" title="输出"></div>
       `;
@@ -851,6 +862,8 @@
       const deleteBtn = el.querySelector('[data-action="delete"]');
       const editBtn = el.querySelector('.character-edit-btn');
       const soraVideoBtn = el.querySelector('.character-sora-video-btn');
+      const createCardBtn = el.querySelector('.character-create-card-btn');
+      const helpIcon = el.querySelector('.character-card-help-icon');
       const outputPort = el.querySelector('.port.output');
       
       deleteBtn.addEventListener('click', (e) => {
@@ -867,6 +880,23 @@
         e.stopPropagation();
         generateSoraCharacterVideo(id, character);
       });
+      
+      createCardBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const canClick = createCardBtn.getAttribute('data-can-click') === 'true';
+        if (!canClick) {
+          showToast('请先生成角色视频，按钮会自动启用', 'warning');
+          return;
+        }
+        createSoraCharacterCard(id, character);
+      });
+      
+      if (helpIcon) {
+        helpIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showToast('如果角色持续创建失败，请尝试更改角色图片并重新生成角色视频', 'info');
+        });
+      }
       
       el.addEventListener('mousedown', (e) => {
         if(e.target.classList.contains('port')) return;
@@ -942,8 +972,13 @@
           ${character.other_info ? `<div class="field"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
           <div class="field btn-row">
             <button class="mini-btn character-edit-btn" type="button">编辑</button>
-            <button class="mini-btn character-sora-video-btn" type="button" style="background: #8b5cf6; color: white;">生成sora角色视频</button>
+            <button class="mini-btn character-sora-video-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #8b5cf6; color: white;'}">${character.sora_character ? '重新生成sora角色视频' : '生成sora角色视频'}</button>
           </div>
+          <div class="field btn-row" style="display: flex; align-items: center; gap: 8px;">
+            <button class="mini-btn character-create-card-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #10b981; color: white;'} opacity: 0.5; cursor: not-allowed;" data-can-click="false">${character.sora_character ? '重新生成sora角色卡' : '创建sora角色卡'}</button>
+            <span class="character-card-help-icon" style="display: none; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; color: white; font-size: 12px; line-height: 16px; text-align: center; cursor: help; flex-shrink: 0;" title="如果角色持续创建失败，请尝试更改角色图片 并 重新生成角色视频">?</span>
+          </div>
+          <div class="character-sora-video-error" style="display: none; color: #dc2626; font-size: 12px; margin-top: 8px; padding: 8px; background: #fee2e2; border-radius: 6px; border: 1px solid #fecaca;"></div>
         </div>
         <div class="port output" data-port="output" title="输出"></div>
       `;
@@ -955,6 +990,8 @@
       const deleteBtn = el.querySelector('[data-action="delete"]');
       const editBtn = el.querySelector('.character-edit-btn');
       const soraVideoBtn = el.querySelector('.character-sora-video-btn');
+      const createCardBtn = el.querySelector('.character-create-card-btn');
+      const helpIcon = el.querySelector('.character-card-help-icon');
       const outputPort = el.querySelector('.port.output');
       
       deleteBtn.addEventListener('click', (e) => {
@@ -971,6 +1008,23 @@
         e.stopPropagation();
         generateSoraCharacterVideo(id, character);
       });
+      
+      createCardBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const canClick = createCardBtn.getAttribute('data-can-click') === 'true';
+        if (!canClick) {
+          showToast('请先生成角色视频，按钮会自动启用', 'warning');
+          return;
+        }
+        createSoraCharacterCard(id, character);
+      });
+      
+      if (helpIcon) {
+        helpIcon.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showToast('如果角色持续创建失败，请尝试更改角色图片并重新生成角色视频', 'info');
+        });
+      }
       
       el.addEventListener('mousedown', (e) => {
         if(e.target.classList.contains('port')) return;
@@ -1835,6 +1889,7 @@
       document.getElementById('editCharacterPersonalityInput').value = character.personality || '';
       document.getElementById('editCharacterBehaviorInput').value = character.behavior || '';
       document.getElementById('editCharacterOtherInfoInput').value = character.other_info || '';
+      document.getElementById('editCharacterSoraCharacterInput').value = character.sora_character || '';
       
       const imagePreview = document.getElementById('editCharacterImagePreview');
       const imagePreviewImg = document.getElementById('editCharacterImagePreviewImg');
@@ -1865,6 +1920,7 @@
       const personalityInput = document.getElementById('editCharacterPersonalityInput');
       const behaviorInput = document.getElementById('editCharacterBehaviorInput');
       const otherInfoInput = document.getElementById('editCharacterOtherInfoInput');
+      const soraCharacterInput = document.getElementById('editCharacterSoraCharacterInput');
       const imageInput = document.getElementById('editCharacterImageInput');
       const voiceInput = document.getElementById('editCharacterVoiceInput');
       const saveBtn = document.getElementById('editCharacterSaveBtn');
@@ -1894,6 +1950,7 @@
         if (personalityInput.value.trim()) formData.append('personality', personalityInput.value.trim());
         if (behaviorInput.value.trim()) formData.append('behavior', behaviorInput.value.trim());
         if (otherInfoInput.value.trim()) formData.append('other_info', otherInfoInput.value.trim());
+        if (soraCharacterInput.value.trim()) formData.append('sora_character', soraCharacterInput.value.trim());
         if (imageInput.files.length > 0) formData.append('reference_image', imageInput.files[0]);
         if (voiceInput.files.length > 0) formData.append('default_voice', voiceInput.files[0]);
         
@@ -1913,8 +1970,74 @@
           node.data = result.data;
           node.title = result.data.name;
           
-          const el = canvasEl.querySelector(`.node[data-node-id="${currentEditingCharacterNodeId}"]`);
+          // 保存节点ID，因为稍后会清空 currentEditingCharacterNodeId
+          const savedNodeId = currentEditingCharacterNodeId;
+          
+          // 完全重新渲染节点以显示所有更新的字段
+          const el = canvasEl.querySelector(`.node[data-node-id="${savedNodeId}"]`);
           if (el) {
+            const character = result.data;
+            const nodeBody = el.querySelector('.node-body');
+            if (nodeBody) {
+              // 重新生成节点内容
+              nodeBody.innerHTML = `
+                ${character.reference_image ? `
+                  <div class="field">
+                    <div class="label">参考图</div>
+                    <img src="${character.reference_image}" class="preview" style="width: 100%; height: auto; border-radius: 8px; cursor: zoom-in;" />
+                  </div>
+                ` : ''}
+                ${character.age ? `<div class="field"><div class="label">年龄</div><div>${escapeHtml(character.age)}</div></div>` : ''}
+                ${character.identity ? `<div class="field"><div class="label">身份/职业</div><div>${escapeHtml(character.identity)}</div></div>` : ''}
+                ${character.personality ? `<div class="field"><div class="label">性格</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.personality.slice(0, 100))}${character.personality.length > 100 ? '...' : ''}</div></div>` : ''}
+                ${character.behavior ? `<div class="field"><div class="label">行为习惯</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.behavior.slice(0, 100))}${character.behavior.length > 100 ? '...' : ''}</div></div>` : ''}
+                ${character.other_info ? `<div class="field"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
+                <div class="field btn-row">
+                  <button class="mini-btn character-edit-btn" type="button">编辑</button>
+                  <button class="mini-btn character-sora-video-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #8b5cf6; color: white;'}">${character.sora_character ? '重新生成sora角色视频' : '生成sora角色视频'}</button>
+                </div>
+                <div class="field btn-row" style="display: flex; align-items: center; gap: 8px;">
+                  <button class="mini-btn character-create-card-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #10b981; color: white;'} opacity: 0.5; cursor: not-allowed;" data-can-click="false">${character.sora_character ? '重新生成sora角色卡' : '创建sora角色卡'}</button>
+                  <span class="character-card-help-icon" style="display: none; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; color: white; font-size: 12px; line-height: 16px; text-align: center; cursor: help; flex-shrink: 0;" title="如果角色持续创建失败，请尝试更改角色图片 并 重新生成角色视频">?</span>
+                </div>
+                <div class="character-sora-video-error" style="display: none; color: #dc2626; font-size: 12px; margin-top: 8px; padding: 8px; background: #fee2e2; border-radius: 6px; border: 1px solid #fecaca;"></div>
+              `;
+              
+              // 重新绑定按钮事件
+              const editBtn = nodeBody.querySelector('.character-edit-btn');
+              const soraVideoBtn = nodeBody.querySelector('.character-sora-video-btn');
+              const createCardBtn = nodeBody.querySelector('.character-create-card-btn');
+              
+              if (editBtn) {
+                editBtn.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  openCharacterEditModal(savedNodeId, character);
+                });
+              }
+              
+              if (soraVideoBtn) {
+                soraVideoBtn.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  generateSoraCharacterVideo(savedNodeId, character);
+                });
+              }
+              
+              if (createCardBtn) {
+                createCardBtn.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  const canClick = createCardBtn.getAttribute('data-can-click') === 'true';
+                  if (!canClick) {
+                    showToast('请先生成角色视频，按钮会自动启用', 'warning');
+                    return;
+                  }
+                  createSoraCharacterCard(savedNodeId, character);
+                });
+              }
+              
+              // 更新按钮状态
+              updateCharacterCardButtonState(savedNodeId);
+            }
+            
             el.querySelector('.node-title').textContent = `角色: ${result.data.name}`;
           }
           
@@ -1972,6 +2095,13 @@
       }
       
       const soraVideoBtn = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-sora-video-btn`);
+      const errorEl = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-sora-video-error`);
+      
+      if (errorEl) {
+        errorEl.style.display = 'none';
+        errorEl.textContent = '';
+      }
+      
       if (soraVideoBtn) {
         soraVideoBtn.disabled = true;
         soraVideoBtn.textContent = '生成中...';
@@ -1980,7 +2110,7 @@
       try {
         const characterName = character.name;
         const styleName = state.style.name || '默认风格';
-        const prompt = `说话：'我是${characterName}，欢迎观看我的短剧，非常感谢大家 ，谢谢！' 然后缓慢转一圈360度全方位展示身体。视频风格为 ${styleName}`;
+        const prompt = `说话："我是${characterName}，欢迎大家，非常感谢大家，欢迎大家，非常感谢大家，谢谢！" 然后缓慢转一圈360度全方位展示身体。视频风格为 ${styleName}`;
         const imageUrl = character.reference_image;
         const duration = 10;
         const ratio = state.ratio || '16:9';
@@ -2025,15 +2155,15 @@
               soraVideoBtn.textContent = msg;
             }
           },
-          (statusResult) => {
+          async (statusResult) => {
             console.log('Sora character video generation status result:', statusResult);
             
             let videoUrls = [];
+            let videoProjectId = null;
+            
             if (statusResult.tasks && Array.isArray(statusResult.tasks)) {
-              videoUrls = statusResult.tasks
-                .filter(task => task.status === 'SUCCESS' && task.result)
-                .map(task => normalizeVideoUrl(task.result))
-                .filter(Boolean);
+              const successTasks = statusResult.tasks.filter(task => task.status === 'SUCCESS' && task.result);
+              videoUrls = successTasks.map(task => normalizeVideoUrl(task.result)).filter(Boolean);
             } else {
               const rawResults = extractResultsArray(statusResult);
               videoUrls = Array.isArray(rawResults)
@@ -2041,11 +2171,21 @@
                 : [];
             }
             
+            // 使用传入的 projectIds 作为 project_id
+            if (projectIds && projectIds.length > 0) {
+              videoProjectId = projectIds[0];
+            }
+            
             console.log('Extracted video URLs:', videoUrls);
+            console.log('Video project ID:', videoProjectId);
             
             if (videoUrls.length === 0) {
               const errorMsg = 'Sora角色视频生成失败，未获取到结果';
               showToast(errorMsg, 'error');
+              if (errorEl) {
+                errorEl.textContent = errorMsg;
+                errorEl.style.display = 'block';
+              }
               if (soraVideoBtn) {
                 soraVideoBtn.disabled = false;
                 soraVideoBtn.textContent = '生成sora角色视频';
@@ -2068,6 +2208,7 @@
             if (newVideoNode) {
               newVideoNode.data.url = videoUrl;
               newVideoNode.data.name = `${characterName}角色视频`;
+              newVideoNode.data.project_id = videoProjectId;
               newVideoNode.title = newVideoNode.data.name;
               
               const newNodeEl = canvasEl.querySelector(`.node[data-node-id="${newVideoNodeId}"]`);
@@ -2092,25 +2233,35 @@
                 to: newVideoNodeId
               });
               
-              console.log(`Created Sora character video node ${newVideoNodeId} with URL:`, videoUrl);
+              // 更新角色卡按钮状态
+              updateCharacterCardButtonState(characterNodeId);
+              
+              console.log(`Created Sora character video node ${newVideoNodeId} with project_id:`, videoProjectId);
+              
+              // 延迟渲染连接，确保DOM元素已完全加载（特别是在节点很多的情况下）
+              setTimeout(() => {
+                renderConnections();
+                renderImageConnections();
+                renderFirstFrameConnections();
+                renderMinimap();
+              }, 100);
             }
             
-            renderConnections();
-            renderImageConnections();
-            renderFirstFrameConnections();
+            showToast('Sora角色视频生成成功！现在可以点击"创建sora角色卡"按钮', 'success');
+            try { autoSaveWorkflow(); } catch(e) { console.error('Auto save failed:', e); }
             
             if (soraVideoBtn) {
               soraVideoBtn.disabled = false;
               soraVideoBtn.textContent = '生成sora角色视频';
             }
-            
-            showToast('Sora角色视频生成成功！', 'success');
-            renderMinimap();
-            try { autoSaveWorkflow(); } catch(e) { console.error('Auto save failed:', e); }
           },
           (error) => {
             const errorMsg = `生成失败: ${error}`;
             showToast(errorMsg, 'error');
+            if (errorEl) {
+              errorEl.textContent = errorMsg;
+              errorEl.style.display = 'block';
+            }
             if (soraVideoBtn) {
               soraVideoBtn.disabled = false;
               soraVideoBtn.textContent = '生成sora角色视频';
@@ -2122,10 +2273,235 @@
         console.error('生成Sora角色视频失败:', error);
         const errorMsg = `生成失败: ${error.message || error}`;
         showToast(errorMsg, 'error');
+        if (errorEl) {
+          errorEl.textContent = errorMsg;
+          errorEl.style.display = 'block';
+        }
         if (soraVideoBtn) {
           soraVideoBtn.disabled = false;
           soraVideoBtn.textContent = '生成sora角色视频';
         }
+      }
+    }
+
+    // ========== 创建Sora角色卡功能 ==========
+    
+    async function createSoraCharacterCard(characterNodeId, character) {
+      if (!character || !character.name) {
+        showToast('角色信息不完整', 'error');
+        return;
+      }
+      
+      const characterNode = state.nodes.find(n => n.id === characterNodeId);
+      if (!characterNode) {
+        showToast('找不到角色节点', 'error');
+        return;
+      }
+      
+      const connectedVideoNode = findConnectedVideoNode(characterNodeId);
+      if (!connectedVideoNode) {
+        showToast('请先连接一个视频节点', 'error');
+        return;
+      }
+      
+      const videoProjectId = connectedVideoNode.data.project_id;
+      if (!videoProjectId) {
+        showToast('视频节点缺少project_id，无法创建角色卡', 'error');
+        return;
+      }
+      
+      const createCardBtn = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-create-card-btn`);
+      if (createCardBtn) {
+        createCardBtn.disabled = true;
+        createCardBtn.textContent = '创建中...';
+      }
+      
+      try {
+        showToast('正在创建角色卡...', 'info');
+        
+        const userId = localStorage.getItem('user_id') || '1';
+        const authToken = localStorage.getItem('auth_token') || '';
+        
+        const characterCardForm = new FormData();
+        characterCardForm.append('timestamps', '1,3');
+        characterCardForm.append('from_task', videoProjectId);
+        
+        if (userId) {
+          characterCardForm.append('user_id', userId);
+        }
+        if (authToken) {
+          characterCardForm.append('auth_token', authToken);
+        }
+        
+        const characterCardRes = await fetch('/api/create-character', {
+          method: 'POST',
+          body: characterCardForm
+        });
+        
+        const characterCardData = await characterCardRes.json();
+        
+        if (characterCardData.success && characterCardData.task_id) {
+          const taskId = characterCardData.task_id;
+          console.log('Character card creation task submitted:', taskId);
+          
+          showToast('角色卡创建任务已提交，正在处理...', 'info');
+          
+          if (createCardBtn) {
+            createCardBtn.textContent = '处理中...';
+          }
+          
+          // 轮询状态直到完成（10分钟超时）
+          const maxAttempts = 600;
+          let attempts = 0;
+          
+          while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            attempts++;
+            
+            try {
+              const statusUrl = `/api/character-status/${taskId}${authToken ? '?auth_token=' + authToken : ''}`;
+              const statusRes = await fetch(statusUrl);
+              const statusData = await statusRes.json();
+              
+              console.log(`Character card status check ${attempts}:`, statusData);
+              
+              if (statusData.status === 'SUCCESS') {
+                // 获取角色卡ID
+                if (statusData.characters && statusData.characters.length > 0) {
+                  const characterCardId = statusData.characters[0].id;
+                  console.log('Character card created successfully, ID:', characterCardId);
+                  
+                  // 保存角色卡ID到角色数据
+                  characterNode.data.sora_character = characterCardId;
+                  character.sora_character = characterCardId;
+                  
+                  // 更新数据库中的角色记录
+                  if (character.id) {
+                    try {
+                      const updateForm = new FormData();
+                      updateForm.append('character_id', character.id);
+                      updateForm.append('name', character.name);
+                      updateForm.append('sora_character', characterCardId);
+                      
+                      const updateResponse = await fetch('/api/characters/update', {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': localStorage.getItem('auth_token') || '',
+                          'X-User-Id': localStorage.getItem('user_id') || '1'
+                        },
+                        body: updateForm
+                      });
+                      
+                      if (updateResponse.ok) {
+                        console.log('Character sora_character updated in database');
+                      } else {
+                        console.error('Failed to update character in database');
+                      }
+                    } catch (dbError) {
+                      console.error('Error updating character in database:', dbError);
+                    }
+                  }
+                  
+                  showToast('角色卡创建成功！ID: ' + characterCardId, 'success');
+                  
+                  const helpIcon = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-card-help-icon`);
+                  if (helpIcon) {
+                    helpIcon.style.display = 'none';
+                  }
+                  
+                  try { autoSaveWorkflow(); } catch(e) { console.error('Auto save failed:', e); }
+                } else {
+                  showToast('角色卡创建完成，但未获取到角色ID', 'warning');
+                }
+                break;
+              } else if (statusData.status === 'FAILED' || statusData.status === 'ERROR') {
+                showToast('角色卡创建失败: ' + (statusData.error || '未知错误'), 'error');
+                const helpIcon = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-card-help-icon`);
+                if (helpIcon) {
+                  helpIcon.style.display = 'block';
+                }
+                break;
+              } else {
+                // 仍在处理中
+                if (createCardBtn) {
+                  createCardBtn.textContent = `处理中(${attempts}/${maxAttempts})...`;
+                }
+              }
+            } catch (statusError) {
+              console.error('Status check error:', statusError);
+              if (attempts >= maxAttempts) {
+                showToast('角色卡状态检查失败', 'error');
+              }
+            }
+          }
+          
+          if (attempts >= maxAttempts) {
+            showToast('角色卡创建超时，请稍后在编辑界面查看', 'warning');
+            const helpIcon = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-card-help-icon`);
+            if (helpIcon) {
+              helpIcon.style.display = 'block';
+            }
+          }
+        } else {
+          console.error('Character card creation failed:', characterCardData);
+          showToast('角色卡创建失败: ' + (characterCardData.message || '未知错误'), 'error');
+          const helpIcon = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-card-help-icon`);
+          if (helpIcon) {
+            helpIcon.style.display = 'block';
+          }
+        }
+      } catch (error) {
+        console.error('创建角色卡失败:', error);
+        showToast('创建角色卡失败: ' + (error.message || error), 'error');
+        const helpIcon = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-card-help-icon`);
+        if (helpIcon) {
+          helpIcon.style.display = 'block';
+        }
+      } finally {
+        updateCharacterCardButtonState(characterNodeId);
+      }
+    }
+    
+    function findConnectedVideoNode(characterNodeId) {
+      const connection = state.connections.find(conn => conn.from === characterNodeId);
+      if (!connection) return null;
+      
+      const connectedNode = state.nodes.find(n => n.id === connection.to);
+      if (connectedNode && connectedNode.type === 'video') {
+        return connectedNode;
+      }
+      
+      return null;
+    }
+    
+    function updateCharacterCardButtonState(characterNodeId) {
+      const createCardBtn = document.querySelector(`.node[data-node-id="${characterNodeId}"] .character-create-card-btn`);
+      if (!createCardBtn) return;
+      
+      const characterNode = state.nodes.find(n => n.id === characterNodeId);
+      const hasSoraCharacter = characterNode && characterNode.data && characterNode.data.sora_character;
+      const connectedVideoNode = findConnectedVideoNode(characterNodeId);
+      
+      if (hasSoraCharacter) {
+        createCardBtn.textContent = '重新生成sora角色卡';
+        createCardBtn.style.background = 'white';
+        createCardBtn.style.color = '#111827';
+        createCardBtn.style.border = '1px solid #d1d5db';
+      } else {
+        createCardBtn.textContent = '创建sora角色卡';
+        createCardBtn.style.background = '#10b981';
+        createCardBtn.style.color = 'white';
+        createCardBtn.style.border = 'none';
+      }
+      
+      if (connectedVideoNode && connectedVideoNode.data.project_id) {
+        createCardBtn.setAttribute('data-can-click', 'true');
+        createCardBtn.style.opacity = '1';
+        createCardBtn.style.cursor = 'pointer';
+      } else {
+        createCardBtn.setAttribute('data-can-click', 'false');
+        createCardBtn.style.opacity = '0.5';
+        createCardBtn.style.cursor = 'not-allowed';
       }
     }
 

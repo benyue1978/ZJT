@@ -26,6 +26,7 @@ class Character:
         self.reference_image = kwargs.get('reference_image')
         self.default_voice = kwargs.get('default_voice')
         self.emotion_voices = kwargs.get('emotion_voices')
+        self.sora_character = kwargs.get('sora_character')
         self.user_id = kwargs.get('user_id')
         self.create_time = kwargs.get('create_time')
         self.update_time = kwargs.get('update_time')
@@ -52,6 +53,7 @@ class Character:
             'reference_image': self.reference_image,
             'default_voice': self.default_voice,
             'emotion_voices': emotion_voices,
+            'sora_character': self.sora_character,
             'user_id': self.user_id,
             'create_time': self.create_time.isoformat() if self.create_time else None,
             'update_time': self.update_time.isoformat() if self.update_time else None
@@ -74,7 +76,8 @@ class CharacterModel:
         other_info: Optional[str] = None,
         reference_image: Optional[str] = None,
         default_voice: Optional[str] = None,
-        emotion_voices: Optional[Dict] = None
+        emotion_voices: Optional[Dict] = None,
+        sora_character: Optional[str] = None
     ) -> int:
         """
         Create a new character record
@@ -92,6 +95,7 @@ class CharacterModel:
             reference_image: Reference image path (optional)
             default_voice: Default voice file path (optional)
             emotion_voices: Emotion voices dict (optional)
+            sora_character: Sora character ID (optional)
         
         Returns:
             Inserted record ID
@@ -99,12 +103,12 @@ class CharacterModel:
         sql = """
             INSERT INTO `character` 
             (world_id, name, age, identity, appearance, personality, behavior, other_info, 
-             reference_image, default_voice, emotion_voices, user_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             reference_image, default_voice, emotion_voices, sora_character, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         emotion_voices_str = json.dumps(emotion_voices) if emotion_voices else None
         params = (world_id, name, age, identity, appearance, personality, behavior, other_info, reference_image,
-                 default_voice, emotion_voices_str, user_id)
+                 default_voice, emotion_voices_str, sora_character, user_id)
         
         try:
             record_id = execute_insert(sql, params)
@@ -289,7 +293,7 @@ class CharacterModel:
         """
         allowed_fields = ['world_id', 'name', 'age', 'occupation', 'identity', 
                          'appearance', 'personality', 'behavior_habits', 'other_info',
-                         'reference_image', 'default_voice', 'emotion_voices']
+                         'reference_image', 'default_voice', 'emotion_voices', 'sora_character']
         
         update_fields = []
         params = []
