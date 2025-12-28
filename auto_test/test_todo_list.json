@@ -4707,6 +4707,100 @@
               "remark": ""
             }
           ]
+        },
+        {
+          "id": "timeline_016",
+          "name": "导出时间轴到剪影草稿",
+          "description": "验证用户可以将时间轴中的视频导出为剪影草稿，系统自动下载视频并生成草稿文件",
+          "priority": "P1",
+          "page_url": "/video-workflow",
+          "api_endpoint": "POST /api/export_timeline_draft",
+          "pass": false,
+          "remark": "",
+          "test_steps": [
+            {
+              "step": 1,
+              "action": "添加多个视频到时间轴",
+              "operation": "添加2-3个视频到时间轴",
+              "expected_result": "时间轴显示多个视频片段",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 2,
+              "action": "获取快照找到导出草稿按钮",
+              "mcp_tool": "mcp1_browser_snapshot",
+              "mcp_params": {},
+              "verify": "时间轴头部包含「导出草稿」按钮，位于清空按钮和收起按钮之间，记录其 ref",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 3,
+              "action": "点击导出草稿按钮",
+              "mcp_tool": "mcp1_browser_click",
+              "mcp_params": {
+                "element": "导出草稿按钮",
+                "ref": "<导出草稿按钮ref>"
+              },
+              "expected_result": "弹出导出草稿对话框",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 4,
+              "action": "验证对话框内容",
+              "mcp_tool": "mcp1_browser_snapshot",
+              "mcp_params": {},
+              "verify": "对话框包含标题「导出剪影草稿」、输入框（带占位符提示路径格式）、提示文字、取消按钮、开始导出按钮",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 5,
+              "action": "输入草稿路径",
+              "mcp_tool": "mcp1_browser_type",
+              "mcp_params": {
+                "element": "草稿路径输入框",
+                "ref": "<draftPathInput ref>",
+                "text": "C:\\Users\\Administrator\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft"
+              },
+              "expected_result": "路径输入成功",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 6,
+              "action": "点击开始导出按钮",
+              "mcp_tool": "mcp1_browser_click",
+              "mcp_params": {
+                "element": "开始导出按钮",
+                "ref": "<confirmExportBtn ref>"
+              },
+              "expected_result": "对话框关闭，显示导出进度提示",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 7,
+              "action": "等待导出成功提示",
+              "mcp_tool": "mcp1_browser_wait_for",
+              "mcp_params": {
+                "text": "草稿导出成功",
+                "time": 60
+              },
+              "expected_result": "显示导出成功提示，包含草稿名称",
+              "pass": false,
+              "remark": ""
+            },
+            {
+              "step": 8,
+              "action": "验证API请求",
+              "verify": "发送POST请求到 /api/export_timeline_draft，包含draft_path和timeline_clips数据",
+              "pass": false,
+              "remark": ""
+            }
+          ]
         }
       ]
     },

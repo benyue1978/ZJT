@@ -36,6 +36,15 @@ def _get_user_id_from_header(user_id: Optional[int]) -> int:
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="invalid user_id")
 
+
+def _ensure_world_owner(world_id: int, user_id: int):
+    world = WorldModel.get_by_id(world_id)
+    if not world:
+        raise HTTPException(status_code=404, detail="世界不存在")
+    if getattr(world, 'user_id', None) != user_id:
+        raise HTTPException(status_code=403, detail="无权访问该世界")
+    return world
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
 COMFYUI_OUTPUT_PATH = '/mnt/disk/ComfyUI/server_output'
@@ -3739,12 +3748,16 @@ async def export_timeline_draft(
         safe_workflow_name = safe_workflow_name.replace(' ', '_') or 'workflow'
         draft_name = f"{safe_workflow_name}_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 创建临时下载目录（使用/tmp目录，按日期分组）
+        # 创建临时目录（使用/tmp目录，按日期分组）
         date_folder = datetime.now().strftime('%Y-%m-%d')
-        temp_download_dir = os.path.join('/tmp', 'jianying_export', date_folder, draft_name)
+        base_temp_dir = os.path.join('/tmp', 'jianying_export', date_folder, draft_name)
+        temp_download_dir = os.path.join(base_temp_dir, 'downloads')
+        local_draft_parent = os.path.join(base_temp_dir, 'draft_output')
         os.makedirs(temp_download_dir, exist_ok=True)
+        os.makedirs(local_draft_parent, exist_ok=True)
         
         logger.info(f"开始导出草稿: {draft_name}")
+        logger.info(f"临时基础目录: {base_temp_dir}")
         logger.info(f"临时下载目录: {temp_download_dir}")
         logger.info(f"草稿路径前缀: {request.draft_path}")
         
@@ -3816,7 +3829,8 @@ async def export_timeline_draft(
         # 创建库实例
         library = JianyingMultiTrackLibrary(
             draft_name=draft_name,
-            output_dir=request.draft_path
+            output_dir=local_draft_parent,
+            material_path_prefix=request.draft_path
         )
         
         # 创建视频轨道

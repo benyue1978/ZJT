@@ -40,11 +40,6 @@
       addMenu.classList.remove('show');
     });
 
-    document.getElementById('menuAddAsset').addEventListener('click', () => {
-      // 素材库 - 空实现
-      addMenu.classList.remove('show');
-    });
-
     document.getElementById('menuAddShotGroup').addEventListener('click', () => {
       const shotGroupData = {
         group_id: `grp_${Date.now()}`,
@@ -637,11 +632,19 @@
     
     // 加载世界列表到选择器
     async function loadWorldsToSelect(selectElement) {
+      const authToken = getAuthToken();
+      const userId = getUserId();
+      
+      if (!authToken || !userId) {
+        showToast('请先登录后再操作', 'error');
+        return;
+      }
+      
       try {
         const response = await fetch('/api/worlds?page=1&page_size=100', {
           headers: {
-            'Authorization': localStorage.getItem('auth_token') || '',
-            'X-User-Id': localStorage.getItem('user_id') || '1'
+            'Authorization': authToken,
+            'X-User-Id': userId
           }
         });
         
@@ -655,6 +658,8 @@
             option.textContent = world.name;
             selectElement.appendChild(option);
           });
+        } else if (result.code === -1 && result.message === 'user_id is required') {
+          showToast('登录状态已失效，请重新登录', 'error');
         }
       } catch (error) {
         console.error('加载世界列表失败:', error);
@@ -664,6 +669,15 @@
     
     // 加载角色列表
     async function loadCharacters(worldId, keyword = '') {
+      const authToken = getAuthToken();
+      const userId = getUserId();
+      
+      if (!authToken || !userId) {
+        showToast('请先登录后再操作', 'error');
+        document.getElementById('characterModal')?.classList.remove('show');
+        return;
+      }
+      
       const listEl = document.getElementById('characterList');
       
       if (!worldId) {
@@ -680,8 +694,8 @@
         
         const response = await fetch(url, {
           headers: {
-            'Authorization': localStorage.getItem('auth_token') || '',
-            'X-User-Id': localStorage.getItem('user_id') || '1'
+            'Authorization': authToken,
+            'X-User-Id': userId
           }
         });
         
@@ -737,6 +751,15 @@
     
     // 加载场景列表
     async function loadLocations(worldId, keyword = '') {
+      const authToken = getAuthToken();
+      const userId = getUserId();
+      
+      if (!authToken || !userId) {
+        showToast('请先登录后再操作', 'error');
+        document.getElementById('locationModal')?.classList.remove('show');
+        return;
+      }
+      
       const listEl = document.getElementById('locationList');
       
       if (!worldId) {
@@ -753,8 +776,8 @@
         
         const response = await fetch(url, {
           headers: {
-            'Authorization': localStorage.getItem('auth_token') || '',
-            'X-User-Id': localStorage.getItem('user_id') || '1'
+            'Authorization': authToken,
+            'X-User-Id': userId
           }
         });
         
