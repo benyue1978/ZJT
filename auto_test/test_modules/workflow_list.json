@@ -541,6 +541,70 @@
         }
       ],
       "is_processed": false
+    },
+    {
+      "id": "list_010",
+      "name": "工作流名称为空验证",
+      "description": "验证创建工作流时名称为空显示验证错误",
+      "priority": "P1",
+      "page_url": "/video-workflow-list",
+      "pass": false,
+      "remark": "",
+      "test_steps": [
+        {
+          "step": 1,
+          "action": "点击新建工作流",
+          "operation": "click",
+          "selector": "button:has-text('新建工作流')",
+          "expected_result": "弹出模态框",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 2,
+          "action": "不输入名称直接点击保存",
+          "operation": "click",
+          "selector": "#createModal button:has-text('保存')",
+          "expected_result": "显示验证错误「请输入工作流名称」，不发起API请求",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        }
+      ],
+      "is_processed": false
+    },
+    {
+      "id": "list_011",
+      "name": "删除确认取消",
+      "description": "验证用户在删除确认框点击取消时不执行删除操作",
+      "priority": "P1",
+      "page_url": "/video-workflow-list",
+      "pass": false,
+      "remark": "",
+      "test_steps": [
+        {
+          "step": 1,
+          "action": "点击删除按钮",
+          "operation": "click",
+          "selector": ".workflow-card .btn-danger:has-text('删除')",
+          "expected_result": "弹出删除确认框",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 2,
+          "action": "点击取消按钮",
+          "operation": "click",
+          "selector": "#deleteModal .btn-secondary:has-text('取消')",
+          "expected_result": "模态框关闭，工作流未被删除",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        }
+      ],
+      "is_processed": false
     }
   ]
 }
