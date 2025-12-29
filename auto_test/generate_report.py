@@ -608,8 +608,10 @@ def main():
         archive_test_results(args.name)
     else:
         report_path = generate_html_report()
-        print(f"[SUCCESS] 测试报告已生成: {report_path.absolute()}")
-
+        if isinstance(report_path, Path):
+            print(f"[SUCCESS] 测试报告已生成: {report_path.absolute()}")
+        else:
+            print(report_path)
 
 if __name__ == "__main__":
     main()
