@@ -30,30 +30,29 @@ auto_test/
 
 ## 工作流程
 
-### 1. 修改测试用例
+### 1. 首次设置或重置测试
 
-**直接编辑模块文件**（推荐）：
+**只在以下情况运行合并脚本**：
+- 首次设置环境（`test_todo_list.json` 不存在）
+- 修改了测试用例后，需要应用更改
+- 测试全部完成，需要重置进度重新开始
+
+```bash
+# 合并所有模块为 test_todo_list.json
+python merge_test_cases.py
+```
+
+⚠️ **警告**：合并会覆盖 `test_todo_list.json`，所有测试进度会丢失！
+
+### 2. 修改测试用例
+
+**直接编辑模块文件**：
 ```bash
 # 编辑单个模块
 vim test_modules/auth.json
 ```
 
-**或编辑完整文件后重新拆分**：
-```bash
-# 编辑完整文件
-vim test_todo_list.json
-
-# 重新拆分
-python split_test_cases.py
-```
-
-### 2. 启动测试前合并
-
-测试启动时自动合并所有模块文件：
-```bash
-# 合并所有模块为 test_todo_list.json
-python merge_test_cases.py
-```
+**等待测试完成后再合并**，否则会丢失进度。
 
 ### 3. 验证测试用例
 

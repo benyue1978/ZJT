@@ -101,22 +101,29 @@ def main():
     if not test_video.exists():
         print_warn("test_assets/test.mp4 不存在，请手动添加测试视频")
     
-    # 5. 合并测试用例（如果存在模块文件）
+    # 5. 合并测试用例（仅在 test_todo_list.json 不存在时）
     modules_dir = script_dir / "test_modules"
+    test_todo_list = script_dir / "test_todo_list.json"
+    
     if modules_dir.exists() and (modules_dir / "index.json").exists():
-        print_info("检测到模块化测试用例，开始合并...")
-        try:
-            result = subprocess.run(
-                [sys.executable, str(script_dir / "merge_test_cases.py")],
-                capture_output=True,
-                timeout=30
-            )
-            if result.returncode == 0:
-                print_ok("测试用例已合并")
-            else:
-                print_warn("测试用例合并失败，将使用现有的 test_todo_list.json")
-        except Exception as e:
-            print_warn(f"测试用例合并失败: {e}")
+        if not test_todo_list.exists():
+            print_info("test_todo_list.json 不存在，从模块文件合并...")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script_dir / "merge_test_cases.py")],
+                    capture_output=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    print_ok("测试用例已合并")
+                else:
+                    print_error("测试用例合并失败")
+                    sys.exit(1)
+            except Exception as e:
+                print_error(f"测试用例合并失败: {e}")
+                sys.exit(1)
+        else:
+            print_ok("test_todo_list.json 已存在，跳过合并（保留测试进度）")
     
     # 6. 验证 Python 脚本
     test_navigator = script_dir / "test_navigator.py"
@@ -156,8 +163,12 @@ def main():
     print()
     print("提示：")
     print("- 测试用例已模块化，存储在 test_modules/ 目录")
-    print("- 查看 README_modular_tests.md 了解模块化结构")
+    print("- 查看 test_modules/README_modular_tests.md 了解模块化结构")
     print("- 修改测试用例请编辑 test_modules/ 中的模块文件")
+    print("- 修改后运行 python merge_test_cases.py 重新合并")
+    print("- 注意：合并会覆盖 test_todo_list.json，请在测试完成后操作")
+    print("- 修改后运行 python merge_test_cases.py 重新合并")
+    print("- 注意：合并会覆盖 test_todo_list.json，请在测试完成后操作")
     print()
 
 

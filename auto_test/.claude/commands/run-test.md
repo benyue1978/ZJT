@@ -210,6 +210,8 @@ python test_navigator.py
 python test_navigator.py --module <模块ID>
 ```
 
+**注意**：不要在测试过程中运行 `merge_test_cases.py`，这会覆盖已有的测试进度！
+
 **test_navigator.py 会自动：**
 - 找到第一个 `pass: false` 且 `is_processed: false` 的测试项
 - 输出完整的测试步骤信息（包括 `[PROCESSED]` 状态标记）
