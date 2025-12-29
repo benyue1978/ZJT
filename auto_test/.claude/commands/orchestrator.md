@@ -79,9 +79,10 @@ LOOP_START:
     9. GOTO LOOP_START  # 立即创建下一个 Task
 
 当达到停止条件时，执行以下操作后立即停止：
-    1. python generate_report.py --archive  # 归档测试结果
-    2. python reset_test_session.py  # 重置测试状态
-    3. 输出完成信息并停止，不要继续下一轮测试
+    1. python test_navigator.py --status  # 再次确认 100% 完成
+    2. python generate_report.py --archive  # 归档测试结果
+    3. python reset_test_session.py  # 重置测试状态（仅在100%完成时）
+    4. 输出完成信息并停止，不要继续下一轮测试
 ```
 
 **注意**：不要在测试过程中运行 `merge_test_cases.py`，这会覆盖测试进度！
@@ -94,6 +95,7 @@ LOOP_START:
 **项目经理只在以下情况停止：**
 
 1. **所有测试已处理完毕** - 所有测试步骤的 `is_processed` 都为 `true`（无论 `pass` 是否为 `true`）
+   - 先确认：`python test_navigator.py --status` 显示 100% 完成
    - 执行归档：`python generate_report.py --archive`
    - 执行重置：`python reset_test_session.py`
    - 输出完成信息并**立即停止**，不要继续下一轮测试
@@ -105,6 +107,11 @@ LOOP_START:
 - 测试完成的判断标准是 `is_processed: true`，而不是 `pass: true`
 - 即使测试失败，只要已经执行并标记为已处理，就认为该测试完成
 - **归档和重置完成后必须停止，绝不要自动开始下一轮测试**
+
+**⚠️ 关键安全提醒**：
+- **绝对不要**在测试未100%完成时运行 `reset_test_session.py`
+- 只有当 `python test_navigator.py --status` 显示 100% 完成时才能重置
+- 如果 `is_processed` 不是全部为 `true`，运行重置会导致测试进度丢失，需要重新开始
 
 **以下情况不要停止：**
 - 单个测试失败 - 但还没有重试超过4次
@@ -147,13 +154,16 @@ LOOP_START:
 **重要**: 测试完成后，使用归档脚本 `generate_report.py` 归档测试结果并重置状态，然后**立即停止**：
 
 ```bash
-# 1. 使用归档脚本 generate_report.py 归档测试结果到时间目录
+# 1. 先确认所有测试都已处理完毕
+python test_navigator.py --status  # 必须显示 100% 完成
+
+# 2. 使用归档脚本 generate_report.py 归档测试结果到时间目录
 python generate_report.py --archive
 
-# 2. 重置测试状态，为将来的测试做准备
+# 3. 重置测试状态，为将来的测试做准备（仅在100%完成时执行）
 python reset_test_session.py
 
-# 3. 输出完成信息并停止
+# 4. 输出完成信息并停止
 ```
 
 归档后会在 `test_reports/` 目录下创建格式为 `YYYY-MM-DD_HH-MM[_名称]` 的目录，包含：
