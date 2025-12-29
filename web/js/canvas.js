@@ -94,6 +94,7 @@
 
     function setSelected(id){
       state.selectedNodeId = id;
+      state.selectedNodeIds = id ? [id] : [];
       for(const nodeEl of canvasEl.querySelectorAll('.node')){
         const nid = Number(nodeEl.dataset.nodeId);
         nodeEl.classList.toggle('selected', nid === id);
@@ -102,6 +103,67 @@
 
     function clearSelection(){
       setSelected(null);
+      state.selectedNodeIds = [];
+      for(const nodeEl of canvasEl.querySelectorAll('.node')){
+        nodeEl.classList.remove('selected');
+      }
+    }
+
+    function setMultipleSelected(nodeIds){
+      state.selectedNodeIds = nodeIds;
+      state.selectedNodeId = nodeIds.length === 1 ? nodeIds[0] : null;
+      for(const nodeEl of canvasEl.querySelectorAll('.node')){
+        const nid = Number(nodeEl.dataset.nodeId);
+        nodeEl.classList.toggle('selected', nodeIds.includes(nid));
+      }
+    }
+
+    function addToSelection(nodeId){
+      if(!state.selectedNodeIds.includes(nodeId)){
+        state.selectedNodeIds.push(nodeId);
+        const nodeEl = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+        if(nodeEl) nodeEl.classList.add('selected');
+      }
+    }
+
+    function removeFromSelection(nodeId){
+      state.selectedNodeIds = state.selectedNodeIds.filter(id => id !== nodeId);
+      const nodeEl = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+      if(nodeEl) nodeEl.classList.remove('selected');
+    }
+
+    function initNodeDrag(nodeId, startX, startY){
+      const node = state.nodes.find(n => n.id === nodeId);
+      if(!node) return;
+      
+      // 如果拖动的节点在选中列表中，记录所有选中节点的初始位置
+      if(state.selectedNodeIds.includes(nodeId)){
+        const nodePositions = {};
+        state.selectedNodeIds.forEach(id => {
+          const n = state.nodes.find(x => x.id === id);
+          if(n){
+            nodePositions[id] = { x: n.x, y: n.y };
+          }
+        });
+        state.drag = {
+          nodeId: nodeId,
+          startX: startX,
+          startY: startY,
+          origX: node.x,
+          origY: node.y,
+          nodePositions: nodePositions
+        };
+      } else {
+        // 单个节点拖动
+        state.drag = {
+          nodeId: nodeId,
+          startX: startX,
+          startY: startY,
+          origX: node.x,
+          origY: node.y,
+          nodePositions: {}
+        };
+      }
     }
 
     function getViewportNodePosition(){

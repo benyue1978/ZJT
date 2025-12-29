@@ -28,7 +28,10 @@
         name: '',
         referenceImageUrl: ''
       },
-      defaultWorldId: null
+      defaultWorldId: null,
+      selectionMode: false,
+      selecting: null,
+      selectedNodeIds: []
     };
 
     function normalizeVideoUrl(item){

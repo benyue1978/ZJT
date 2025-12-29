@@ -62,9 +62,51 @@
       state.ratio = ratioSelectEl.value;
     });
 
+    // Ctrl键检测：进入/退出选择模式
+    window.addEventListener('keydown', (e) => {
+      if(e.key === 'Control' || e.key === 'Meta'){
+        state.selectionMode = true;
+        canvasContainer.style.cursor = 'crosshair';
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if(e.key === 'Control' || e.key === 'Meta'){
+        state.selectionMode = false;
+        canvasContainer.style.cursor = 'grab';
+      }
+    });
+
+    // 失去焦点时重置选择模式
+    window.addEventListener('blur', () => {
+      state.selectionMode = false;
+      canvasContainer.style.cursor = 'grab';
+    });
 
     canvasContainer.addEventListener('mousedown', (e) => {
       if(e.target === canvasEl || e.target === canvasContainer || e.target === canvasWorld){
+        // 选择模式：开始绘制选择框
+        if(state.selectionMode){
+          const containerRect = canvasContainer.getBoundingClientRect();
+          const startX = (e.clientX - containerRect.left - state.panX) / state.zoom;
+          const startY = (e.clientY - containerRect.top - state.panY) / state.zoom;
+          
+          state.selecting = {
+            startX: startX,
+            startY: startY,
+            currentX: startX,
+            currentY: startY
+          };
+          
+          // 创建选择框元素
+          const selectionBox = document.createElement('div');
+          selectionBox.id = 'selectionBox';
+          selectionBox.className = 'selection-box';
+          canvasEl.appendChild(selectionBox);
+          
+          return;
+        }
+        
         clearSelection();
         state.selectedConnId = null;
         state.selectedImgConnId = null;
@@ -98,7 +140,7 @@
       }
     });
 
-    // 键盘删除连接线和时间轴片段
+    // 键盘删除连接线、时间轴片段和批量删除节点
     window.addEventListener('keydown', (e) => {
       if(e.key === 'Delete' || e.key === 'Backspace'){
         // 不在输入框内时才响应
@@ -120,6 +162,16 @@
           e.preventDefault();
           removeFromTimeline(state.timeline.selectedClipId);
           state.timeline.selectedClipId = null;
+        } else if(state.selectedNodeIds.length > 0){
+          e.preventDefault();
+          // 批量删除节点
+          const nodesToDelete = [...state.selectedNodeIds];
+          if(confirm(`确定要删除选中的 ${nodesToDelete.length} 个节点吗？`)){
+            nodesToDelete.forEach(nodeId => {
+              removeNode(nodeId);
+            });
+            clearSelection();
+          }
         }
       }
     });
@@ -162,6 +214,30 @@
     }, { passive: false });
 
     window.addEventListener('mousemove', (e) => {
+      // 绘制选择框
+      if(state.selecting){
+        const containerRect = canvasContainer.getBoundingClientRect();
+        const currentX = (e.clientX - containerRect.left - state.panX) / state.zoom;
+        const currentY = (e.clientY - containerRect.top - state.panY) / state.zoom;
+        
+        state.selecting.currentX = currentX;
+        state.selecting.currentY = currentY;
+        
+        const selectionBox = document.getElementById('selectionBox');
+        if(selectionBox){
+          const left = Math.min(state.selecting.startX, currentX);
+          const top = Math.min(state.selecting.startY, currentY);
+          const width = Math.abs(currentX - state.selecting.startX);
+          const height = Math.abs(currentY - state.selecting.startY);
+          
+          selectionBox.style.left = left + 'px';
+          selectionBox.style.top = top + 'px';
+          selectionBox.style.width = width + 'px';
+          selectionBox.style.height = height + 'px';
+        }
+        return;
+      }
+      
       // 平移画布
       if(state.panning){
         const dx = e.clientX - state.panning.startX;
@@ -178,18 +254,37 @@
           renderFirstFrameConnections();
         }
       }
-      // 拖动节点
+      // 拖动节点（支持批量拖动）
       if(state.drag){
-        const n = state.nodes.find(x => x.id === state.drag.nodeId);
-        if(!n) return;
         const dx = e.clientX - state.drag.startX;
         const dy = e.clientY - state.drag.startY;
-        n.x = Math.max(20, state.drag.origX + dx);
-        n.y = Math.max(20, state.drag.origY + dy);
-        const el = canvasEl.querySelector(`.node[data-node-id="${n.id}"]`);
-        if(el){
-          el.style.left = n.x + 'px';
-          el.style.top = n.y + 'px';
+        
+        // 如果拖动的节点在选中列表中，批量移动所有选中的节点
+        if(state.selectedNodeIds.includes(state.drag.nodeId)){
+          state.selectedNodeIds.forEach(nodeId => {
+            const n = state.nodes.find(x => x.id === nodeId);
+            if(!n) return;
+            const origPos = state.drag.nodePositions[nodeId];
+            if(!origPos) return;
+            n.x = Math.max(20, origPos.x + dx);
+            n.y = Math.max(20, origPos.y + dy);
+            const el = canvasEl.querySelector(`.node[data-node-id="${n.id}"]`);
+            if(el){
+              el.style.left = n.x + 'px';
+              el.style.top = n.y + 'px';
+            }
+          });
+        } else {
+          // 单个节点拖动
+          const n = state.nodes.find(x => x.id === state.drag.nodeId);
+          if(!n) return;
+          n.x = Math.max(20, state.drag.origX + dx);
+          n.y = Math.max(20, state.drag.origY + dy);
+          const el = canvasEl.querySelector(`.node[data-node-id="${n.id}"]`);
+          if(el){
+            el.style.left = n.x + 'px';
+            el.style.top = n.y + 'px';
+          }
         }
         renderConnections();
         renderImageConnections();
@@ -341,6 +436,41 @@
     });
 
     window.addEventListener('mouseup', (e) => {
+      // 完成选择框绘制
+      if(state.selecting){
+        const selectionBox = document.getElementById('selectionBox');
+        if(selectionBox){
+          const left = Math.min(state.selecting.startX, state.selecting.currentX);
+          const top = Math.min(state.selecting.startY, state.selecting.currentY);
+          const right = Math.max(state.selecting.startX, state.selecting.currentX);
+          const bottom = Math.max(state.selecting.startY, state.selecting.currentY);
+          
+          // 查找选择框内的节点
+          const selectedIds = [];
+          for(const node of state.nodes){
+            const nodeEl = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+            if(!nodeEl) continue;
+            
+            const nodeRight = node.x + nodeEl.offsetWidth;
+            const nodeBottom = node.y + nodeEl.offsetHeight;
+            
+            // 检查节点是否与选择框相交
+            if(node.x < right && nodeRight > left && node.y < bottom && nodeBottom > top){
+              selectedIds.push(node.id);
+            }
+          }
+          
+          // 更新选中状态
+          if(selectedIds.length > 0){
+            setMultipleSelected(selectedIds);
+          }
+          
+          selectionBox.remove();
+        }
+        state.selecting = null;
+        return;
+      }
+      
       if(state.drag){
         state.drag = null;
         renderMinimap();
@@ -937,13 +1067,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
       
       if(outputPort) {
@@ -1065,13 +1189,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
       
       if(outputPort) {
@@ -1160,13 +1278,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
       
       if(outputPort) {
@@ -1253,13 +1365,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
       
       if(outputPort) {

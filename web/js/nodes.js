@@ -90,13 +90,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y,
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
 
       inputPort.addEventListener('mouseup', (e) => {
@@ -2206,13 +2200,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y,
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
 
       // 图片端口接收连接
@@ -2490,13 +2478,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y,
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
 
       inputPort.addEventListener('mouseup', (e) => {
@@ -2934,13 +2916,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y,
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
 
       outputPort.addEventListener('mousedown', (e) => {
@@ -3185,13 +3161,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y,
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
 
       inputPort.addEventListener('mouseup', (e) => {
@@ -3979,13 +3949,7 @@
         e.preventDefault();
         e.stopPropagation();
         setSelected(id);
-        state.drag = {
-          nodeId: id,
-          startX: e.clientX,
-          startY: e.clientY,
-          origX: node.x,
-          origY: node.y,
-        };
+        initNodeDrag(id, e.clientX, e.clientY);
       });
 
       imagePromptEl.addEventListener('input', () => {
