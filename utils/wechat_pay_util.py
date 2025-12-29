@@ -50,7 +50,8 @@ class WechatPayUtil:
         total_fee: int,
         body: str,
         openid: str,
-        notify_url: str
+        notify_url: str,
+        payer_client_ip: str = "127.0.0.1"
     ) -> Dict:
         """
         创建JSAPI支付订单（微信内浏览器支付）- 使用微信支付V3 API
@@ -61,6 +62,7 @@ class WechatPayUtil:
             body: 商品描述
             openid: 用户的openid
             notify_url: 支付结果通知回调URL
+            payer_client_ip: 用户终端IP
         
         Returns:
             包含支付参数的字典
@@ -93,6 +95,9 @@ class WechatPayUtil:
             },
             "payer": {
                 "openid": openid
+            },
+            "scene_info": {
+                "payer_client_ip": payer_client_ip
             }
         }
         
@@ -190,6 +195,7 @@ class WechatPayUtil:
         total_fee: int,
         body: str,
         notify_url: str,
+        payer_client_ip: str = "127.0.0.1",
         scene_info: Optional[Dict] = None
     ) -> Dict:
         """
@@ -200,6 +206,7 @@ class WechatPayUtil:
             total_fee: 支付金额（单位：分）
             body: 商品描述
             notify_url: 支付结果通知回调URL
+            payer_client_ip: 用户终端IP
             scene_info: 场景信息（H5支付必填），包含h5_info
         
         Returns:
@@ -217,11 +224,14 @@ class WechatPayUtil:
         # 如果没有提供场景信息，使用默认值
         if scene_info is None:
             scene_info = {
-                "payer_client_ip": "127.0.0.1",
+                "payer_client_ip": payer_client_ip,
                 "h5_info": {
                     "type": "Wap"
                 }
             }
+        else:
+            # 确保scene_info中包含payer_client_ip
+            scene_info["payer_client_ip"] = payer_client_ip
         
         request_body = {
             "appid": str(self.app_id),

@@ -12,6 +12,7 @@ import logging
 import traceback
 from datetime import datetime
 from typing import List, Optional
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
 from config_util import get_config_path, is_dev_environment
@@ -2535,6 +2536,71 @@ async def get_wechat_openid(code: str):
         raise HTTPException(status_code=500, detail=f"获取openid失败: {str(e)}")
 
 
+def _has_completed_first_recharge(auth_token: str) -> bool:
+    """
+    调用认证服务接口，判断用户是否已经完成首充
+    
+    Args:
+        auth_token: 用户认证 token
+    
+    Returns:
+        True 表示已经首充，False 表示仍是首充用户
+    """
+    success, message, response_data = make_perseids_request(
+        endpoint='user/check_first_recharge',
+        method='GET',
+        headers={'Authorization': f'Bearer {auth_token}'}
+    )
+
+    if not success:
+        logger.error(f"Token verification failed: {message}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    logger.info(f"Token verification successful: {response_data}")
+    first_recharge = response_data.get('first_recharge')
+    if first_recharge is None:
+        raise HTTPException(status_code=401, detail="Invalid user information")
+
+    return first_recharge == 1
+
+
+def _append_redirect_url(h5_url: Optional[str], redirect_url: str) -> Optional[str]:
+    """
+    在H5支付链接中追加 redirect_url 参数（若已存在则覆盖）
+    """
+    if not h5_url:
+        return h5_url
+    try:
+        parsed = urlparse(h5_url)
+        query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query_params["redirect_url"] = redirect_url
+        new_query = urlencode(query_params, doseq=True)
+        return urlunparse(parsed._replace(query=new_query))
+    except Exception as e:
+        logger.error(f"Failed to append redirect_url to h5_url: {e}")
+        return h5_url
+
+
+def _update_first_recharge_status(auth_token: str) -> None:
+    """
+    调用认证服务接口，更新用户首充状态
+    
+    Args:
+        auth_token: 用户认证 token
+    """
+    success, message, response_data = make_perseids_request(
+        endpoint='user/update_first_recharge',
+        method='POST',
+        headers={'Authorization': f'Bearer {auth_token}'}
+    )
+
+    if not success:
+        logger.error(f"Failed to update first recharge status: {message}")
+        raise HTTPException(status_code=400, detail="更新首充状态失败")
+
+    logger.info(f"First recharge status updated successfully: {response_data}")
+
+
 @app.get("/api/recharge/packages")
 async def get_recharge_packages(auth_token: str):
     """
@@ -2548,28 +2614,16 @@ async def get_recharge_packages(auth_token: str):
         If user has already recharged before, the first package (首充福利) will be filtered out
     """
     try:
-        # 验证token并获取用户信息
-        success, message, response_data = make_perseids_request(
-            endpoint='check_first_recharge',
-            method='POST',
-            headers={'Authorization': f'Bearer {auth_token}'}
-        )
-        
-        if not success:
-            logger.error(f"Token verification failed: {message}")
-            raise HTTPException(status_code=401, detail="Invalid token")
-        
-        first_recharges = response_data.get('first_recharges')
-        if not first_recharges:
-            raise HTTPException(status_code=401, detail="Invalid user information")
-        
+        # 查询用户是否已经首充
+        has_completed_first_recharge = _has_completed_first_recharge(auth_token)
+
         # 如果用户已经充值过，过滤掉首充福利套餐（第一个套餐）
         packages = RECHARGE_PACKAGES.copy()
-        if first_recharges == 1:
+        if has_completed_first_recharge:
             packages = [pkg for pkg in packages if pkg.get("package_id") != 1]
-            logger.info(f"User {user_id} has {payment_count} payment records, filtering out first-time package")
+            logger.info(f"已经首充，过滤掉首充福利套餐")
         else:
-            logger.info(f"User {user_id} is a first-time recharger, showing all packages")
+            logger.info(f"是首充用户，显示所有套餐")
         
         return JSONResponse({
             "success": True,
@@ -2613,24 +2667,18 @@ async def create_wechat_payment(request: WechatPayRequest):
         
         # 验证用户登录状态：通过查询算力判断token是否有效
         try:
-            computing_power_response = make_perseids_request(
-                method="GET",
-                endpoint="/api/v1/user/check_computing_power",
-                params={
-                    "user_id": request.user_id,
-                    "auth_token": request.auth_token
-                }
+            success, message, response_data = make_perseids_request(
+                endpoint='user/check_computing_power',
+                method='GET',
+                headers={'Authorization': f'Bearer {request.auth_token}'}
             )
             
-            if not computing_power_response or not computing_power_response.get("success"):
+            if not success:
                 logger.warning(f"User {request.user_id} authentication failed or expired")
                 raise HTTPException(
                     status_code=401,
                     detail="登录已过期，请重新登录"
                 )
-            
-            logger.info(f"User {request.user_id} authentication verified, computing power: {computing_power_response.get('computing_power')}")
-            
         except HTTPException:
             raise
         except Exception as e:
@@ -2652,6 +2700,16 @@ async def create_wechat_payment(request: WechatPayRequest):
                 status_code=400,
                 detail="Invalid package ID"
             )
+
+        # 首充套餐校验：如果package_id为1且用户已首充，禁止再次购买
+        if request.package_id == 1:
+            has_completed_first_recharge = _has_completed_first_recharge(request.auth_token)
+            if has_completed_first_recharge:
+                logger.warning(f"User {request.user_id} attempted to purchase first-charge package again")
+                raise HTTPException(
+                    status_code=400,
+                    detail="首充福利仅限首次充值，您已领取过该套餐"
+                )
         
         # 生成订单ID
         order_id = wechat_pay_util.generate_order_id()
@@ -2717,6 +2775,9 @@ async def create_wechat_payment(request: WechatPayRequest):
         
         logger.info(f"Created {payment_type} payment order {record_id} for user {request.user_id}, package {request.package_id}")
         
+        # 更新用户首充状态
+        _update_first_recharge_status(auth_token=request.auth_token)
+        
         # 返回支付信息
         response_data = {
             "success": True,
@@ -2734,7 +2795,9 @@ async def create_wechat_payment(request: WechatPayRequest):
             response_data["message"] = "订单创建成功，请在微信中完成支付"
         else:
             # H5支付返回跳转URL
-            response_data["h5_url"] = payment_result.get("h5_url")
+            h5_url = payment_result.get("h5_url")
+            h5_url_with_redirect = _append_redirect_url(h5_url, SERVER_HOST)
+            response_data["h5_url"] = h5_url_with_redirect
             response_data["message"] = "订单创建成功，即将跳转到支付页面"
         
         return JSONResponse(response_data)
