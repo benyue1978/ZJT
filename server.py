@@ -3848,6 +3848,7 @@ async def export_timeline_draft(
         
         # 下载所有视频
         downloaded_files = []
+        asset_cache = {}
         for idx, clip in enumerate(payload.timeline_clips):
             video_url = clip.get('url')
             video_name = clip.get('name', f'video_{idx}')
@@ -3857,39 +3858,53 @@ async def export_timeline_draft(
                 continue
             
             try:
+                asset_key = None
                 local_asset_path = _get_local_upload_file(video_url, request_origin)
                 if local_asset_path:
-                    file_ext = os.path.splitext(local_asset_path)[1] or '.mp4'
-                    safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
-                    file_path = os.path.join(temp_download_dir, safe_name)
-                    shutil.copy2(local_asset_path, file_path)
-                    logger.info(f"已复用本地上传文件: {local_asset_path} -> {file_path}")
+                    asset_key = f"local::{os.path.abspath(local_asset_path)}"
+                elif video_url:
+                    asset_key = f"url::{video_url}"
+
+                if asset_key and asset_key in asset_cache:
+                    file_path = asset_cache[asset_key]
+                    safe_name = os.path.basename(file_path)
+                    logger.info(f"复用已下载素材: {video_name} -> {safe_name}")
                 else:
-                    logger.info(f"正在下载视频 {idx + 1}/{len(payload.timeline_clips)}: {video_name}")
+                    if local_asset_path:
+                        file_ext = os.path.splitext(local_asset_path)[1] or '.mp4'
+                        safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
+                        file_path = os.path.join(temp_download_dir, safe_name)
+                        shutil.copy2(local_asset_path, file_path)
+                        logger.info(f"已复用本地上传文件: {local_asset_path} -> {file_path}")
+                    else:
+                        logger.info(f"正在下载视频 {idx + 1}/{len(payload.timeline_clips)}: {video_name}")
+                        
+                        # 下载视频
+                        response = requests.get(video_url, stream=True, timeout=300)
+                        response.raise_for_status()
+                        
+                        # 确定文件扩展名
+                        file_ext = '.mp4'
+                        if 'content-type' in response.headers:
+                            content_type = response.headers['content-type']
+                            if 'video/quicktime' in content_type or video_url.endswith('.mov'):
+                                file_ext = '.mov'
+                            elif 'video/x-msvideo' in content_type or video_url.endswith('.avi'):
+                                file_ext = '.avi'
+                        
+                        # 保存文件
+                        safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
+                        file_path = os.path.join(temp_download_dir, safe_name)
+                        
+                        with open(file_path, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                        
+                        logger.info(f"视频下载完成: {safe_name}")
                     
-                    # 下载视频
-                    response = requests.get(video_url, stream=True, timeout=300)
-                    response.raise_for_status()
-                    
-                    # 确定文件扩展名
-                    file_ext = '.mp4'
-                    if 'content-type' in response.headers:
-                        content_type = response.headers['content-type']
-                        if 'video/quicktime' in content_type or video_url.endswith('.mov'):
-                            file_ext = '.mov'
-                        elif 'video/x-msvideo' in content_type or video_url.endswith('.avi'):
-                            file_ext = '.avi'
-                    
-                    # 保存文件
-                    safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
-                    file_path = os.path.join(temp_download_dir, safe_name)
-                    
-                    with open(file_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                    
-                    logger.info(f"视频下载完成: {safe_name}")
+                    if asset_key:
+                        asset_cache[asset_key] = file_path
                 
                 downloaded_files.append({
                     'file_path': file_path,
