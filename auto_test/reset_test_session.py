@@ -96,7 +96,14 @@ def reset_test_session(force: bool = False, keep_session: bool = False):
 
                 print(f"[SUCCESS] 已重置会话状态: {latest_session.name}")
 
-    # 4. 删除旧的报告文件（根目录下的）
+    # 4. 删除 test_todo_list.json 文件（关键修复）
+    todo_list_file = base_dir / "test_todo_list.json"
+    if todo_list_file.exists():
+        todo_list_file.unlink()
+        print(f"[SUCCESS] 已删除测试任务文件: test_todo_list.json")
+        print(f"[INFO] 下次运行 /orchestrator 时将重新生成测试用例")
+
+    # 5. 删除旧的报告文件（根目录下的）
     old_report = base_dir / "test_report.html"
     if old_report.exists():
         old_report.unlink()
@@ -104,7 +111,8 @@ def reset_test_session(force: bool = False, keep_session: bool = False):
 
     print("")
     print("[DONE] 测试状态已重置，可以开始新一轮测试")
-    print("       运行 'python test_navigator.py --status' 查看状态")
+    print("       运行 /orchestrator 开始新的测试会话")
+    print("       或运行 'python test_navigator.py --status' 查看状态")
 
 
 def main():
