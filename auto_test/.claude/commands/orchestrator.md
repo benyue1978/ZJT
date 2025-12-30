@@ -67,16 +67,18 @@ python test_navigator.py --skip-processed
 
 ```
 LOOP_START:
-    1. python test_navigator.py --status  # 检查进度
-    2. 如果所有测试已处理完毕（is_processed=true）→ 执行归档并停止
-    3. 如果 连续失败超过5次 → 报告错误并停止
-    4. python test_navigator.py --skip-processed  # 获取下一个未处理的功能
-    5. 如果没有更多未处理的测试 → 执行归档并停止
-    6. 创建 Task 分配给测试工程师：
+    1. python check_duplicate_ids.py  # 检查测试用例ID是否重复
+    2. 如果发现重复ID → 报告错误并停止，不进行测试
+    3. python test_navigator.py --status  # 检查进度
+    4. 如果所有测试已处理完毕（is_processed=true）→ 执行归档并停止
+    5. 如果 连续失败超过5次 → 报告错误并停止
+    6. python test_navigator.py --skip-processed  # 获取下一个未处理的功能
+    7. 如果没有更多未处理的测试 → 执行归档并停止
+    8. 创建 Task 分配给测试工程师：
        Task("测试功能 <feature_id>", "/test-module <feature_id>")
-    7. 等待 Task 完成，收到测试工程师返回的结果
-    8. 不要输出总结！不要询问用户！
-    9. GOTO LOOP_START  # 立即创建下一个 Task
+    9. 等待 Task 完成，收到测试工程师返回的结果
+    10. 不要输出总结！不要询问用户！
+    11. GOTO LOOP_START  # 立即创建下一个 Task
 
 当达到停止条件时，执行以下操作后立即停止：
     1. python test_navigator.py --status  # 再次确认 100% 完成
