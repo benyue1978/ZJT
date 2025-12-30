@@ -110,7 +110,7 @@ def check_duplicate_ids():
                     print(f"  修改: {info['file']} - {info['name']}")
                     print(f"        建议新 ID: {suggested_id}")
     else:
-        print("\n✓ 未发现重复的测试用例 ID")
+        print("\n[OK] 未发现重复的测试用例 ID")
         print("所有测试用例 ID 都是唯一的")
     
     print("\n" + "=" * 60)
