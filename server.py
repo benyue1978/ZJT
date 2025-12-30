@@ -32,6 +32,9 @@ TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
 COMFYUI_OUTPUT_PATH = '/mnt/disk/ComfyUI/server_output'
 UPLOAD_DIR = os.path.join(APP_DIR, "upload")
 CHECK_AUTH_TOKEN = True
+MP_VERIFY_FILENAME = "MP_verify_lXQewBFqjUipl3B8.txt"
+MP_VERIFY_ROUTE = "/MP_verify_lXQewBFqjUipl3B8.txt"
+
 
 # Load server configuration
 import yaml
@@ -2970,6 +2973,21 @@ files_dir = os.path.join(APP_DIR, "files")
 if not os.path.exists(files_dir):
     os.makedirs(files_dir, exist_ok=True)
 app.mount("/files", StaticFiles(directory=files_dir), name="files")
+
+# Serve frontend static files
+static_dir = os.path.join(APP_DIR, "web")
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir, exist_ok=True)
+
+@app.get(f"{MP_VERIFY_ROUTE}")
+async def get_mp_verify_file():
+    """
+    Serve the WeChat MP verification file at a dedicated root endpoint.
+    """
+    file_path = os.path.join(APP_DIR, MP_VERIFY_FILENAME)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Verification file not found")
+    return FileResponse(file_path, media_type="text/plain")
 
 # Serve frontend static files
 static_dir = os.path.join(APP_DIR, "web")
