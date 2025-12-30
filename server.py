@@ -13,6 +13,7 @@ import traceback
 from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+import mimetypes
 from pydantic import BaseModel
 from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
 from config_util import get_config_path, is_dev_environment
@@ -2333,12 +2334,22 @@ async def audio_status(audio_id: int):
             raise HTTPException(status_code=404, detail=f"未找到音频任务 {audio_id}")
         
         if record.status == 2 and record.result_url:
-            return JSONResponse({
-                "audio_id": record.id,
-                "status": "SUCCESS",
-                "result_url": record.result_url,
-                "message": record.message or "音频生成成功"
-            })
+            file_path = record.result_url
+            if not os.path.isfile(file_path):
+                logger.error(f"Audio file not found for task {audio_id}: {file_path}")
+                raise HTTPException(status_code=500, detail="音频文件不存在，请稍后重试")
+            
+            filename = os.path.basename(file_path)
+            media_type, _ = mimetypes.guess_type(file_path)
+            headers = {
+                "X-Audio-Status": "SUCCESS"
+            }
+            return FileResponse(
+                path=file_path,
+                filename=filename,
+                media_type=media_type or "audio/wav",
+                headers=headers
+            )
         elif record.status == -1:
             return JSONResponse({
                 "audio_id": record.id,
