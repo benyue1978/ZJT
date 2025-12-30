@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography import x509
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -366,7 +367,8 @@ class WechatPayUtil:
         timestamp: str,
         nonce: str,
         body: bytes,
-        signature: str
+        signature: str,
+        serial: str
     ) -> bool:
         """
         验证微信支付回调签名
@@ -382,6 +384,7 @@ class WechatPayUtil:
             nonce: 随机串（从请求头Wechatpay-Nonce获取）
             body: 请求体原始字节数据
             signature: 签名（从请求头Wechatpay-Signature获取，Base64编码）
+            serial: 证书序列号（从请求头Wechatpay-Serial获取）
         
         Returns:
             签名是否有效
@@ -391,22 +394,34 @@ class WechatPayUtil:
             
             # 构建验签串
             verify_string = f"{timestamp}\n{nonce}\n{body.decode('utf-8')}\n"
-            
-            # 读取微信支付平台公钥
-            public_key_path = os.path.join(
+            logger.info(f"Verify string: {verify_string}")
+            base_secret_dir = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "secret/wechat/pub_key.pem"
+                "secret",
+                "wechat"
             )
-            
+            if serial and serial.startswith("PUB_KEY_ID"):
+                key_file = "pub_key.pem"
+                logger.info("Serial starts with PUB_KEY_ID, using platform public key for verification")
+            else:
+                key_file = "wechatpay_1EAD63FC64FD1B6FB98C515780A1EC9997B10504.pem"
+                logger.info("Serial does not start with PUB_KEY_ID, using certificate file for verification")
+            public_key_path = os.path.join(base_secret_dir, key_file)
+            logger.info(f"Public key path: {public_key_path}")
             with open(public_key_path, 'rb') as f:
-                public_key = serialization.load_pem_public_key(
-                    f.read(),
-                    backend=default_backend()
-                )
+                key_bytes = f.read()
+                if key_file == "pub_key.pem":
+                    public_key = serialization.load_pem_public_key(
+                        key_bytes,
+                        backend=default_backend()
+                    )
+                else:
+                    certificate = x509.load_pem_x509_certificate(key_bytes, backend=default_backend())
+                    public_key = certificate.public_key()
             
             # Base64解码签名
             signature_bytes = base64.b64decode(signature)
-            
+            logger.info(f"Signature bytes: {signature_bytes}")
             # 使用公钥验证签名
             try:
                 public_key.verify(

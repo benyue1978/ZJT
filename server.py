@@ -3076,7 +3076,7 @@ async def wechat_payment_callback(request: Request):
         
         logger.info(f"Received wechat payment callback: {callback_data.get('id')}")
         logger.info(f"Event type: {callback_data.get('event_type')}")
-        
+        logger.info(f"callback_data: {callback_data}")
         # TODO: 验证回调签名
         # 从请求头获取签名信息
         timestamp = request.headers.get("Wechatpay-Timestamp")
@@ -3084,7 +3084,12 @@ async def wechat_payment_callback(request: Request):
         signature = request.headers.get("Wechatpay-Signature")
         serial = request.headers.get("Wechatpay-Serial")
         
-        if not wechat_pay_util.verify_callback_signature(timestamp, nonce, body, signature):
+        logger.info(f"Timestamp: {timestamp}")
+        logger.info(f"Nonce: {nonce}")
+        logger.info(f"Signature: {signature}")
+        logger.info(f"Serial: {serial}")
+        
+        if not wechat_pay_util.verify_callback_signature(timestamp, nonce, body, signature,serial):
             logger.error("Invalid callback signature")
             return JSONResponse({"code": "FAIL", "message": "签名验证失败"}, status_code=400)
         
