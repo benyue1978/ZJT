@@ -2854,14 +2854,14 @@
           </div>
           <div class="field">
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-              <input type="checkbox" class="script-force-medium-shot" style="cursor: pointer;" />
-              <span>对话强制中景(半身像)</span>
+              <input type="checkbox" class="script-force-medium-shot" style="cursor: pointer;" checked />
+              <span>对话禁止全景</span>
             </label>
-            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">避免sora全景对话效果不佳</div>
+            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">对话镜头自动选择近景或中景，避免sora全景对话效果不佳</div>
           </div>
           <div class="field">
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
-              <input type="checkbox" class="script-no-bg-music" style="cursor: pointer;" />
+              <input type="checkbox" class="script-no-bg-music" style="cursor: pointer;" checked />
               <span>不生成背景音乐</span>
             </label>
             <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">方便后期调音</div>
@@ -2898,8 +2898,8 @@
       
       // 初始化节点数据中的最大时长和选项
       node.data.maxGroupDuration = 15;
-      node.data.forceMediumShot = false;
-      node.data.noBgMusic = false;
+      node.data.forceMediumShot = true;
+      node.data.noBgMusic = true;
 
       // 更新字符计数器
       function updateCharCount(length) {
