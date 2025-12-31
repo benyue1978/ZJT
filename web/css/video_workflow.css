@@ -277,12 +277,12 @@ svg.connections path.temp{
 
 .zoom-controls{
   position: absolute;
-  left: 12px;
+  left: 210px;
   bottom: 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  z-index: 40;
+  z-index: 45;
 }
 .zoom-btn{
   width: 32px;
@@ -317,7 +317,7 @@ svg.connections path.temp{
 .minimap{
   position: absolute;
   left: 12px;
-  bottom: 120px;
+  bottom: 12px;
   width: 180px;
   height: 120px;
   background: #fff;
@@ -1132,6 +1132,12 @@ textarea:focus{ border-color: var(--primary); }
 }
 .canvas-container.timeline-visible {
   padding-bottom: 200px;
+}
+.canvas-container.timeline-visible .minimap{
+  bottom: 212px;
+}
+.canvas-container.timeline-visible .zoom-controls{
+  bottom: 212px;
 }
 
 .selection-box {
