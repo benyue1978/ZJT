@@ -439,11 +439,15 @@
         renderFirstFrameConnections();
         renderMinimap();
         
-        // 恢复完成后，更新所有分镜节点的图片选择菜单
+        // 恢复完成后，更新所有分镜节点的图片选择菜单和角色节点的按钮状态
         setTimeout(() => {
           state.nodes.forEach(node => {
             if(node.type === 'shot_frame' && node.updatePreview){
               node.updatePreview();
+            }
+            // 更新角色节点的创建角色卡按钮状态
+            if(node.type === 'character'){
+              updateCharacterCardButtonState(node.id);
             }
           });
         }, 100);
@@ -781,6 +785,7 @@
         node.data.url = nodeData.data.url || '';
         node.data.name = nodeData.data.name || '';
         node.data.duration = nodeData.data.duration || 0;
+        node.data.project_id = nodeData.data.project_id || '';
         // 如果有URL，显示预览
         if(node.data.url){
           const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);

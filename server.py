@@ -1780,6 +1780,45 @@ async def get_ai_tools_history(
         )
 
 
+@app.get('/api/ai-tools/detail/{record_id}')
+async def get_ai_tool_detail(
+    record_id: int,
+    user_id: int = Header(None, alias="X-User-Id"),
+    auth_token: str = Header(None, alias="Authorization")
+):
+    """
+    获取单个 AI 工具记录的详情
+    """
+    try:
+        # 查询数据库记录
+        record = AIToolsModel.get_by_id(record_id)
+        
+        if not record:
+            raise HTTPException(status_code=404, detail="记录不存在")
+        
+        # 检查权限（可选）
+        if user_id and record.user_id != user_id:
+            raise HTTPException(status_code=403, detail="无权访问该记录")
+        
+        return JSONResponse({
+            'success': True,
+            'data': record.to_dict()
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f'获取记录详情失败: {str(e)}')
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={
+                'success': False,
+                'message': '服务器错误'
+            }
+        )
+
+
 @app.post("/api/ai-script-generate")
 async def ai_script_generate(
     image1: UploadFile = File(..., description="第一张图片（必传）"),
@@ -2320,7 +2359,7 @@ async def video_remix(
 async def api_create_character(
     timestamps: str = Form(..., description="Time range (format: 'start,end', 1-3 seconds)"),
     url: Optional[str] = Form(None, description="Video URL (not for real people)"),
-    from_task: Optional[str] = Form(None, description="Task ID (supports real people)"),
+    from_task: Optional[str] = Form(None, description="Task ID or database record ID (supports real people)"),
     callback_url: Optional[str] = Form(None, description="Callback URL"),
     user_id: Optional[int] = Form(None, description="User ID"),
     auth_token: Optional[str] = Form(None, description="Authentication token")
@@ -2328,6 +2367,7 @@ async def api_create_character(
     """
     Create character generation task using SORA API
     Either url or from_task must be provided
+    from_task can be either a Duomi API task ID or a database record ID
     """
     try:
         # 检查认证
@@ -2401,6 +2441,16 @@ async def api_create_character(
         )
         
         logger.info(f"Character creation response: {response}")
+        
+        # Check for API errors first
+        if "error" in response:
+            error_info = response.get("error", {})
+            error_message = error_info.get("message", "未知错误")
+            error_code = error_info.get("code", "unknown")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"创建角色任务失败: [{error_code}] {error_message}"
+            )
         
         # Extract task ID from response
         task_id = response.get("id") or response.get("task_id") or response.get("data", {}).get("id")
