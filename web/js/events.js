@@ -1516,7 +1516,9 @@
           showToast('世界创建成功', 'success');
           
           // 关闭创建世界模态框
-          document.getElementById('createWorldModal').classList.remove('show');
+          const modalEl = document.getElementById('createWorldModal');
+          modalEl.classList.remove('show');
+          modalEl.dispatchEvent(new Event('worldCreateSuccess', { bubbles: true }));
           
           // 重新加载世界列表
           if (currentWorldSelectElement) {
@@ -1834,7 +1836,9 @@
         if (result.code === 0 && result.data) {
           showToast('场景创建成功', 'success');
           
-          document.getElementById('createLocationModal').classList.remove('show');
+          const modalEl = document.getElementById('createLocationModal');
+          modalEl.classList.remove('show');
+          modalEl.dispatchEvent(new Event('locationCreateSuccess', { bubbles: true }));
           
           loadLocations(worldId);
         } else {

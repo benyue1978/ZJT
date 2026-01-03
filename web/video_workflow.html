@@ -21,6 +21,7 @@
           </select>
           <button class="mini-btn" id="createWorldBtn" type="button" title="新建世界">+</button>
         </div>
+        <button class="mini-btn secondary tour-trigger" id="tourStartBtn" type="button" title="查看新手引导">新手指引</button>
       </div>
       <div class="ratio-floating">
         <button class="btn save-btn" id="saveBtn" title="保存工作流">
@@ -137,6 +138,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <div class="lock-mask" id="tourLockMask" aria-hidden="true"></div>
 
   <div class="modal" id="videoModal" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true">
@@ -594,6 +596,8 @@
     时间轴
   </button>
 
+  <div id="workflowTourPortal" aria-hidden="true"></div>
+
   <script src="/js/state.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/world.js"></script>
@@ -606,5 +610,6 @@
   <script src="/js/shot_frame_video_generator.js"></script>
   <script src="/js/events.js"></script>
   <script src="/js/workflow_layout.js"></script>
+  <script src="/js/workflow_tour.js"></script>
 </body>
 </html>
