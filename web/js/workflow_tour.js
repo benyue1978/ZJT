@@ -225,7 +225,8 @@
   const characterBtn = document.getElementById('menuAddCharacter');
   const scriptBtn = document.getElementById('menuAddScript');
   const menuItemHandlers = new Map();
-  let scriptInputHandler = null;
+  const scriptInputHandlers = new Map();
+  let scriptInputObserver = null;
   let splitShotsHandler = null;
   let generateStoryboardHandler = null;
   let generateVideoHandler = null;
@@ -313,46 +314,69 @@
   };
 
   const attachScriptInputHandler = () => {
-    if(scriptInputHandler){
-      return;
-    }
-    const checkAndAttach = () => {
-      const textarea = document.querySelector('.script-textarea');
-      if(!textarea){
-        return false;
-      }
-      scriptInputHandler = () => {
-        if(steps[currentStepIndex]?.id !== INPUT_SCRIPT_STEP_ID){
+    const bindTextareas = () => {
+      let hasTextarea = false;
+      const textareas = document.querySelectorAll('.script-textarea');
+      textareas.forEach((textarea) => {
+        hasTextarea = true;
+        if(scriptInputHandlers.has(textarea)){
+          if((textarea.value || '').trim().length > 0){
+            scriptInputHandlers.get(textarea)?.call(textarea, { target: textarea });
+          }
           return;
         }
-        const value = textarea.value || '';
-        if(value.trim().length > 0){
-          detachScriptInputHandler();
-          completeStepAndExit();
-        }
-      };
-      textarea.addEventListener('input', scriptInputHandler);
-      return true;
-    };
-    if(!checkAndAttach()){
-      const observer = new MutationObserver(() => {
-        if(checkAndAttach()){
-          observer.disconnect();
+        const handler = () => {
+          if(steps[currentStepIndex]?.id !== INPUT_SCRIPT_STEP_ID){
+            return;
+          }
+          const value = textarea.value || '';
+          if(value.trim().length > 0){
+            detachScriptInputHandler();
+            completeStepAndExit();
+          }
+        };
+        textarea.addEventListener('input', handler);
+        scriptInputHandlers.set(textarea, handler);
+        if((textarea.value || '').trim().length > 0){
+          handler();
         }
       });
-      observer.observe(document.body, { childList: true, subtree: true });
+      return hasTextarea;
+    };
+
+    if(bindTextareas()){
+      if(!scriptInputObserver){
+        scriptInputObserver = new MutationObserver(() => {
+          bindTextareas();
+        });
+        scriptInputObserver.observe(document.body, { childList: true, subtree: true });
+      }
+      return;
+    }
+
+    if(!scriptInputObserver){
+      scriptInputObserver = new MutationObserver(() => {
+        if(bindTextareas()){
+          scriptInputObserver?.disconnect();
+          scriptInputObserver = new MutationObserver(() => {
+            bindTextareas();
+          });
+          scriptInputObserver.observe(document.body, { childList: true, subtree: true });
+        }
+      });
+      scriptInputObserver.observe(document.body, { childList: true, subtree: true });
     }
   };
 
   const detachScriptInputHandler = () => {
-    if(!scriptInputHandler){
-      return;
+    scriptInputHandlers.forEach((handler, textarea) => {
+      textarea.removeEventListener('input', handler);
+    });
+    scriptInputHandlers.clear();
+    if(scriptInputObserver){
+      scriptInputObserver.disconnect();
+      scriptInputObserver = null;
     }
-    const textarea = document.querySelector('.script-textarea');
-    if(textarea){
-      textarea.removeEventListener('input', scriptInputHandler);
-    }
-    scriptInputHandler = null;
   };
 
   const attachSplitShotsHandler = () => {
