@@ -554,6 +554,8 @@
         createLocationNodeWithData(nodeData);
       } else if(nodeData.type === 'text_to_speech'){
         createTextToSpeechNodeWithData(nodeData);
+      } else if(nodeData.type === 'dialogue_group'){
+        createDialogueGroupNodeWithData(nodeData);
       }
     }
 
