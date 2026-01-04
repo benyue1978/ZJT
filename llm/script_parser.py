@@ -479,7 +479,6 @@ async def parse_script_to_shots(
    - 必须包含：构图信息（如三分法、景深、视角等）
    - 描述要具体到能让AI准确还原画面
    - **涉及角色名称时必须用【【角色名】】格式包裹（注意：只对角色名称使用，场景名称不要使用）**
-   - **【强制要求】对于包含对话(dialogue)的镜头，opening_frame_description的开头必须明确写明"近景"或"中景"，例如："中景：【【张三】】站在办公室里..."或"近景：【【李四】】的面部特写，表情凝重..."。禁止使用"全景"或"远景"描述对话镜头的首帧，因为AI视频在全景对话场景效果不佳**
 
 6. **角色名称格式要求（非常重要）**：
    - 在shot节点的所有文本字段中（description、opening_frame_description、scene_detail、action、dialogue.character_name等）
