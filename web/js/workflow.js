@@ -508,6 +508,8 @@
         createCharacterNodeWithData(nodeData);
       } else if(nodeData.type === 'location'){
         createLocationNodeWithData(nodeData);
+      } else if(nodeData.type === 'text_to_speech'){
+        createTextToSpeechNodeWithData(nodeData);
       }
     }
 
