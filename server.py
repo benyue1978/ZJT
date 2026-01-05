@@ -3354,12 +3354,12 @@ async def get_video_workflow(
 @app.post('/api/video-workflow/upload')
 async def upload_workflow_asset(
     request: Request,
-    file: UploadFile = File(..., description="要上传的图片或视频文件"),
+    file: UploadFile = File(..., description="要上传的图片、视频或音频文件"),
     auth_token: str = Header(None, alias="Authorization"),
     user_id: Optional[int] = Header(None, alias="X-User-Id")
 ):
     """
-    上传工作流素材（图片或视频）
+    上传工作流素材（图片、视频或音频）
     返回可访问的永久URL
     """
     try:
@@ -3367,10 +3367,10 @@ async def upload_workflow_asset(
         
         # 验证文件类型
         content_type = file.content_type or ""
-        if not (content_type.startswith("image/") or content_type.startswith("video/")):
+        if not (content_type.startswith("image/") or content_type.startswith("video/") or content_type.startswith("audio/")):
             return JSONResponse(
                 status_code=400,
-                content={"code": -1, "message": "仅支持图片或视频文件"}
+                content={"code": -1, "message": "仅支持图片、视频或音频文件"}
             )
         
         # 保存文件并获取URL（用户隔离目录）
