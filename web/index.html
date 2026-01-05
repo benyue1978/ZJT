@@ -692,10 +692,10 @@
         
         <div v-if="error && !loading" class="status danger">{{ error }}</div>
         
-        <div v-if="result" class="results">
-          <div class="result-title">生成结果</div>
-          <div class="result-item">
-            <audio :src="result.file_url" controls style="width:100%; margin-bottom:8px;"></audio>
+        <div v-if="result" class="results" style="display: block; padding: 16px;">
+          <div class="result-title" style="margin-bottom: 12px; font-weight: 600;">生成结果</div>
+          <div class="result-item" style="display: block; width: 100%;">
+            <audio :src="result.file_url" controls style="width:50%; max-width:50%; display:block; margin-bottom:12px;"></audio>
             <button class="btn secondary" @click="downloadAudio(result.file_url)">下载音频</button>
           </div>
         </div>
