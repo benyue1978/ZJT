@@ -1,3 +1,13 @@
+    function escapeHtml(value){
+      if(value === null || value === undefined) return '';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     function createDialogueGroupNode(opts){
       const id = state.nextNodeId++;
       const viewportPos = getViewportNodePosition();
@@ -304,7 +314,13 @@
         if(!container) return;
         
         if(!node.data.dialogues || node.data.dialogues.length === 0){
-          container.innerHTML = '<div class="gen-meta" style="text-align:center; padding: 20px;">暂无对话数据</div>';
+          container.innerHTML = `
+            <div class="gen-meta" style="text-align:center; padding: 20px;">暂无对话数据</div>
+            <div style="margin-top: 12px; text-align: center;">
+              <button class="mini-btn dialogue-add-btn" type="button" style="font-size: 11px; padding: 6px 12px; background: #3b82f6; color: white;">+ 添加对话</button>
+            </div>
+          `;
+          attachDialogueItemEvents();
           return;
         }
         
@@ -318,9 +334,21 @@
             <div class="dialogue-item" data-index="${index}" style="margin-bottom: 12px; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <div style="font-weight: 600; color: #374151;">${escapeHtml(characterName)}</div>
-                <button class="mini-btn dialogue-generate-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">生成音频</button>
+                <div style="display: flex; gap: 4px;">
+                  <button class="mini-btn dialogue-edit-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;" title="编辑">编辑</button>
+                  <button class="mini-btn dialogue-delete-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px; background: #ef4444; color: white;" title="删除">删除</button>
+                  <button class="mini-btn dialogue-generate-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">生成音频</button>
+                </div>
               </div>
-              <div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">"${escapeHtml(text)}"</div>
+              <div class="dialogue-text-display" data-index="${index}" style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">"${escapeHtml(text)}"</div>
+              <div class="dialogue-edit-form" data-index="${index}" style="display: none; margin-bottom: 8px;">
+                <input type="text" class="dialogue-edit-character" value="${escapeHtml(characterName)}" placeholder="角色名" style="width: 100%; padding: 6px; margin-bottom: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px;">
+                <textarea class="dialogue-edit-text" placeholder="对话内容" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; resize: vertical;" rows="3">${escapeHtml(text)}</textarea>
+                <div style="display: flex; gap: 4px; margin-top: 6px;">
+                  <button class="mini-btn dialogue-save-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px; background: #10b981; color: white;">保存</button>
+                  <button class="mini-btn dialogue-cancel-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">取消</button>
+                </div>
+              </div>
               <div class="dialogue-status" data-index="${index}" style="display:none; font-size: 12px; color: #6b7280; margin-bottom: 8px;"></div>
               <div class="dialogue-result" data-index="${index}" style="display:${hasAudio ? 'block' : 'none'};">
                 <audio controls style="width:100%; max-height:32px; margin-bottom: 6px;"></audio>
@@ -329,6 +357,12 @@
             </div>
           `;
         });
+        
+        html += `
+          <div style="margin-top: 12px; text-align: center;">
+            <button class="mini-btn dialogue-add-btn" type="button" style="font-size: 11px; padding: 6px 12px; background: #3b82f6; color: white;">+ 添加对话</button>
+          </div>
+        `;
         
         container.innerHTML = html;
         attachDialogueItemEvents();
@@ -363,6 +397,139 @@
             downloadDialogueAudio(index);
           });
         });
+        
+        const editBtns = el.querySelectorAll('.dialogue-edit-btn');
+        editBtns.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.index);
+            const item = el.querySelector(`.dialogue-item[data-index="${index}"]`);
+            if(!item) return;
+            
+            const textDisplay = item.querySelector('.dialogue-text-display');
+            const editForm = item.querySelector('.dialogue-edit-form');
+            const editBtn = item.querySelector('.dialogue-edit-btn');
+            const deleteBtn = item.querySelector('.dialogue-delete-btn');
+            const generateBtn = item.querySelector('.dialogue-generate-btn');
+            
+            if(textDisplay) textDisplay.style.display = 'none';
+            if(editForm) editForm.style.display = 'block';
+            if(editBtn) editBtn.style.display = 'none';
+            if(deleteBtn) deleteBtn.style.display = 'none';
+            if(generateBtn) generateBtn.style.display = 'none';
+          });
+        });
+        
+        const saveBtns = el.querySelectorAll('.dialogue-save-btn');
+        saveBtns.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.index);
+            const item = el.querySelector(`.dialogue-item[data-index="${index}"]`);
+            if(!item) return;
+            
+            const characterInput = item.querySelector('.dialogue-edit-character');
+            const textInput = item.querySelector('.dialogue-edit-text');
+            
+            if(!characterInput || !textInput) return;
+            
+            const newCharacter = characterInput.value.trim();
+            const newText = textInput.value.trim();
+            
+            if(!newCharacter || !newText){
+              showToast('角色名和对话内容不能为空', 'warning');
+              return;
+            }
+            
+            node.data.dialogues[index].character_name = newCharacter;
+            node.data.dialogues[index].text = newText;
+            
+            if(node.data.audioResults[index]){
+              delete node.data.audioResults[index];
+            }
+            
+            updateDialogueList();
+            try{ autoSaveWorkflow(); } catch(e){}
+            showToast('对话已更新', 'success');
+          });
+        });
+        
+        const cancelBtns = el.querySelectorAll('.dialogue-cancel-btn');
+        cancelBtns.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.index);
+            const item = el.querySelector(`.dialogue-item[data-index="${index}"]`);
+            if(!item) return;
+            
+            const textDisplay = item.querySelector('.dialogue-text-display');
+            const editForm = item.querySelector('.dialogue-edit-form');
+            const editBtn = item.querySelector('.dialogue-edit-btn');
+            const deleteBtn = item.querySelector('.dialogue-delete-btn');
+            const generateBtn = item.querySelector('.dialogue-generate-btn');
+            
+            if(textDisplay) textDisplay.style.display = 'block';
+            if(editForm) editForm.style.display = 'none';
+            if(editBtn) editBtn.style.display = 'inline-block';
+            if(deleteBtn) deleteBtn.style.display = 'inline-block';
+            if(generateBtn) generateBtn.style.display = 'inline-block';
+          });
+        });
+        
+        const deleteBtns = el.querySelectorAll('.dialogue-delete-btn');
+        deleteBtns.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.index);
+            
+            if(!confirm('确定要删除这条对话吗？')){
+              return;
+            }
+            
+            node.data.dialogues.splice(index, 1);
+            
+            const newAudioResults = {};
+            Object.keys(node.data.audioResults).forEach(key => {
+              const idx = parseInt(key);
+              if(idx < index){
+                newAudioResults[idx] = node.data.audioResults[idx];
+              } else if(idx > index){
+                newAudioResults[idx - 1] = node.data.audioResults[idx];
+              }
+            });
+            node.data.audioResults = newAudioResults;
+            
+            updateDialogueList();
+            try{ autoSaveWorkflow(); } catch(e){}
+            showToast('对话已删除', 'success');
+          });
+        });
+        
+        const addBtn = el.querySelector('.dialogue-add-btn');
+        if(addBtn){
+          addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            const newDialogue = {
+              character_name: '新角色',
+              text: '请输入对话内容'
+            };
+            
+            node.data.dialogues.push(newDialogue);
+            updateDialogueList();
+            try{ autoSaveWorkflow(); } catch(e){}
+            showToast('已添加新对话', 'success');
+            
+            setTimeout(() => {
+              const newIndex = node.data.dialogues.length - 1;
+              const newItem = el.querySelector(`.dialogue-item[data-index="${newIndex}"]`);
+              if(newItem){
+                const editBtn = newItem.querySelector('.dialogue-edit-btn');
+                if(editBtn) editBtn.click();
+              }
+            }, 100);
+          });
+        }
       }
 
       async function generateDialogueAudio(index){
@@ -679,17 +846,13 @@
                        now.getMinutes().toString().padStart(2, '0');
         const filename = `${characterName}_${dateStr}_${timeStr}.wav`;
         
-        if(audioUrl.startsWith('blob:')){
-          const link = document.createElement('a');
-          link.href = audioUrl;
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } else {
-          const downloadUrl = `/api/download?url=${encodeURIComponent(audioUrl)}&filename=${encodeURIComponent(filename)}`;
-          window.open(downloadUrl, '_blank');
-        }
+        const link = document.createElement('a');
+        link.href = audioUrl;
+        link.download = filename;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
         showToast('开始下载', 'success');
       }
 
@@ -756,7 +919,7 @@
         showToast('全部对话音频生成完成', 'success');
       });
 
-      attachDialogueItemEvents();
+      updateDialogueList();
       
       // 初始化视频输入端口的禁用状态
       if(videoInputPort){
