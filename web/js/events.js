@@ -845,7 +845,14 @@
       e.stopPropagation();
       if(confirm('确定要清空时间轴吗？')){
         state.timeline.clips = [];
+        state.timeline.audioClips = [];
         state.timeline.selectedClipId = null;
+        state.timeline.selectedAudioClipId = null;
+        // 清空柱子中的片段引用
+        state.timeline.pillars.forEach(pillar => {
+          pillar.videoClipIds = [];
+          pillar.audioClipIds = [];
+        });
         renderTimeline();
         showToast('时间轴已清空', 'success');
         try{ autoSaveWorkflow(); } catch(e){}

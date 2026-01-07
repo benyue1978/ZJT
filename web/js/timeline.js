@@ -64,8 +64,12 @@
         }
       });
       
-      // 返回较大值和默认时长中的最大值
-      return Math.max(pillar.defaultDuration, videoTrackDuration, audioTrackDuration);
+      // 优先使用实际媒体时长（视频和音频的最大值）
+      // 只有在完全没有媒体时，才使用默认时长作为占位
+      if (videoTrackDuration > 0 || audioTrackDuration > 0) {
+        return Math.max(videoTrackDuration, audioTrackDuration);
+      }
+      return pillar.defaultDuration;
     }
     
     /**
@@ -750,14 +754,40 @@
     
     // 渲染时间刻度
     function renderTimelineRuler(ruler, totalDuration) {
-      let html = '';
+      // 添加左侧占位（60px，与轨道标签宽度一致）+ 刻度内容
+      let html = '<div style="display: flex;">';
+      html += '<div style="width: 60px; min-width: 60px; flex-shrink: 0;"></div>'; // 左侧占位
+      html += '<div style="position: relative; flex: 1; min-width: max-content;">';
+      
       const interval = totalDuration > 60 ? 10 : 5;
+      
+      // 渲染主刻度（带标签）
       for (let i = 0; i <= totalDuration; i += interval) {
         const minutes = Math.floor(i / 60);
         const seconds = i % 60;
         const label = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        html += `<div class="ruler-mark" style="left:${i * 10}px;">${label}</div>`;
+        html += `
+          <div class="ruler-mark" style="left:${i * 10}px;">
+            <div class="ruler-tick ruler-tick-major"></div>
+            <div class="ruler-label">${label}</div>
+          </div>
+        `;
       }
+      
+      // 渲染次刻度（小刻度线，无标签）
+      const minorInterval = interval === 10 ? 2 : 1; // 主刻度10秒时，次刻度2秒；主刻度5秒时，次刻度1秒
+      for (let i = minorInterval; i <= totalDuration; i += minorInterval) {
+        // 跳过主刻度位置
+        if (i % interval !== 0) {
+          html += `
+            <div class="ruler-mark-minor" style="left:${i * 10}px;">
+              <div class="ruler-tick ruler-tick-minor"></div>
+            </div>
+          `;
+        }
+      }
+      
+      html += '</div></div>';
       ruler.innerHTML = html;
     }
     
@@ -1545,14 +1575,36 @@
         
         closeDialog();
         
-        // 准备时间轴数据
+        // 准备时间轴数据 - 包含视频和音频
         const sortedClips = [...state.timeline.clips].sort((a, b) => a.order - b.order);
-        const timelineData = sortedClips.map(clip => ({
+        const videoClipsData = sortedClips.map(clip => ({
           url: clip.url,
           name: clip.name,
           duration: clip.duration,
           startTime: clip.startTime || 0,
-          endTime: clip.endTime || clip.duration
+          endTime: clip.endTime || clip.duration,
+          pillarId: clip.pillarId || null
+        }));
+        
+        // 准备音频数据
+        const sortedAudioClips = [...state.timeline.audioClips].sort((a, b) => a.order - b.order);
+        const audioClipsData = sortedAudioClips.map(clip => ({
+          url: clip.url,
+          name: clip.name,
+          duration: clip.duration,
+          startTime: clip.startTime || 0,
+          endTime: clip.endTime || clip.duration,
+          pillarId: clip.pillarId || null
+        }));
+        
+        // 准备柱子数据（用于处理不连续的视频）
+        const pillarsData = state.timeline.pillars.map(pillar => ({
+          id: pillar.id,
+          scriptId: pillar.scriptId,
+          shotNumber: pillar.shotNumber,
+          defaultDuration: pillar.defaultDuration,
+          videoClipIds: pillar.videoClipIds,
+          audioClipIds: pillar.audioClipIds
         }));
         
         // 获取工作流名称
@@ -1569,7 +1621,9 @@
             },
             body: JSON.stringify({
               draft_path: draftPath,
-              timeline_clips: timelineData,
+              video_clips: videoClipsData,
+              audio_clips: audioClipsData,
+              pillars: pillarsData,
               workflow_name: workflowName
             })
           });
