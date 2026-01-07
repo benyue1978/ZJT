@@ -102,11 +102,12 @@
     function renderTimeline() {
       const container = document.getElementById('timelineContainer');
       const track = document.getElementById('videoTrack');
+      const audioTrack = document.getElementById('audioTrack');
       const ruler = document.getElementById('timelineRuler');
       const totalDurationEl = document.getElementById('timelineTotalDuration');
       const expandBtn = document.getElementById('timelineExpandBtn');
       
-      if (!state.timeline.visible || state.timeline.clips.length === 0) {
+      if (!state.timeline.visible || (state.timeline.clips.length === 0 && state.timeline.audioClips.length === 0)) {
         container.style.display = 'none';
         expandBtn.style.display = 'none';
         canvasContainer.classList.remove('timeline-visible');
@@ -117,11 +118,20 @@
       expandBtn.style.display = 'none';
       canvasContainer.classList.add('timeline-visible');
       
-      // 计算总时长（考虑剪切后的实际播放时长）
-      const totalDuration = state.timeline.clips.reduce((sum, c) => {
+      // 计算视频总时长（考虑剪切后的实际播放时长）
+      const videoTotalDuration = state.timeline.clips.reduce((sum, c) => {
         const actualDuration = (c.endTime || c.duration) - (c.startTime || 0);
         return sum + actualDuration;
       }, 0);
+      
+      // 计算音频总时长
+      const audioTotalDuration = state.timeline.audioClips.reduce((sum, c) => {
+        const actualDuration = (c.endTime || c.duration) - (c.startTime || 0);
+        return sum + actualDuration;
+      }, 0);
+      
+      // 使用较长的时长作为总时长
+      const totalDuration = Math.max(videoTotalDuration, audioTotalDuration);
       const minutes = Math.floor(totalDuration / 60);
       const seconds = (totalDuration % 60).toFixed(2);
       totalDurationEl.textContent = `总时长: ${minutes}:${seconds.padStart(5, '0')}`;
@@ -164,7 +174,46 @@
       // 设置轨道最小宽度以容纳所有片段
       track.style.minWidth = (totalDuration * 10 + 24) + 'px'; // 24px for padding
       
+      // 渲染音频轨道
+      const sortedAudioClips = [...state.timeline.audioClips].sort((a, b) => a.order - b.order);
+      let accumulatedAudioTime = 0;
+      audioTrack.innerHTML = sortedAudioClips.map(clip => {
+        const startTime = accumulatedAudioTime;
+        const clipStartTime = clip.startTime || 0;
+        const clipEndTime = clip.endTime || clip.duration;
+        const actualDuration = clipEndTime - clipStartTime;
+        const width = actualDuration * 10;
+        accumulatedAudioTime += actualDuration;
+        
+        const durationText = `${actualDuration.toFixed(1)}s`;
+        
+        return `
+          <div class="timeline-audio-clip ${state.timeline.selectedAudioClipId === clip.id ? 'selected' : ''}" 
+               data-audio-clip-id="${clip.id}" 
+               draggable="true"
+               style="position: absolute; left: ${startTime * 10}px; width: ${width}px;">
+            <div class="timeline-audio-clip-waveform">
+              <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                <path d="M0,20 ${Array.from({length: 20}, (_, i) => {
+                  const x = i * 5;
+                  const h = 5 + Math.random() * 15;
+                  return `L${x},${20-h} L${x},${20+h}`;
+                }).join(' ')} L100,20" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
+              </svg>
+            </div>
+            <div class="timeline-clip-name" title="${clip.name}">${clip.name}</div>
+            <div class="timeline-clip-duration">${durationText}</div>
+            <div class="timeline-clip-actions">
+              <button class="vp-btn audio-clip-remove-btn" title="移除">×</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      audioTrack.style.minWidth = (totalDuration * 10 + 24) + 'px';
+      
       bindTimelineClipEvents();
+      bindAudioClipEvents();
     }
     
     // 渲染时间刻度
@@ -1014,5 +1063,115 @@
         }
       });
     }
+    
+    // 绑定音频片段事件
+    function bindAudioClipEvents() {
+      const audioTrack = document.getElementById('audioTrack');
+      if (!audioTrack) return;
+      
+      audioTrack.querySelectorAll('.timeline-audio-clip').forEach(clipEl => {
+        const clipId = Number(clipEl.dataset.audioClipId);
+        
+        clipEl.addEventListener('click', (e) => {
+          if(e.target.classList.contains('audio-clip-remove-btn')) return;
+          state.timeline.selectedAudioClipId = clipId;
+          renderTimeline();
+        });
+        
+        const removeBtn = clipEl.querySelector('.audio-clip-remove-btn');
+        if(removeBtn){
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeAudioFromTimeline(clipId);
+          });
+        }
+      });
+    }
+    
+    // ============ 音频时间轴功能 ============
+    
+    // 添加音频到时间轴
+    function addAudioToTimeline(nodeId, dialogueIndex, audioUrl, audioName, duration) {
+      if (!audioUrl) {
+        showToast('音频URL无效', 'error');
+        return;
+      }
+      
+      const clip = {
+        id: state.timeline.nextAudioClipId++,
+        nodeId: nodeId,
+        dialogueIndex: dialogueIndex,
+        url: audioUrl,
+        name: audioName || '音频',
+        duration: duration || 5,
+        startTime: 0,
+        endTime: duration || 5,
+        order: state.timeline.audioClips.length,
+      };
+      
+      state.timeline.audioClips.push(clip);
+      state.timeline.visible = true;
+      
+      renderTimeline();
+      showToast('已添加音频到时间轴', 'success');
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 从时间轴移除音频片段
+    function removeAudioFromTimeline(clipId) {
+      state.timeline.audioClips = state.timeline.audioClips.filter(c => c.id !== clipId);
+      state.timeline.audioClips.forEach((c, i) => c.order = i);
+      renderTimeline();
+      showToast('已从时间轴移除音频', 'success');
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 移动音频片段（拖拽排序）
+    function moveAudioClip(clipId, newOrder) {
+      const clip = state.timeline.audioClips.find(c => c.id === clipId);
+      if (!clip) return;
+      
+      const oldOrder = clip.order;
+      if (oldOrder === newOrder) return;
+      
+      state.timeline.audioClips.forEach(c => {
+        if (c.id === clipId) {
+          c.order = newOrder;
+        } else if (oldOrder < newOrder && c.order > oldOrder && c.order <= newOrder) {
+          c.order--;
+        } else if (oldOrder > newOrder && c.order >= newOrder && c.order < oldOrder) {
+          c.order++;
+        }
+      });
+      
+      state.timeline.audioClips.sort((a, b) => a.order - b.order);
+      renderTimeline();
+      try{ autoSaveWorkflow(); } catch(e){}
+    }
+    
+    // 获取音频时长
+    function getAudioDuration(url) {
+      return new Promise((resolve, reject) => {
+        const audio = document.createElement('audio');
+        audio.preload = 'metadata';
+        
+        audio.addEventListener('loadedmetadata', () => {
+          if (audio.duration && isFinite(audio.duration)) {
+            resolve(Math.round(audio.duration * 10) / 10);
+          } else {
+            reject(new Error('Invalid duration'));
+          }
+          audio.src = '';
+        }, { once: true });
+        
+        audio.addEventListener('error', () => {
+          reject(new Error('Failed to load audio'));
+        }, { once: true });
+        
+        audio.src = proxyDownloadUrl(url);
+      });
+    }
+    
+    // ============ 音频时间轴功能结束 ============
     
     // ============ 时间轴功能结束 ============

@@ -184,7 +184,9 @@
         videoConnections: state.videoConnections.map(c => ({ id: c.id, from: c.from, to: c.to })),
         timeline: {
           clips: state.timeline.clips.map(c => ({ ...c })),
+          audioClips: state.timeline.audioClips.map(c => ({ ...c })),
           nextClipId: state.timeline.nextClipId,
+          nextAudioClipId: state.timeline.nextAudioClipId,
         }
       };
     }
@@ -507,8 +509,10 @@
         // 恢复时间轴
         if(data.timeline){
           state.timeline.clips = data.timeline.clips || [];
+          state.timeline.audioClips = data.timeline.audioClips || [];
           state.timeline.nextClipId = data.timeline.nextClipId || 1;
-          state.timeline.visible = state.timeline.clips.length > 0;
+          state.timeline.nextAudioClipId = data.timeline.nextAudioClipId || 1;
+          state.timeline.visible = state.timeline.clips.length > 0 || state.timeline.audioClips.length > 0;
           renderTimeline();
         }
         

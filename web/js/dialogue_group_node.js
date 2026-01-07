@@ -352,7 +352,10 @@
               <div class="dialogue-status" data-index="${index}" style="display:none; font-size: 12px; color: #6b7280; margin-bottom: 8px;"></div>
               <div class="dialogue-result" data-index="${index}" style="display:${hasAudio ? 'block' : 'none'};">
                 <audio controls style="width:100%; max-height:32px; margin-bottom: 6px;"></audio>
-                <button class="mini-btn dialogue-download-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">下载</button>
+                <div style="display: flex; gap: 4px;">
+                  <button class="mini-btn dialogue-download-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">下载</button>
+                  <button class="mini-btn dialogue-add-timeline-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px; background: #10b981; color: white;">添加到时间轴</button>
+                </div>
               </div>
             </div>
           `;
@@ -395,6 +398,15 @@
             e.stopPropagation();
             const index = parseInt(btn.dataset.index);
             downloadDialogueAudio(index);
+          });
+        });
+        
+        const addTimelineBtns = el.querySelectorAll('.dialogue-add-timeline-btn');
+        addTimelineBtns.forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.index);
+            await addDialogueAudioToTimeline(index);
           });
         });
         
@@ -854,6 +866,26 @@
         link.click();
         document.body.removeChild(link);
         showToast('开始下载', 'success');
+      }
+
+      async function addDialogueAudioToTimeline(index){
+        if(!node.data.audioResults || !node.data.audioResults[index]){
+          showToast('没有可添加的音频', 'error');
+          return;
+        }
+        
+        const audioUrl = node.data.audioResults[index].audioUrl;
+        const dialogue = node.data.dialogues[index];
+        const characterName = dialogue.character_name || '角色';
+        const audioName = `${characterName}: ${dialogue.text.substring(0, 20)}...`;
+        
+        try {
+          const duration = await getAudioDuration(audioUrl);
+          addAudioToTimeline(id, index, audioUrl, audioName, duration);
+        } catch(error) {
+          console.warn('获取音频时长失败，使用默认时长:', error);
+          addAudioToTimeline(id, index, audioUrl, audioName, 5);
+        }
       }
 
       async function fetchAndMatchCharacter(worldId, characterName){

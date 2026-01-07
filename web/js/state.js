@@ -23,8 +23,11 @@
       zoom: 1,
       timeline: {
         clips: [],
+        audioClips: [],
         nextClipId: 1,
+        nextAudioClipId: 1,
         selectedClipId: null,
+        selectedAudioClipId: null,
         visible: false,
       },
       style: {
