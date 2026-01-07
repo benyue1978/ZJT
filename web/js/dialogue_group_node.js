@@ -29,7 +29,8 @@
           emoVec: [0, 0, 0, 0, 0, 0, 0, 0],
           emoWeight: 1,
           emoRefAudioUrl: null,
-          shotNumber: shotNumber
+          shotNumber: shotNumber,
+          referenceAudios: []
         }
       };
       state.nodes.push(node);
@@ -117,6 +118,17 @@
             </div>
           </div>
           
+          <div class="field" style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label class="label" style="font-size: 12px; margin: 0;">参考音频</label>
+              <button class="mini-btn dialogue-add-ref-audio-btn" type="button" style="font-size: 11px; padding: 4px 8px;">添加音频</button>
+            </div>
+            <div style="font-size: 11px; color: #6b7280; margin-bottom: 8px;">
+              最多6个音频，每个不超过20秒、10MB
+            </div>
+            <div class="dialogue-ref-audios-list"></div>
+          </div>
+          
           <div class="field">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <div class="label" style="margin: 0;">对话列表</div>
@@ -148,6 +160,8 @@
       const emoVecSliders = el.querySelectorAll('.dialogue-emo-vec-slider');
       const emoVecSum = el.querySelector('.dialogue-emo-vec-sum');
       const emoVecWarning = el.querySelector('.dialogue-emo-vec-warning');
+      const addRefAudioBtn = el.querySelector('.dialogue-add-ref-audio-btn');
+      const refAudiosList = el.querySelector('.dialogue-ref-audios-list');
 
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -310,6 +324,135 @@
           try{ autoSaveWorkflow(); } catch(e){}
         });
       });
+
+      // 验证音频文件
+      async function validateAudioFile(file){
+        const maxSize = 10 * 1024 * 1024;
+        const maxDuration = 20;
+        
+        if(file.size > maxSize){
+          showToast('音频文件不能超过10MB', 'error');
+          return false;
+        }
+        
+        return new Promise((resolve) => {
+          const audio = new Audio();
+          const url = URL.createObjectURL(file);
+          
+          audio.addEventListener('loadedmetadata', () => {
+            URL.revokeObjectURL(url);
+            if(audio.duration > maxDuration){
+              showToast(`音频时长不能超过${maxDuration}秒，当前时长：${audio.duration.toFixed(1)}秒`, 'error');
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
+          
+          audio.addEventListener('error', () => {
+            URL.revokeObjectURL(url);
+            showToast('无法读取音频文件', 'error');
+            resolve(false);
+          });
+          
+          audio.src = url;
+        });
+      }
+
+      // 渲染参考音频列表
+      function renderRefAudiosList(){
+        if(!node.data.referenceAudios){
+          node.data.referenceAudios = [];
+        }
+        
+        if(node.data.referenceAudios.length === 0){
+          refAudiosList.innerHTML = '<div style="text-align: center; color: #9ca3af; padding: 12px; font-size: 12px;">暂无参考音频</div>';
+          return;
+        }
+        
+        let html = '';
+        node.data.referenceAudios.forEach((item, index) => {
+          html += `
+            <div class="ref-audio-item" data-index="${index}" style="margin-bottom: 8px; padding: 8px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div style="font-size: 12px; font-weight: 600; color: #374151;">${escapeHtml(item.characterName || '未命名角色')}</div>
+                <button class="mini-btn ref-audio-delete-btn" data-index="${index}" type="button" style="font-size: 10px; padding: 2px 6px; background: #ef4444; color: white;">删除</button>
+              </div>
+              <audio controls style="width: 100%; max-height: 28px;" src="${item.url.startsWith('blob:') ? item.url : proxyDownloadUrl(item.url)}"></audio>
+            </div>
+          `;
+        });
+        
+        refAudiosList.innerHTML = html;
+        
+        const deleteBtns = refAudiosList.querySelectorAll('.ref-audio-delete-btn');
+        deleteBtns.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const index = parseInt(btn.dataset.index);
+            node.data.referenceAudios.splice(index, 1);
+            renderRefAudiosList();
+            showToast('已删除参考音频', 'success');
+            try{ autoSaveWorkflow(); } catch(e){}
+          });
+        });
+      }
+
+      // 添加参考音频按钮事件
+      addRefAudioBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        
+        if(!node.data.referenceAudios){
+          node.data.referenceAudios = [];
+        }
+        
+        if(node.data.referenceAudios.length >= 6){
+          showToast('最多只能添加6个参考音频', 'warning');
+          return;
+        }
+        
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*';
+        
+        input.addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if(!file) return;
+          
+          const isValid = await validateAudioFile(file);
+          if(!isValid) return;
+          
+          const characterName = prompt('请输入该音频对应的角色名称：');
+          if(!characterName || !characterName.trim()){
+            showToast('角色名称不能为空', 'warning');
+            return;
+          }
+          
+          try {
+            showToast('正在上传音频...', 'info');
+            const uploadedUrl = await uploadFile(file);
+            if(uploadedUrl){
+              node.data.referenceAudios.push({
+                characterName: characterName.trim(),
+                url: uploadedUrl,
+                fileName: file.name
+              });
+              renderRefAudiosList();
+              showToast('参考音频添加成功', 'success');
+              try{ autoSaveWorkflow(); } catch(e){}
+            } else {
+              showToast('音频上传失败', 'error');
+            }
+          } catch(error){
+            console.error('上传音频失败:', error);
+            showToast('音频上传失败: ' + error.message, 'error');
+          }
+        });
+        
+        input.click();
+      });
+
+      renderRefAudiosList();
 
       function updateDialogueList(){
         const container = el.querySelector('.dialogue-items-container');
@@ -578,29 +721,72 @@
           const characterName = dialogue.character_name;
           console.log('当前对话角色名称:', characterName);
           
-          const matchedCharacter = await fetchAndMatchCharacter(worldId, characterName);
-          console.log('匹配到的角色:', matchedCharacter);
-          
           const form = new FormData();
           form.append('text', dialogue.text);
           form.append('user_id', userId);
           form.append('emo_control_method', node.data.emoControlMethod || 0);
           
-          if(matchedCharacter && matchedCharacter.default_voice){
-            console.log('角色参考音频URL:', matchedCharacter.default_voice);
-            const voiceUrl = proxyDownloadUrl(matchedCharacter.default_voice);
-            console.log('代理后的音频URL:', voiceUrl);
+          let refAudioFound = false;
+          
+          // 标准化角色名称：去除【】等特殊符号，用于匹配
+          const normalizeCharacterName = (name) => {
+            if(!name) return '';
+            return name.replace(/[【】\[\]]/g, '').trim();
+          };
+          
+          const normalizedCharacterName = normalizeCharacterName(characterName);
+          
+          // 优先从对话组节点的参考音频中查找匹配的角色音频
+          if(node.data.referenceAudios && node.data.referenceAudios.length > 0){
+            const matchedRefAudio = node.data.referenceAudios.find(
+              audio => normalizeCharacterName(audio.characterName) === normalizedCharacterName
+            );
             
-            const voiceResponse = await fetch(voiceUrl);
-            if(!voiceResponse.ok){
-              throw new Error(`获取参考音频失败: ${voiceResponse.status} ${voiceResponse.statusText}`);
+            if(matchedRefAudio){
+              console.log('从对话组参考音频中找到匹配:', matchedRefAudio);
+              const voiceUrl = proxyDownloadUrl(matchedRefAudio.url);
+              
+              try {
+                const voiceResponse = await fetch(voiceUrl);
+                if(voiceResponse.ok){
+                  const voiceBlob = await voiceResponse.blob();
+                  console.log('对话组参考音频Blob大小:', voiceBlob.size, '类型:', voiceBlob.type);
+                  form.append('ref_audio', voiceBlob, 'ref_audio.wav');
+                  refAudioFound = true;
+                }
+              } catch(error){
+                console.error('获取对话组参考音频失败:', error);
+              }
             }
-            const voiceBlob = await voiceResponse.blob();
-            console.log('参考音频Blob大小:', voiceBlob.size, '类型:', voiceBlob.type);
+          }
+          
+          // 如果对话组中没有找到，则从角色库中查找
+          if(!refAudioFound){
+            const matchedCharacter = await fetchAndMatchCharacter(worldId, characterName);
+            console.log('匹配到的角色:', matchedCharacter);
             
-            form.append('ref_audio', voiceBlob, 'ref_audio.wav');
-          } else {
-            console.warn('未找到匹配的角色或角色没有配置参考音频');
+            if(matchedCharacter && matchedCharacter.default_voice){
+              console.log('角色参考音频URL:', matchedCharacter.default_voice);
+              const voiceUrl = proxyDownloadUrl(matchedCharacter.default_voice);
+              console.log('代理后的音频URL:', voiceUrl);
+              
+              const voiceResponse = await fetch(voiceUrl);
+              if(!voiceResponse.ok){
+                throw new Error(`获取参考音频失败: ${voiceResponse.status} ${voiceResponse.statusText}`);
+              }
+              const voiceBlob = await voiceResponse.blob();
+              console.log('参考音频Blob大小:', voiceBlob.size, '类型:', voiceBlob.type);
+              
+              form.append('ref_audio', voiceBlob, 'ref_audio.wav');
+              refAudioFound = true;
+            } else {
+              console.warn('未找到匹配的角色或角色没有配置参考音频');
+            }
+          }
+          
+          // 如果最终还是没有找到参考音频，给出明确提示
+          if(!refAudioFound){
+            throw new Error(`角色"${characterName}"没有配置参考音频。请在对话组节点中添加该角色的参考音频，或在角色库中为该角色配置参考音频。`);
           }
           
           if(node.data.emoControlMethod === 1){
@@ -964,6 +1150,9 @@
         }
       }
       
+      // 暴露渲染参考音频列表的方法，供恢复节点时使用
+      node.renderRefAudiosList = renderRefAudiosList;
+      
       canvasEl.appendChild(el);
       setSelected(id);
       return id;
@@ -1077,5 +1266,10 @@
             }
           }
         });
+      }
+      
+      // 恢复参考音频列表
+      if(node.renderRefAudiosList){
+        node.renderRefAudiosList();
       }
     }

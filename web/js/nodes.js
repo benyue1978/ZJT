@@ -4249,6 +4249,9 @@
                              Array.isArray(node.data.shotJson.dialogue) && 
                              node.data.shotJson.dialogue.length > 0;
           generateDialogueBtn.disabled = !hasDialogue;
+          generateDialogueBtn.title = hasDialogue ? '生成对话音频' : '该镜头没有对话';
+          generateDialogueBtn.style.background = hasDialogue ? '#22c55e' : '#9ca3af';
+          generateDialogueBtn.style.cursor = hasDialogue ? 'pointer' : 'not-allowed';
         }
       }
       updateDialogueButtonState();

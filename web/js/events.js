@@ -1823,15 +1823,50 @@
     });
     
     // 创建角色音频文件选择预览
-    document.getElementById('createCharacterVoiceInput').addEventListener('change', (e) => {
+    document.getElementById('createCharacterVoiceInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       const voicePreview = document.getElementById('createCharacterVoicePreview');
       const voicePreviewAudio = document.getElementById('createCharacterVoicePreviewAudio');
+      const voiceInput = e.target;
       
       if (file) {
+        // 验证文件大小
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if(file.size > maxSize){
+          showToast('音频文件不能超过10MB', 'error');
+          voiceInput.value = '';
+          voicePreviewAudio.src = '';
+          voicePreview.style.display = 'none';
+          return;
+        }
+        
+        // 验证音频时长
         const url = URL.createObjectURL(file);
-        voicePreviewAudio.src = url;
-        voicePreview.style.display = 'block';
+        const audio = new Audio();
+        
+        audio.addEventListener('loadedmetadata', () => {
+          const maxDuration = 20; // 20秒
+          if(audio.duration > maxDuration){
+            showToast(`音频时长不能超过${maxDuration}秒，当前时长：${audio.duration.toFixed(1)}秒`, 'error');
+            voiceInput.value = '';
+            voicePreviewAudio.src = '';
+            voicePreview.style.display = 'none';
+            URL.revokeObjectURL(url);
+          } else {
+            voicePreviewAudio.src = url;
+            voicePreview.style.display = 'block';
+          }
+        });
+        
+        audio.addEventListener('error', () => {
+          showToast('无法读取音频文件', 'error');
+          voiceInput.value = '';
+          voicePreviewAudio.src = '';
+          voicePreview.style.display = 'none';
+          URL.revokeObjectURL(url);
+        });
+        
+        audio.src = url;
       } else {
         voicePreviewAudio.src = '';
         voicePreview.style.display = 'none';
@@ -1839,15 +1874,80 @@
     });
     
     // 编辑角色音频文件选择预览
-    document.getElementById('editCharacterVoiceInput').addEventListener('change', (e) => {
+    document.getElementById('editCharacterVoiceInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       const voicePreview = document.getElementById('editCharacterVoicePreview');
       const voicePreviewAudio = document.getElementById('editCharacterVoicePreviewAudio');
+      const voiceInput = e.target;
       
       if (file) {
+        // 验证文件大小
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if(file.size > maxSize){
+          showToast('音频文件不能超过10MB', 'error');
+          voiceInput.value = '';
+          // 恢复原始音频
+          const characterId = currentEditingCharacterNodeId;
+          if (characterId) {
+            const node = state.nodes.find(n => n.id === characterId);
+            if (node && node.data && node.data.default_voice) {
+              voicePreviewAudio.src = node.data.default_voice;
+              voicePreview.style.display = 'block';
+              return;
+            }
+          }
+          voicePreviewAudio.src = '';
+          voicePreview.style.display = 'none';
+          return;
+        }
+        
+        // 验证音频时长
         const url = URL.createObjectURL(file);
-        voicePreviewAudio.src = url;
-        voicePreview.style.display = 'block';
+        const audio = new Audio();
+        
+        audio.addEventListener('loadedmetadata', () => {
+          const maxDuration = 20; // 20秒
+          if(audio.duration > maxDuration){
+            showToast(`音频时长不能超过${maxDuration}秒，当前时长：${audio.duration.toFixed(1)}秒`, 'error');
+            voiceInput.value = '';
+            URL.revokeObjectURL(url);
+            // 恢复原始音频
+            const characterId = currentEditingCharacterNodeId;
+            if (characterId) {
+              const node = state.nodes.find(n => n.id === characterId);
+              if (node && node.data && node.data.default_voice) {
+                voicePreviewAudio.src = node.data.default_voice;
+                voicePreview.style.display = 'block';
+                return;
+              }
+            }
+            voicePreviewAudio.src = '';
+            voicePreview.style.display = 'none';
+          } else {
+            voicePreviewAudio.src = url;
+            voicePreview.style.display = 'block';
+          }
+        });
+        
+        audio.addEventListener('error', () => {
+          showToast('无法读取音频文件', 'error');
+          voiceInput.value = '';
+          URL.revokeObjectURL(url);
+          // 恢复原始音频
+          const characterId = currentEditingCharacterNodeId;
+          if (characterId) {
+            const node = state.nodes.find(n => n.id === characterId);
+            if (node && node.data && node.data.default_voice) {
+              voicePreviewAudio.src = node.data.default_voice;
+              voicePreview.style.display = 'block';
+              return;
+            }
+          }
+          voicePreviewAudio.src = '';
+          voicePreview.style.display = 'none';
+        });
+        
+        audio.src = url;
       } else {
         // 如果清空文件，检查是否有原始音频
         const characterId = currentEditingCharacterNodeId;
