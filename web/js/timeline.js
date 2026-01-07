@@ -1,5 +1,309 @@
     // ============ 时间轴功能 ============
     
+    // ============ 柱子(Pillar)系统 ============
+    // 柱子是时间轴的基本分区单位，每个柱子对应一个分镜(shot)
+    // 柱子标识格式: {scriptId}_{shotNumber}
+    // 视频和音频片段只能在对应的柱子内移动，不允许跨柱子
+    
+    /**
+     * 创建或更新柱子
+     * @param {number} scriptId - 剧本节点ID
+     * @param {number} shotNumber - 分镜编号
+     * @param {number} defaultDuration - 默认时长（来自分镜组最长时长）
+     * @returns {object} 柱子对象
+     */
+    function createOrUpdatePillar(scriptId, shotNumber, defaultDuration) {
+      const pillarId = `${scriptId}_${shotNumber}`;
+      let pillar = state.timeline.pillars.find(p => p.id === pillarId);
+      
+      if (!pillar) {
+        // 创建新柱子
+        pillar = {
+          id: pillarId,
+          scriptId: scriptId,
+          shotNumber: shotNumber,
+          defaultDuration: defaultDuration || 15,
+          videoClipIds: [],      // 该柱子内的视频片段ID列表
+          audioClipIds: [],      // 该柱子内的音频片段ID列表
+        };
+        state.timeline.pillars.push(pillar);
+        console.log(`[柱子系统] 创建柱子: ${pillarId}, 默认时长: ${defaultDuration}秒`);
+      } else {
+        // 更新现有柱子的默认时长
+        pillar.defaultDuration = defaultDuration || pillar.defaultDuration;
+      }
+      
+      return pillar;
+    }
+    
+    /**
+     * 获取柱子的实际时长（考虑内部片段）
+     * @param {object} pillar - 柱子对象
+     * @returns {number} 实际时长（秒）
+     */
+    function getPillarActualDuration(pillar) {
+      if (!pillar) return 0;
+      
+      // 计算视频轨道的时长
+      let videoTrackDuration = 0;
+      pillar.videoClipIds.forEach(clipId => {
+        const clip = state.timeline.clips.find(c => c.id === clipId);
+        if (clip) {
+          const actualDuration = (clip.endTime || clip.duration) - (clip.startTime || 0);
+          videoTrackDuration += actualDuration;
+        }
+      });
+      
+      // 计算音频轨道的时长
+      let audioTrackDuration = 0;
+      pillar.audioClipIds.forEach(clipId => {
+        const clip = state.timeline.audioClips.find(c => c.id === clipId);
+        if (clip) {
+          const actualDuration = (clip.endTime || clip.duration) - (clip.startTime || 0);
+          audioTrackDuration += actualDuration;
+        }
+      });
+      
+      // 返回较大值和默认时长中的最大值
+      return Math.max(pillar.defaultDuration, videoTrackDuration, audioTrackDuration);
+    }
+    
+    /**
+     * 根据节点信息获取对应的柱子
+     * @param {number} nodeId - 节点ID
+     * @returns {object|null} 柱子对象或null
+     */
+    function getPillarForNode(nodeId) {
+      const node = state.nodes.find(n => n.id === nodeId);
+      if (!node) {
+        return null;
+      }
+      
+      let scriptId = null;
+      let shotNumber = null;
+      
+      // 如果是视频节点，需要找到它的父节点（分镜节点或图生视频节点）
+      if (node.type === 'video') {
+        // 优先查找普通连接（分镜节点生成视频时使用的是普通连接）
+        const normalConn = state.connections.find(c => c.to === nodeId);
+        if (normalConn) {
+          const parentNode = state.nodes.find(n => n.id === normalConn.from);
+          if (parentNode) {
+            // 递归查找父节点的柱子
+            return getPillarForNode(parentNode.id);
+          }
+        }
+        
+        // 查找视频连接（从分镜节点或图生视频节点到视频节点）
+        const videoConn = state.videoConnections.find(c => c.to === nodeId);
+        if (videoConn) {
+          const parentNode = state.nodes.find(n => n.id === videoConn.from);
+          if (parentNode) {
+            // 递归查找父节点的柱子
+            return getPillarForNode(parentNode.id);
+          }
+        }
+        
+        // 如果没有视频连接，尝试查找图片连接（图生视频的情况）
+        const imageConn = state.imageConnections.find(c => c.to === nodeId);
+        if (imageConn) {
+          const parentNode = state.nodes.find(n => n.id === imageConn.from);
+          if (parentNode) {
+            return getPillarForNode(parentNode.id);
+          }
+        }
+        
+        return null;
+      }
+      
+      // 如果是图生视频节点，查找它的父节点（分镜节点）
+      if (node.type === 'image_to_video') {
+        const imageConn = state.imageConnections.find(c => c.to === nodeId);
+        if (imageConn) {
+          const parentNode = state.nodes.find(n => n.id === imageConn.from);
+          if (parentNode) {
+            return getPillarForNode(parentNode.id);
+          }
+        }
+        return null;
+      }
+      
+      // 如果是分镜节点
+      if (node.type === 'shot_frame') {
+        // 兼容两种数据结构：shotData（新）和 shotJson（旧）
+        const shotInfo = node.data.shotData || node.data.shotJson;
+        
+        if (shotInfo) {
+          shotNumber = shotInfo.shot_number;
+          
+          // 查找父分镜组节点
+          const parentConn = state.connections.find(c => c.to === nodeId);
+          
+          if (parentConn) {
+            const shotGroupNode = state.nodes.find(n => n.id === parentConn.from);
+            
+            if (shotGroupNode && shotGroupNode.type === 'shot_group') {
+              // 查找祖父剧本节点
+              const grandParentConn = state.connections.find(c => c.to === shotGroupNode.id);
+              
+              if (grandParentConn) {
+                const scriptNode = state.nodes.find(n => n.id === grandParentConn.from);
+                
+                if (scriptNode && scriptNode.type === 'script') {
+                  scriptId = scriptNode.id;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // 如果是对话组节点
+      if (node.type === 'dialogue_group' && node.data.shotNumber) {
+        shotNumber = node.data.shotNumber;
+        // 查找关联的剧本节点（通过分镜节点连接）
+        const incomingConns = state.connections.filter(c => c.to === nodeId);
+        for (const conn of incomingConns) {
+          const sourceNode = state.nodes.find(n => n.id === conn.from);
+          if (sourceNode && sourceNode.type === 'shot_frame') {
+            const pillar = getPillarForNode(sourceNode.id);
+            if (pillar) return pillar;
+          }
+        }
+      }
+      
+      if (scriptId && shotNumber) {
+        const pillarId = `${scriptId}_${shotNumber}`;
+        const pillar = state.timeline.pillars.find(p => p.id === pillarId);
+        return pillar;
+      }
+      
+      return null;
+    }
+    
+    /**
+     * 将片段添加到柱子
+     * @param {object} pillar - 柱子对象
+     * @param {number} clipId - 片段ID
+     * @param {string} trackType - 轨道类型 ('video' 或 'audio')
+     */
+    function addClipToPillar(pillar, clipId, trackType) {
+      if (!pillar) return;
+      
+      if (trackType === 'video') {
+        if (!pillar.videoClipIds.includes(clipId)) {
+          pillar.videoClipIds.push(clipId);
+          console.log(`[柱子系统] 添加视频片段 ${clipId} 到柱子 ${pillar.id}`);
+        }
+      } else if (trackType === 'audio') {
+        if (!pillar.audioClipIds.includes(clipId)) {
+          pillar.audioClipIds.push(clipId);
+          console.log(`[柱子系统] 添加音频片段 ${clipId} 到柱子 ${pillar.id}`);
+        }
+      }
+    }
+    
+    /**
+     * 从柱子移除片段
+     * @param {number} clipId - 片段ID
+     * @param {string} trackType - 轨道类型 ('video' 或 'audio')
+     */
+    function removeClipFromPillar(clipId, trackType) {
+      state.timeline.pillars.forEach(pillar => {
+        if (trackType === 'video') {
+          pillar.videoClipIds = pillar.videoClipIds.filter(id => id !== clipId);
+        } else if (trackType === 'audio') {
+          pillar.audioClipIds = pillar.audioClipIds.filter(id => id !== clipId);
+        }
+      });
+    }
+    
+    /**
+     * 获取片段所属的柱子
+     * @param {number} clipId - 片段ID
+     * @param {string} trackType - 轨道类型 ('video' 或 'audio')
+     * @returns {object|null} 柱子对象或null
+     */
+    function getPillarForClip(clipId, trackType) {
+      return state.timeline.pillars.find(pillar => {
+        if (trackType === 'video') {
+          return pillar.videoClipIds.includes(clipId);
+        } else if (trackType === 'audio') {
+          return pillar.audioClipIds.includes(clipId);
+        }
+        return false;
+      });
+    }
+    
+    /**
+     * 检查片段是否可以移动到目标位置（柱子约束检查）
+     * @param {number} clipId - 片段ID
+     * @param {number} targetClipId - 目标片段ID
+     * @param {string} trackType - 轨道类型
+     * @returns {boolean} 是否允许移动
+     */
+    function canMoveClipTo(clipId, targetClipId, trackType) {
+      const sourcePillar = getPillarForClip(clipId, trackType);
+      const targetPillar = getPillarForClip(targetClipId, trackType);
+      
+      // 如果没有柱子系统，允许自由移动（向后兼容）
+      if (!sourcePillar && !targetPillar) return true;
+      
+      // 只能在同一个柱子内移动
+      return sourcePillar && targetPillar && sourcePillar.id === targetPillar.id;
+    }
+    
+    /**
+     * 自动迁移历史数据：扫描画布上的剧本节点，创建缺失的柱子
+     * 用于兼容旧版工作流
+     */
+    function autoMigratePillars() {
+      // 如果已经有柱子，不需要迁移
+      if (state.timeline.pillars.length > 0) {
+        console.log('[柱子迁移] 已存在柱子数据，跳过迁移');
+        return false;
+      }
+      
+      // 查找所有剧本节点
+      const scriptNodes = state.nodes.filter(n => n.type === 'script' && n.data.parsedData);
+      
+      if (scriptNodes.length === 0) {
+        console.log('[柱子迁移] 未找到已解析的剧本节点');
+        return false;
+      }
+      
+      let totalPillarsCreated = 0;
+      
+      scriptNodes.forEach(scriptNode => {
+        const scriptId = scriptNode.id;
+        const parsedData = scriptNode.data.parsedData;
+        const maxGroupDuration = parsedData.max_group_duration || 15;
+        
+        if (parsedData.shot_groups && Array.isArray(parsedData.shot_groups)) {
+          parsedData.shot_groups.forEach((shotGroup) => {
+            if (shotGroup.shots && Array.isArray(shotGroup.shots)) {
+              shotGroup.shots.forEach((shot) => {
+                if (shot.shot_number) {
+                  createOrUpdatePillar(scriptId, shot.shot_number, shot.duration || maxGroupDuration);
+                  totalPillarsCreated++;
+                }
+              });
+            }
+          });
+        }
+      });
+      
+      if (totalPillarsCreated > 0) {
+        console.log(`[柱子迁移] 成功迁移：为 ${scriptNodes.length} 个剧本节点创建了 ${totalPillarsCreated} 个柱子`);
+        state.timeline.visible = true;
+        return true;
+      }
+      
+      return false;
+    }
+    
+    // ============ 柱子系统结束 ============
+    
     // 添加视频到时间轴
     function addToTimeline(nodeId) {
       const node = state.nodes.find(n => n.id === nodeId);
@@ -23,6 +327,31 @@
     
     // 添加片段到时间轴的辅助函数
     function addClipToTimeline(nodeId, node, duration) {
+      // 尝试获取节点对应的柱子
+      let pillar = getPillarForNode(nodeId);
+      
+      // 如果找不到柱子，尝试自动迁移历史数据
+      if (!pillar) {
+        const migrated = autoMigratePillars();
+        
+        if (migrated) {
+          // 迁移成功后重新查找柱子
+          pillar = getPillarForNode(nodeId);
+          if (pillar) {
+            showToast('已自动迁移历史数据到新时间轴结构', 'success');
+          }
+        }
+      }
+      
+      // 如果还是找不到柱子，说明该节点不属于任何剧本
+      if (!pillar) {
+        showToast('该视频节点未关联到剧本分镜，请先解析剧本', 'warning');
+        return;
+      }
+      
+      // 计算该片段在柱子内的order（基于柱子内已有片段数量）
+      const pillarClipCount = pillar.videoClipIds.length;
+      
       const clip = {
         id: state.timeline.nextClipId++,
         nodeId: nodeId,
@@ -31,14 +360,16 @@
         duration: duration,
         startTime: 0,           // 剪切开始时间（秒）
         endTime: duration,      // 剪切结束时间（秒）
-        order: state.timeline.clips.length,
+        order: pillarClipCount, // 在柱子内的顺序
+        pillarId: pillar.id,    // 所属柱子ID
       };
       
       state.timeline.clips.push(clip);
+      addClipToPillar(pillar, clip.id, 'video');
       state.timeline.visible = true;
       
       renderTimeline();
-      showToast('已添加到时间轴', 'success');
+      showToast(`已添加到时间轴 - 镜头${pillar.shotNumber}`, 'success');
       try{ autoSaveWorkflow(); } catch(e){}
     }
     
@@ -68,6 +399,9 @@
     
     // 从时间轴移除片段
     function removeFromTimeline(clipId) {
+      // 从柱子中移除
+      removeClipFromPillar(clipId, 'video');
+      
       state.timeline.clips = state.timeline.clips.filter(c => c.id !== clipId);
       state.timeline.clips.forEach((c, i) => c.order = i);
       renderTimeline();
@@ -107,7 +441,11 @@
       const totalDurationEl = document.getElementById('timelineTotalDuration');
       const expandBtn = document.getElementById('timelineExpandBtn');
       
-      if (!state.timeline.visible || (state.timeline.clips.length === 0 && state.timeline.audioClips.length === 0)) {
+      // 如果有柱子系统，即使没有片段也显示时间轴（显示空柱子）
+      const hasPillars = state.timeline.pillars.length > 0;
+      const hasClips = state.timeline.clips.length > 0 || state.timeline.audioClips.length > 0;
+      
+      if (!state.timeline.visible || (!hasPillars && !hasClips)) {
         container.style.display = 'none';
         expandBtn.style.display = 'none';
         canvasContainer.classList.remove('timeline-visible');
@@ -118,6 +456,19 @@
       expandBtn.style.display = 'none';
       canvasContainer.classList.add('timeline-visible');
       
+      // 如果有柱子系统，按柱子渲染；否则按原有方式渲染
+      if (hasPillars) {
+        renderTimelineWithPillars(container, track, audioTrack, ruler, totalDurationEl);
+      } else {
+        renderTimelineClassic(container, track, audioTrack, ruler, totalDurationEl);
+      }
+      
+      bindTimelineClipEvents();
+      bindAudioClipEvents();
+    }
+    
+    // 经典渲染模式（向后兼容）
+    function renderTimelineClassic(container, track, audioTrack, ruler, totalDurationEl) {
       // 计算视频总时长（考虑剪切后的实际播放时长）
       const videoTotalDuration = state.timeline.clips.reduce((sum, c) => {
         const actualDuration = (c.endTime || c.duration) - (c.startTime || 0);
@@ -174,7 +525,115 @@
       // 设置轨道最小宽度以容纳所有片段
       track.style.minWidth = (totalDuration * 10 + 24) + 'px'; // 24px for padding
       
-      // 渲染音频轨道
+      // 渲染音频轨道（经典模式）
+      renderAudioTrackClassic(audioTrack, totalDuration);
+    }
+    
+    // 基于柱子的渲染模式
+    function renderTimelineWithPillars(container, track, audioTrack, ruler, totalDurationEl) {
+      // 按shotNumber排序柱子
+      const sortedPillars = [...state.timeline.pillars].sort((a, b) => {
+        if (a.scriptId !== b.scriptId) return a.scriptId - b.scriptId;
+        return a.shotNumber - b.shotNumber;
+      });
+      
+      // 计算每个柱子的位置和总时长
+      let accumulatedTime = 0;
+      const pillarPositions = new Map(); // pillarId -> {startTime, duration}
+      
+      sortedPillars.forEach(pillar => {
+        const duration = getPillarActualDuration(pillar);
+        pillarPositions.set(pillar.id, {
+          startTime: accumulatedTime,
+          duration: duration
+        });
+        accumulatedTime += duration;
+      });
+      
+      const totalDuration = accumulatedTime;
+      const minutes = Math.floor(totalDuration / 60);
+      const seconds = (totalDuration % 60).toFixed(2);
+      totalDurationEl.textContent = `总时长: ${minutes}:${seconds.padStart(5, '0')} (柱子模式)`;
+      
+      renderTimelineRuler(ruler, totalDuration);
+      
+      // 渲染视频轨道（带柱子分隔）
+      let videoTrackHTML = '';
+      
+      // 先渲染柱子背景
+      sortedPillars.forEach((pillar, index) => {
+        const pos = pillarPositions.get(pillar.id);
+        const bgColor = index % 2 === 0 ? 'rgba(59, 130, 246, 0.05)' : 'rgba(99, 102, 241, 0.05)';
+        const borderColor = index % 2 === 0 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(99, 102, 241, 0.2)';
+        
+        videoTrackHTML += `
+          <div class="timeline-pillar-bg" 
+               data-pillar-id="${pillar.id}"
+               style="position: absolute; 
+                      left: ${pos.startTime * 10}px; 
+                      width: ${pos.duration * 10}px; 
+                      height: 100%; 
+                      background: ${bgColor};
+                      border-left: 2px solid ${borderColor};
+                      border-right: 2px solid ${borderColor};
+                      pointer-events: none;
+                      z-index: 0;">
+            <div style="position: absolute; top: 2px; left: 4px; font-size: 10px; color: rgba(100,100,100,0.6); pointer-events: none;">
+              镜头${pillar.shotNumber} (${pos.duration.toFixed(1)}s)
+            </div>
+          </div>
+        `;
+      });
+      
+      // 渲染视频片段
+      sortedPillars.forEach(pillar => {
+        const pillarPos = pillarPositions.get(pillar.id);
+        let pillarClipTime = 0;
+        
+        // 获取该柱子内的片段并按order排序
+        const pillarClips = pillar.videoClipIds
+          .map(id => state.timeline.clips.find(c => c.id === id))
+          .filter(c => c)
+          .sort((a, b) => a.order - b.order);
+        
+        pillarClips.forEach(clip => {
+          const clipStartTime = clip.startTime || 0;
+          const clipEndTime = clip.endTime || clip.duration;
+          const actualDuration = clipEndTime - clipStartTime;
+          const width = actualDuration * 10;
+          const absoluteLeft = (pillarPos.startTime + pillarClipTime) * 10;
+          pillarClipTime += actualDuration;
+          
+          const isTrimmed = clipStartTime > 0 || clipEndTime < clip.duration;
+          const durationText = isTrimmed ? `${actualDuration.toFixed(1)}s (已剪切)` : `${actualDuration}s`;
+          
+          videoTrackHTML += `
+            <div class="timeline-clip ${state.timeline.selectedClipId === clip.id ? 'selected' : ''}" 
+                 data-clip-id="${clip.id}"
+                 data-pillar-id="${pillar.id}"
+                 draggable="true"
+                 style="position: absolute; left: ${absoluteLeft}px; width: ${width}px; z-index: 1;">
+              <video class="timeline-clip-thumb" src="${proxyDownloadUrl(clip.url)}" muted preload="metadata"></video>
+              <div class="timeline-clip-name" title="${clip.name}">${clip.name}</div>
+              <div class="timeline-clip-duration">${durationText}</div>
+              <div class="timeline-clip-actions">
+                <button class="vp-btn clip-trim-btn" title="剪切">✂</button>
+                <button class="vp-btn clip-remove-btn" title="移除">×</button>
+              </div>
+            </div>
+          `;
+        });
+      });
+      
+      track.innerHTML = videoTrackHTML;
+      track.style.minWidth = (totalDuration * 10 + 24) + 'px';
+      
+      // 渲染音频轨道（带柱子分隔）
+      renderAudioTrackWithPillars(audioTrack, sortedPillars, pillarPositions, totalDuration);
+    }
+    
+    // 渲染音频轨道（经典模式）
+    function renderAudioTrackClassic(audioTrack, totalDuration) {
       const sortedAudioClips = [...state.timeline.audioClips].sort((a, b) => a.order - b.order);
       let accumulatedAudioTime = 0;
       audioTrack.innerHTML = sortedAudioClips.map(clip => {
@@ -211,9 +670,82 @@
       }).join('');
       
       audioTrack.style.minWidth = (totalDuration * 10 + 24) + 'px';
+    }
+    
+    // 渲染音频轨道（柱子模式）
+    function renderAudioTrackWithPillars(audioTrack, sortedPillars, pillarPositions, totalDuration) {
+      let audioTrackHTML = '';
       
-      bindTimelineClipEvents();
-      bindAudioClipEvents();
+      // 先渲染柱子背景
+      sortedPillars.forEach((pillar, index) => {
+        const pos = pillarPositions.get(pillar.id);
+        const bgColor = index % 2 === 0 ? 'rgba(59, 130, 246, 0.05)' : 'rgba(99, 102, 241, 0.05)';
+        const borderColor = index % 2 === 0 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(99, 102, 241, 0.2)';
+        
+        audioTrackHTML += `
+          <div class="timeline-pillar-bg" 
+               data-pillar-id="${pillar.id}"
+               style="position: absolute; 
+                      left: ${pos.startTime * 10}px; 
+                      width: ${pos.duration * 10}px; 
+                      height: 100%; 
+                      background: ${bgColor};
+                      border-left: 2px solid ${borderColor};
+                      border-right: 2px solid ${borderColor};
+                      pointer-events: none;
+                      z-index: 0;">
+          </div>
+        `;
+      });
+      
+      // 渲染音频片段
+      sortedPillars.forEach(pillar => {
+        const pillarPos = pillarPositions.get(pillar.id);
+        let pillarClipTime = 0;
+        
+        // 获取该柱子内的音频片段并按order排序
+        const pillarClips = pillar.audioClipIds
+          .map(id => state.timeline.audioClips.find(c => c.id === id))
+          .filter(c => c)
+          .sort((a, b) => a.order - b.order);
+        
+        pillarClips.forEach(clip => {
+          const clipStartTime = clip.startTime || 0;
+          const clipEndTime = clip.endTime || clip.duration;
+          const actualDuration = clipEndTime - clipStartTime;
+          const width = actualDuration * 10;
+          const absoluteLeft = (pillarPos.startTime + pillarClipTime) * 10;
+          pillarClipTime += actualDuration;
+          
+          const durationText = `${actualDuration.toFixed(1)}s`;
+          
+          audioTrackHTML += `
+            <div class="timeline-audio-clip ${state.timeline.selectedAudioClipId === clip.id ? 'selected' : ''}" 
+                 data-audio-clip-id="${clip.id}"
+                 data-pillar-id="${pillar.id}"
+                 draggable="true"
+                 style="position: absolute; left: ${absoluteLeft}px; width: ${width}px; z-index: 1;">
+              <div class="timeline-audio-clip-waveform">
+                <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                  <path d="M0,20 ${Array.from({length: 20}, (_, i) => {
+                    const x = i * 5;
+                    const h = 5 + Math.random() * 15;
+                    return `L${x},${20-h} L${x},${20+h}`;
+                  }).join(' ')} L100,20" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
+                </svg>
+              </div>
+              <div class="timeline-clip-name" title="${clip.name}">${clip.name}</div>
+              <div class="timeline-clip-duration">${durationText}</div>
+              <div class="timeline-clip-actions">
+                <button class="vp-btn audio-clip-remove-btn" title="移除">×</button>
+              </div>
+            </div>
+          `;
+        });
+      });
+      
+      audioTrack.innerHTML = audioTrackHTML;
+      audioTrack.style.minWidth = (totalDuration * 10 + 24) + 'px';
     }
     
     // 渲染时间刻度
@@ -307,6 +839,14 @@
             return;
           }
           
+          // 柱子约束检查：只能在同一个柱子内移动
+          if (!canMoveClipTo(draggedClipId, clipId, 'video')) {
+            e.dataTransfer.dropEffect = 'none';
+            clipEl.classList.remove('drop-target');
+            dropIndicator.classList.remove('show');
+            return;
+          }
+          
           e.dataTransfer.dropEffect = 'move';
           
           // 检测是否按住Shift键进行替换
@@ -352,6 +892,13 @@
           dropIndicator.classList.remove('show');
           
           if (!draggedClipId || draggedClipId === clipId || !dropPosition) return;
+          
+          // 柱子约束检查：只能在同一个柱子内移动
+          if (!canMoveClipTo(draggedClipId, clipId, 'video')) {
+            showToast('不能跨柱子移动视频片段', 'warning');
+            dropPosition = null;
+            return;
+          }
           
           if (dropPosition.replace) {
             // 替换模式
@@ -1097,6 +1644,31 @@
         return;
       }
       
+      // 尝试获取节点对应的柱子
+      let pillar = getPillarForNode(nodeId);
+      
+      // 如果找不到柱子，尝试自动迁移历史数据
+      if (!pillar) {
+        const migrated = autoMigratePillars();
+        
+        if (migrated) {
+          // 迁移成功后重新查找柱子
+          pillar = getPillarForNode(nodeId);
+          if (pillar) {
+            showToast('已自动迁移历史数据到新时间轴结构', 'success');
+          }
+        }
+      }
+      
+      // 如果还是找不到柱子，说明该节点不属于任何剧本
+      if (!pillar) {
+        showToast('该音频节点未关联到剧本分镜，请先解析剧本', 'warning');
+        return;
+      }
+      
+      // 计算该片段在柱子内的order（基于柱子内已有片段数量）
+      const pillarClipCount = pillar.audioClipIds.length;
+      
       const clip = {
         id: state.timeline.nextAudioClipId++,
         nodeId: nodeId,
@@ -1106,19 +1678,24 @@
         duration: duration || 5,
         startTime: 0,
         endTime: duration || 5,
-        order: state.timeline.audioClips.length,
+        order: pillarClipCount, // 在柱子内的顺序
+        pillarId: pillar.id,    // 所属柱子ID
       };
       
       state.timeline.audioClips.push(clip);
+      addClipToPillar(pillar, clip.id, 'audio');
       state.timeline.visible = true;
       
       renderTimeline();
-      showToast('已添加音频到时间轴', 'success');
+      showToast(`已添加音频到时间轴 - 镜头${pillar.shotNumber}`, 'success');
       try{ autoSaveWorkflow(); } catch(e){}
     }
     
     // 从时间轴移除音频片段
     function removeAudioFromTimeline(clipId) {
+      // 从柱子中移除
+      removeClipFromPillar(clipId, 'audio');
+      
       state.timeline.audioClips = state.timeline.audioClips.filter(c => c.id !== clipId);
       state.timeline.audioClips.forEach((c, i) => c.order = i);
       renderTimeline();

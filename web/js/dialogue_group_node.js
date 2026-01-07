@@ -14,6 +14,7 @@
       const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
       const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const dialogueData = opts && opts.dialogueData ? opts.dialogueData : [];
+      const shotNumber = opts && opts.shotNumber ? opts.shotNumber : null;
       
       const node = {
         id,
@@ -27,7 +28,8 @@
           emoControlMethod: 0,
           emoVec: [0, 0, 0, 0, 0, 0, 0, 0],
           emoWeight: 1,
-          emoRefAudioUrl: null
+          emoRefAudioUrl: null,
+          shotNumber: shotNumber
         }
       };
       state.nodes.push(node);
@@ -974,7 +976,8 @@
       createDialogueGroupNode({ 
         x: nodeData.x, 
         y: nodeData.y,
-        dialogueData: nodeData.data.dialogues || []
+        dialogueData: nodeData.data.dialogues || [],
+        shotNumber: nodeData.data.shotNumber || null
       });
       
       state.nextNodeId = Math.max(savedNextNodeId, nodeData.id + 1);

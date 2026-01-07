@@ -25,6 +25,7 @@
       timeline: {
         clips: [],
         audioClips: [],
+        pillars: [],              // 柱子数组，每个柱子代表一个分镜的时间区域
         nextClipId: 1,
         nextAudioClipId: 1,
         selectedClipId: null,

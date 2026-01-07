@@ -186,6 +186,7 @@
         timeline: {
           clips: state.timeline.clips.map(c => ({ ...c })),
           audioClips: state.timeline.audioClips.map(c => ({ ...c })),
+          pillars: state.timeline.pillars.map(p => ({ ...p })),
           nextClipId: state.timeline.nextClipId,
           nextAudioClipId: state.timeline.nextAudioClipId,
         }
@@ -512,9 +513,28 @@
         if(data.timeline){
           state.timeline.clips = data.timeline.clips || [];
           state.timeline.audioClips = data.timeline.audioClips || [];
+          state.timeline.pillars = data.timeline.pillars || [];
           state.timeline.nextClipId = data.timeline.nextClipId || 1;
           state.timeline.nextAudioClipId = data.timeline.nextAudioClipId || 1;
           state.timeline.visible = state.timeline.clips.length > 0 || state.timeline.audioClips.length > 0;
+          
+          // 如果没有柱子数据但有片段，尝试自动迁移
+          if(state.timeline.pillars.length === 0 && (state.timeline.clips.length > 0 || state.timeline.audioClips.length > 0)){
+            console.log('[恢复工作流] 检测到历史数据，尝试自动迁移柱子...');
+            // 延迟执行迁移，确保所有节点都已恢复
+            setTimeout(() => {
+              if(typeof autoMigratePillars === 'function'){
+                const migrated = autoMigratePillars();
+                if(migrated){
+                  console.log('[恢复工作流] 历史数据迁移成功');
+                  renderTimeline();
+                  try{ autoSaveWorkflow(); } catch(e){}
+                }
+              }
+            }, 500);
+          }
+          
+          console.log(`[恢复工作流] 恢复了 ${state.timeline.pillars.length} 个柱子`);
           renderTimeline();
         }
         

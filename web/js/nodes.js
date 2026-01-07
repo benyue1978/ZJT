@@ -3204,6 +3204,21 @@
             
             // 创建分镜组节点
             if(result.data.shot_groups && result.data.shot_groups.length > 0) {
+              // 预先创建所有柱子（基于剧本中的所有分镜）
+              const scriptId = id;
+              const maxGroupDuration = result.data.max_group_duration || 15;
+              
+              result.data.shot_groups.forEach((shotGroup) => {
+                if(shotGroup.shots && Array.isArray(shotGroup.shots)) {
+                  shotGroup.shots.forEach((shot) => {
+                    if(shot.shot_number) {
+                      // 为每个分镜预创建柱子
+                      createOrUpdatePillar(scriptId, shot.shot_number, shot.duration || maxGroupDuration);
+                    }
+                  });
+                }
+              });
+              
               result.data.shot_groups.forEach((shotGroup, index) => {
                 const offsetX = 400;
                 const offsetY = index * 465;
@@ -3224,6 +3239,10 @@
                 }
               });
               
+              // 自动显示时间轴（即使还没有片段）
+              state.timeline.visible = true;
+              renderTimeline();
+              
               renderConnections();
               renderImageConnections();
               renderFirstFrameConnections();
@@ -3232,7 +3251,7 @@
               try{ autoSaveWorkflow(); } catch(e){}
             }
             
-            showToast('剧本拆分成功！', 'success');
+            showToast('剧本拆分成功！时间轴已准备就绪', 'success');
           } else {
             throw new Error(result.message || '解析失败');
           }
@@ -4250,7 +4269,8 @@
           const dialogueGroupId = createDialogueGroupNode({
             x: dialogueGroupX,
             y: dialogueGroupY,
-            dialogueData: node.data.shotJson.dialogue
+            dialogueData: node.data.shotJson.dialogue,
+            shotNumber: node.data.shotJson.shot_number
           });
           
           // 连接分镜节点到对话组节点
@@ -4269,6 +4289,11 @@
           if(!dialogueGroupNode){
             showToast('创建对话组节点失败', 'error');
             return;
+          }
+          
+          // 设置对话组节点的shotNumber（确保数据正确保存）
+          if(node.data.shotJson.shot_number){
+            dialogueGroupNode.data.shotNumber = node.data.shotJson.shot_number;
           }
           
           // 自动触发所有对话的音频生成
