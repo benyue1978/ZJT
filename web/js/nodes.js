@@ -2943,16 +2943,21 @@
     // 剧本节点
     function createScriptNode(opts){
       const id = state.nextNodeId++;
+      const scriptId = (opts && typeof opts.scriptId === 'number') ? opts.scriptId : state.nextScriptId++;
+      if(opts && typeof opts.scriptId === 'number' && opts.scriptId >= state.nextScriptId) {
+        state.nextScriptId = opts.scriptId + 1;
+      }
       const viewportPos = getViewportNodePosition();
       const x = opts && typeof opts.x === 'number' ? opts.x : viewportPos.x;
       const y = opts && typeof opts.y === 'number' ? opts.y : viewportPos.y;
       const node = {
         id,
         type: 'script',
-        title: '剧本',
+        title: `剧本 ${scriptId}`,
         x,
         y,
         data: {
+          scriptId,
           file: null,
           url: '',
           name: '',
@@ -2971,7 +2976,7 @@
       el.innerHTML = `
         <div class="port output" title="输出（拆分为分镜组）"></div>
         <div class="node-header">
-          <div class="node-title">${node.title}</div>
+          <div class="node-title">剧本 ${scriptId}</div>
           <button class="icon-btn" title="删除">×</button>
         </div>
         <div class="node-body">

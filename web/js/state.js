@@ -10,6 +10,7 @@
       nextImgConnId: 1,
       nextFirstFrameConnId: 1,
       nextVideoConnId: 1,
+      nextScriptId: 1,
       selectedNodeId: null,
       selectedConnId: null,
       selectedImgConnId: null,

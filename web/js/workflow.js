@@ -177,6 +177,7 @@
         nextImgConnId: state.nextImgConnId,
         nextFirstFrameConnId: state.nextFirstFrameConnId,
         nextVideoConnId: state.nextVideoConnId,
+        nextScriptId: state.nextScriptId,
         nodes: serializableNodes,
         connections: state.connections.map(c => ({ id: c.id, from: c.from, to: c.to })),
         imageConnections: state.imageConnections.map(c => ({ id: c.id, from: c.from, to: c.to, portType: c.portType })),
@@ -481,6 +482,7 @@
         state.nextImgConnId = data.nextImgConnId || 1;
         state.nextFirstFrameConnId = data.nextFirstFrameConnId || 1;
         state.nextVideoConnId = data.nextVideoConnId || 1;
+        state.nextScriptId = data.nextScriptId || 1;
         
         // 恢复节点
         if(data.nodes && Array.isArray(data.nodes)){
@@ -960,7 +962,11 @@
       const savedNextNodeId = state.nextNodeId;
       state.nextNodeId = nodeData.id;
       
-      createScriptNode({ x: nodeData.x, y: nodeData.y });
+      createScriptNode({ 
+        x: nodeData.x, 
+        y: nodeData.y,
+        scriptId: nodeData.data && nodeData.data.scriptId
+      });
       
       state.nextNodeId = Math.max(savedNextNodeId, nodeData.id + 1);
       
@@ -970,11 +976,15 @@
         node.data.name = nodeData.data.name || '';
         node.data.maxGroupDuration = nodeData.data.maxGroupDuration || 15;
         node.data.parsedData = nodeData.data.parsedData || null;
+        node.data.forceMediumShot = nodeData.data.forceMediumShot !== undefined ? nodeData.data.forceMediumShot : true;
+        node.data.noBgMusic = nodeData.data.noBgMusic !== undefined ? nodeData.data.noBgMusic : true;
         
         const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
         if(el){
           const textareaEl = el.querySelector('.script-textarea');
           const durationSelectEl = el.querySelector('.script-duration-select');
+          const forceMediumShotEl = el.querySelector('.script-force-medium-shot');
+          const noBgMusicEl = el.querySelector('.script-no-bg-music');
           const splitBtn = el.querySelector('.script-split-btn');
           const infoField = el.querySelector('.script-info-field');
           const nameEl = el.querySelector('.script-name');
@@ -983,6 +993,8 @@
           
           if(textareaEl) textareaEl.value = node.data.scriptContent;
           if(durationSelectEl) durationSelectEl.value = String(node.data.maxGroupDuration);
+          if(forceMediumShotEl) forceMediumShotEl.checked = node.data.forceMediumShot;
+          if(noBgMusicEl) noBgMusicEl.checked = node.data.noBgMusic;
           
           if(node.data.scriptContent && node.data.scriptContent.trim().length > 0){
             if(splitBtn) splitBtn.disabled = false;
