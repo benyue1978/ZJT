@@ -3737,10 +3737,13 @@
         }
       });
       
+      // 使用第一个子节点的shot_number作为合并分镜的shot_number
+      const firstShotNumber = shots.length > 0 ? shots[0].shot_number : 'merged';
+      
       // 构建合并分镜的shotData
       const mergedShotData = {
         shot_id: 'merged',
-        shot_number: 'merged',
+        shot_number: firstShotNumber,
         description: `包含${shots.length}个镜头的合并分镜`,
         opening_frame_description: imagePrompt,
         duration: totalDuration,
