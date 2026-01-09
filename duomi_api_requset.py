@@ -72,8 +72,21 @@ def create_image_to_video(prompt, ratio="9:16", img_url=None, duration=15):
         "Authorization": token
     }
     
-    response = requests.post(url, json=payload, headers=headers)
-    return response.json()
+    logger.info(f"[Duomi Sora API] Request URL: {url}")
+    logger.info(f"[Duomi Sora API] Request Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        result = response.json()
+        logger.info(f"[Duomi Sora API] Response: {json.dumps(result, ensure_ascii=False, indent=2)}")
+        return result
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Duomi Sora API] Error creating image to video task: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"[Duomi Sora API] Response Status Code: {e.response.status_code}")
+            logger.error(f"[Duomi Sora API] Response Body: {e.response.text}")
+        raise
 
 def create_ai_image(model="gemini-2.5-pro-image-preview", prompt="", ratio="9:16", image_urls=None, image_size="1K"):
     """
@@ -199,20 +212,21 @@ def create_video_remix(video_id, prompt, aspect_ratio="16:9", duration=15):
         "Authorization": token
     }
     
-    response = requests.post(url, json=payload, headers=headers)
-    
-    # Log response for debugging
-    print(f"Remix API response status: {response.status_code}")
-    print(f"Remix API response text: {response.text[:500]}")  # First 500 chars
-    
-    # Check if response is successful
-    if response.status_code != 200:
-        raise Exception(f"API returned status {response.status_code}: {response.text}")
+    logger.info(f"[Duomi Sora API] Request URL: {url}")
+    logger.info(f"[Duomi Sora API] Request Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
     
     try:
-        return response.json()
-    except Exception as e:
-        raise Exception(f"Failed to parse JSON response: {response.text[:200]}")
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        result = response.json()
+        logger.info(f"[Duomi Sora API] Response: {json.dumps(result, ensure_ascii=False, indent=2)}")
+        return result
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Duomi Sora API] Error creating video remix task: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"[Duomi Sora API] Response Status Code: {e.response.status_code}")
+            logger.error(f"[Duomi Sora API] Response Body: {e.response.text}")
+        raise
 
 def create_character(timestamps, url=None, from_task=None, callback_url=None):
     """
@@ -467,9 +481,9 @@ def create_kling_image_to_video(
     Args:
         image_url: URL of the input image
         prompt: Text prompt for video generation
-        mode: Mode - "std" (standard) or "pro" (professional)
+        mode: Mode - "std" (standard, 5s) or "pro" (professional, >5s)
         duration: Video duration in seconds (5 or 10)
-        model_name: Model name (default: "kling-v1")
+        model_name: Model name (default: "kling-v2-5-turbo")
         cfg_scale: Creativity relevance, 0-1 (default: 0.5)
         negative_prompt: Negative prompt (optional)
     
@@ -522,6 +536,9 @@ def create_kling_image_to_video(
         return result
     except requests.exceptions.RequestException as e:
         logger.error(f"[Duomi Kling API] Error creating Kling video task: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"[Duomi Kling API] Response Status Code: {e.response.status_code}")
+            logger.error(f"[Duomi Kling API] Response Body: {e.response.text}")
         return {
             "code": -1,
             "message": str(e),
