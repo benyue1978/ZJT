@@ -111,20 +111,20 @@ done:
 1. 【deploy】【p1】修改其他环境配置文件，增加test_mode参数
 1. 【deploy】【p1】v1.2 版本发布
 
-待上线:
+2026-1-9 上线:
 
 1. 【feature】【p1】列表界面对接LTX2.0、wan2.2接口。
 1. 【bug】【s2】实现了runninghub的槽位机制，避免任务由于等到槽位而被错误关闭。
 1. 【feature】【p1】列表界面对接可灵接口。
 1. 【feature】【p1】支持工作流页面，调用wan2.2、LTX2.0、可灵接口。
+1. 【deploy】【p1】其他环境 配置文件新增 max_concurrent_slots 参数，数据库新增表runninghub_slots，并在根目录创建logs目录。
+1. 【feature】【p1】runninghub接口需要进行数量控制，不能超过3个。
 
 视频工作流todo:
 
-1. 【deploy】【p1】其他环境 配置文件新增 max_concurrent_slots 参数，数据库新增表runninghub_slots，并在根目录创建logs目录。
 1. 【use】【p1】需要用新的工作流，制作一个短剧。
 1. 【bug】【s2】合并分镜的分镜视频和音频，无法加入到时间轴中。
 1. 【bug】【s2】合并分镜的分镜组，不支持生成对话组节点。
-1. 【feature】【p1】runninghub接口需要进行数量控制，不能超过3个。
 1. 【feature】【p2】画风内容支持根据图片来提取。
 1. 【feature】【p2】为了保证画风一致，需要将对应的角色、场景、道具等同统一画风，才能做出比较好的效果。
 1. 【feature】【p2】支持导出剪影时，强制把画面拉大到覆盖整个画面。
