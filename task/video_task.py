@@ -24,7 +24,7 @@ from runninghub_request import (
     check_ltx2_task_status,
     TaskStatus
 )
-from model import TasksModel, AIToolsModel
+from model import TasksModel, AIToolsModel, RunningHubSlotsModel
 from config.constant import TASK_TYPE_GENERATE_VIDEO,AUTHENTICATION_ID
 
 logging.basicConfig(level=logging.INFO)
@@ -132,6 +132,15 @@ def _submit_new_task(ai_tool):
         
         if result.get("code") != 0:
             error_msg = result.get("msg", "LTX2.0 API调用失败")
+            
+            # 特殊处理：RunningHub 队列已满错误
+            if error_msg == "TASK_QUEUE_MAXED":
+                logger.warning(f"RunningHub queue maxed for task {task_id}, will retry later")
+                # 延迟60秒后重试，不增加重试计数
+                next_trigger = datetime.now() + timedelta(seconds=60)
+                TasksModel.update_by_task_id(task_id, next_trigger=next_trigger)
+                return True  # 返回True避免增加重试计数
+            
             logger.error(f"LTX2.0 API error: {error_msg}")
             return False
         
@@ -149,6 +158,15 @@ def _submit_new_task(ai_tool):
         
         if result.get("code") != 0:
             error_msg = result.get("msg", "Wan2.2 API调用失败")
+            
+            # 特殊处理：RunningHub 队列已满错误
+            if error_msg == "TASK_QUEUE_MAXED":
+                logger.warning(f"RunningHub queue maxed for task {task_id}, will retry later")
+                # 延迟60秒后重试，不增加重试计数
+                next_trigger = datetime.now() + timedelta(seconds=60)
+                TasksModel.update_by_task_id(task_id, next_trigger=next_trigger)
+                return True  # 返回True避免增加重试计数
+            
             logger.error(f"Wan2.2 API error: {error_msg}")
             return False
         
@@ -184,6 +202,14 @@ def _submit_new_task(ai_tool):
     
     AIToolsModel.update(task_id, project_id=project_id, status=1)
     TasksModel.update_by_task_id(task_id, status=1)
+    
+    # 如果是 RunningHub 任务，更新槽位的 project_id
+    is_runninghub = ai_tool_type in [10, 11]
+    if is_runninghub:
+        task = TasksModel.get_by_task_id(task_id)
+        if task:
+            RunningHubSlotsModel.update_project_id(task.id, project_id)
+    
     logger.info(f"Task {task_id} submitted successfully with project_id: {project_id}")
     return True
 
@@ -317,7 +343,11 @@ def _handle_task_success(project_id, task_id, media_url):
             status=2
         )
         TasksModel.update_by_task_id(task_id, status=2)
-        logger.info(f"Task {project_id} completed successfully")
+        
+        # 释放 RunningHub 槽位（通过 project_id）
+        RunningHubSlotsModel.release_slot_by_project_id(project_id)
+        
+        logger.info(f"Task {project_id} completed successfully, slot released")
         return True
     except Exception as db_error:
         logger.error(f"Failed to update records for success task {project_id}: {db_error}")
@@ -351,6 +381,18 @@ def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
             message=reason
         )
         TasksModel.update_by_task_id(task_id, status=-1)
+        
+        # 释放 RunningHub 槽位
+        is_runninghub = ai_tool_type in [10, 11]
+        if is_runninghub:
+            if project_id:
+                RunningHubSlotsModel.release_slot_by_project_id(project_id)
+            else:
+                # 如果没有 project_id（提交失败），通过 task_id 释放
+                task = TasksModel.get_by_task_id(task_id)
+                if task:
+                    RunningHubSlotsModel.release_slot_by_task_table_id(task.id)
+        
     except Exception as db_error:
         logger.error(f"Failed to update records for failed task {project_id}: {db_error}")
         return False
@@ -428,7 +470,7 @@ def process_generate_video(task):
 
 def process_task_with_retry(task_type, process_func):
     """
-    Generic task processing function with retry logic
+    Generic task processing function with retry logic and RunningHub concurrency control
     
     Args:
         task_type: Task type
@@ -450,10 +492,40 @@ def process_task_with_retry(task_type, process_func):
         # Loop through all tasks
         processed_count = 0
         success_count = 0
+        delayed_count = 0
         
         for task in tasks:
             try:
-                logger.info(f"Start processing task: {task.task_id}, status: {task.status}")
+                logger.info(f"Start processing task: task_id={task.task_id}, table_id={task.id}, status={task.status}")
+                
+                # 获取 AI 工具详情
+                ai_tool = AIToolsModel.get_by_id(task.task_id)
+                if not ai_tool:
+                    logger.error(f"AI tool {task.task_id} not found")
+                    continue
+                
+                is_runninghub = ai_tool.type in [10, 11]
+                
+                # 如果是 RunningHub 任务且状态为0（未提交）
+                if is_runninghub and task.status == 0:
+                    # 尝试获取槽位
+                    slot_acquired = RunningHubSlotsModel.try_acquire_slot(
+                        task_table_id=task.id,
+                        task_id=task.task_id,
+                        task_type=ai_tool.type
+                    )
+                    
+                    if not slot_acquired:
+                        # 槽位已满，延迟此任务
+                        delay_seconds = 30  # 延迟30秒
+                        next_trigger = datetime.now() + timedelta(seconds=delay_seconds)
+                        TasksModel.update_by_task_id(
+                            task.task_id,
+                            next_trigger=next_trigger
+                        )
+                        logger.info(f"Task {task.task_id} delayed by {delay_seconds}s due to slot limit, next_trigger: {next_trigger}")
+                        delayed_count += 1
+                        continue  # 跳过此任务，处理下一个
                 
                 # Update status to 1 (处理中) if it's 0 (队列中)
                 if task.status == 0:
@@ -478,14 +550,14 @@ def process_task_with_retry(task_type, process_func):
                         try_count=new_try_count,
                         next_trigger=next_trigger
                     )
-                    logger.info(f"Task failed: {task.task_id}, retry count: {new_try_count}, status: -1 (处理失败), next trigger: {next_trigger}")
+                    logger.info(f"Task failed: {task.task_id}, retry count: {new_try_count}, next trigger: {next_trigger}")
                     
             except Exception as e:
                 logger.error(f"Error processing task {task.task_id}: {str(e)}")
                 import traceback
                 logger.error(traceback.format_exc())
                 
-        logger.info(f"Processed {processed_count} tasks, {success_count} succeeded")
+        logger.info(f"Summary: processed={processed_count}, succeeded={success_count}, delayed={delayed_count}")
         return processed_count > 0, success_count > 0
             
     except Exception as e:
