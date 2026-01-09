@@ -173,11 +173,12 @@ def _submit_new_task(ai_tool):
         project_id = result.get("data", {}).get("taskId")
     elif ai_tool_type == 12:
         # 可灵图生视频 (type=12)
+        kling_mode = "pro" if ai_tool.duration == 10 else "std"
         result = create_kling_image_to_video(
             image_url=ai_tool.image_path,
             prompt=ai_tool.prompt,
             duration=ai_tool.duration,
-            mode="std"
+            mode=kling_mode
         )
         logger.info(f"Submit Kling task result: {result}")
         
