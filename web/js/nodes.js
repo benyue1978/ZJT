@@ -2930,8 +2930,13 @@
             submitFile = await fetchFileFromUrl(node.data.url);
           }
 
+          let finalPrompt = node.data.prompt;
+          if(state.style && state.style.name){
+            finalPrompt = `${finalPrompt}\n\n图片风格：${state.style.name}`;
+          }
+
           const desiredCount = Math.max(1, Number(node.data.drawCount) || 1);
-          const submitRes = await generateEditedImage(submitFile, node.data.prompt, node.data.ratio, node.data.model, desiredCount);
+          const submitRes = await generateEditedImage(submitFile, finalPrompt, node.data.ratio, node.data.model, desiredCount);
           statusEl.textContent = '任务已提交，正在生成图片...';
           node.data.projectIds = submitRes.projectIds;
 
