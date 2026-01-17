@@ -16,6 +16,7 @@ class World:
         self.id = kwargs.get('id')
         self.name = kwargs.get('name')
         self.description = kwargs.get('description')
+        self.story_outline = kwargs.get('story_outline')
         self.user_id = kwargs.get('user_id')
         self.create_time = kwargs.get('create_time')
         self.update_time = kwargs.get('update_time')
@@ -26,6 +27,7 @@ class World:
             'id': self.id,
             'name': self.name,
             'description': self.description,
+            'story_outline': self.story_outline,
             'user_id': self.user_id,
             'create_time': self.create_time.isoformat() if self.create_time else None,
             'update_time': self.update_time.isoformat() if self.update_time else None
@@ -39,7 +41,8 @@ class WorldModel:
     def create(
         name: str,
         user_id: int,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        story_outline: Optional[str] = None
     ) -> int:
         """
         Create a new world record
@@ -48,16 +51,17 @@ class WorldModel:
             name: World name
             user_id: User ID
             description: World description (optional)
+            story_outline: Story outline (optional)
         
         Returns:
             Inserted record ID
         """
         sql = """
             INSERT INTO world 
-            (name, user_id, description)
-            VALUES (%s, %s, %s)
+            (name, user_id, description, story_outline)
+            VALUES (%s, %s, %s, %s)
         """
-        params = (name, user_id, description)
+        params = (name, user_id, description, story_outline)
         
         try:
             record_id = execute_insert(sql, params)
@@ -191,7 +195,7 @@ class WorldModel:
         Returns:
             Number of affected rows
         """
-        allowed_fields = ['name', 'description']
+        allowed_fields = ['name', 'description', 'story_outline']
         
         update_fields = []
         params = []
