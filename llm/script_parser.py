@@ -8,7 +8,7 @@ import json
 import os
 import yaml
 from typing import Dict, Any, Optional
-from llm.qwen import call_qwen_chat_async
+from llm.gemini_client import get_gemini_client
 from config_util import get_config_path
 
 # ============================================================
@@ -579,13 +579,27 @@ JSON格式示例：
         ]
         
         # 调用LLM API（增加max_tokens以避免输出被截断）
-        logger.info(f"调用LLM API，temperature={temperature}")
-        response_content = await call_qwen_chat_async(
-            messages=messages,
+        logger.info(f"调用Gemini API，temperature={temperature}")
+        
+        # 获取 Gemini 客户端
+        gemini_client = get_gemini_client()
+        
+        # 使用默认模型或指定模型
+        if not model:
+            model = "gemini-3-pro-preview"
+        
+        # 使用 asyncio.to_thread 包装同步调用
+        import asyncio
+        response = await asyncio.to_thread(
+            gemini_client.call_api,
             model=model,
+            messages=messages,
             temperature=temperature,
             max_tokens=16000
         )
+        
+        # 提取响应内容
+        response_content = response.choices[0].message.content if response.choices else ""
         
         logger.info(f"LLM响应长度: {len(response_content)} 字符")
         
