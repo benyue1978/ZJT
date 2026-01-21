@@ -3191,7 +3191,13 @@
         </div>
         <div class="node-body">
           <div class="field">
-            <div class="label">输入剧本内容 <span class="script-char-count" style="float: right; color: #666; font-size: 12px;">0/30000</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div class="label" style="margin: 0;">输入剧本内容</div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="script-char-count" style="color: #666; font-size: 12px;">0/30000</span>
+                <button class="mini-btn script-expand-btn" type="button" style="font-size: 11px; padding: 4px 8px;" title="放大编辑">⤢</button>
+              </div>
+            </div>
             <textarea class="script-textarea" rows="6" maxlength="30000" placeholder="在此输入剧本内容，或上传文件（最多30000字符）"></textarea>
           </div>
           <div class="field">
@@ -3253,6 +3259,7 @@
       const textareaEl = el.querySelector('.script-textarea');
       const fileEl = el.querySelector('.script-file');
       const loadBtn = el.querySelector('.script-load-btn');
+      const expandBtn = el.querySelector('.script-expand-btn');
       const durationSelectEl = el.querySelector('.script-duration-select');
       const forceMediumShotEl = el.querySelector('.script-force-medium-shot');
       const noBgMusicEl = el.querySelector('.script-no-bg-music');
@@ -3357,6 +3364,12 @@
       loadBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await showScriptSelectionModal(node, textareaEl, updateScriptContent, warningField);
+      });
+
+      // 放大按钮监听
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showScriptExpandModal(textareaEl, updateScriptContent, charCountEl);
       });
 
       // 文件上传监听
@@ -4058,13 +4071,19 @@
             <div class="gen-meta" style="margin-top: 4px;">时长: ${node.data.duration}秒 | ${escapeHtml(node.data.shotType)} | ${escapeHtml(node.data.cameraMovement)}</div>
           </div>
           <div class="field">
-            <div class="label">图片提示词</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div class="label" style="margin: 0;">图片提示词</div>
+              <button class="mini-btn shot-frame-image-expand-btn" type="button" style="font-size: 11px; padding: 4px 8px;" title="放大编辑">⤢</button>
+            </div>
             <textarea class="shot-frame-image-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.imagePrompt)}</textarea>
           </div>
           <div class="field">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <div class="label" style="margin: 0;">视频提示词</div>
-              <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">视频生成失败，请点此次按钮</button>
+              <div style="display: flex; gap: 8px;">
+                <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">视频生成失败，请点此次按钮</button>
+                <button class="mini-btn shot-frame-video-expand-btn" type="button" style="font-size: 11px; padding: 4px 8px;" title="放大编辑">⤢</button>
+              </div>
             </div>
             <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPromptText || node.data.videoPrompt)}</textarea>
           </div>
@@ -4158,6 +4177,8 @@
       const deleteBtn = el.querySelector('.icon-btn');
       const imagePromptEl = el.querySelector('.shot-frame-image-prompt');
       const videoPromptEl = el.querySelector('.shot-frame-video-prompt');
+      const imageExpandBtn = el.querySelector('.shot-frame-image-expand-btn');
+      const videoExpandBtn = el.querySelector('.shot-frame-video-expand-btn');
       const generateBtn = el.querySelector('.shot-frame-generate-btn');
       const generateDialogueBtn = el.querySelector('.shot-frame-generate-dialogue-btn');
       const imageEl = el.querySelector('.shot-frame-image');
@@ -4571,6 +4592,22 @@
         node.data.videoPromptText = videoPromptEl.value;
       });
 
+      // 图片提示词放大按钮
+      imageExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showPromptExpandModal(imagePromptEl, '图片提示词', (newValue) => {
+          node.data.imagePrompt = newValue;
+        });
+      });
+
+      // 视频提示词放大按钮
+      videoExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showPromptExpandModal(videoPromptEl, '视频提示词', (newValue) => {
+          node.data.videoPromptText = newValue;
+        });
+      });
+
       const reduceViolationBtn = el.querySelector('.reduce-violation-btn');
       
       // 控制按钮显示的函数
@@ -4890,4 +4927,159 @@
         `;
         showToast('加载剧本列表失败', 'error');
       }
+    }
+
+    function showScriptExpandModal(textareaEl, updateScriptContent, charCountEl) {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+      
+      const modalContent = document.createElement('div');
+      modalContent.style.cssText = 'background: white; border-radius: 12px; padding: 24px; max-width: 900px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;';
+      
+      const currentContent = textareaEl.value;
+      const currentLength = currentContent.length;
+      
+      modalContent.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 600;">编辑剧本内容</h3>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="expand-char-count" style="color: #666; font-size: 14px;">${currentLength}/30000</span>
+            <button class="modal-close-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+          </div>
+        </div>
+        <textarea class="expand-textarea" maxlength="30000" placeholder="在此输入剧本内容（最多30000字符）" style="flex: 1; width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; min-height: 400px;">${escapeHtml(currentContent)}</textarea>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;">
+          <button class="modal-cancel-btn" style="padding: 8px 20px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 14px;">取消</button>
+          <button class="modal-confirm-btn" style="padding: 8px 20px; border: none; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer; font-size: 14px;">确定</button>
+        </div>
+      `;
+      
+      modal.appendChild(modalContent);
+      document.body.appendChild(modal);
+
+      const closeBtn = modalContent.querySelector('.modal-close-btn');
+      const cancelBtn = modalContent.querySelector('.modal-cancel-btn');
+      const confirmBtn = modalContent.querySelector('.modal-confirm-btn');
+      const expandTextarea = modalContent.querySelector('.expand-textarea');
+      const expandCharCount = modalContent.querySelector('.expand-char-count');
+
+      // 更新字符计数
+      function updateExpandCharCount() {
+        const length = expandTextarea.value.length;
+        expandCharCount.textContent = `${length}/30000`;
+        if(length > 28500) {
+          expandCharCount.style.color = '#dc2626';
+        } else if(length > 25500) {
+          expandCharCount.style.color = '#f59e0b';
+        } else {
+          expandCharCount.style.color = '#666';
+        }
+      }
+
+      expandTextarea.addEventListener('input', updateExpandCharCount);
+
+      // 关闭模态框
+      function closeModal() {
+        document.body.removeChild(modal);
+      }
+
+      closeBtn.addEventListener('click', closeModal);
+      cancelBtn.addEventListener('click', closeModal);
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          closeModal();
+        }
+      });
+
+      // 确定按钮
+      confirmBtn.addEventListener('click', () => {
+        const newContent = expandTextarea.value;
+        textareaEl.value = newContent;
+        
+        // 更新字符计数
+        const length = newContent.length;
+        charCountEl.textContent = `${length}/30000`;
+        if(length > 28500) {
+          charCountEl.style.color = '#dc2626';
+        } else if(length > 25500) {
+          charCountEl.style.color = '#f59e0b';
+        } else {
+          charCountEl.style.color = '#666';
+        }
+        
+        // 调用更新函数
+        updateScriptContent(newContent, '来源: 文本输入');
+        
+        closeModal();
+        showToast('剧本内容已更新', 'success');
+      });
+
+      // 自动聚焦到文本框末尾
+      expandTextarea.focus();
+      expandTextarea.setSelectionRange(expandTextarea.value.length, expandTextarea.value.length);
+    }
+
+    function showPromptExpandModal(textareaEl, title, onUpdate) {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+      
+      const modalContent = document.createElement('div');
+      modalContent.style.cssText = 'background: white; border-radius: 12px; padding: 24px; max-width: 900px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;';
+      
+      const currentContent = textareaEl.value;
+      
+      modalContent.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 600;">编辑${escapeHtml(title)}</h3>
+          <button class="modal-close-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+        </div>
+        <textarea class="expand-textarea" placeholder="在此输入${escapeHtml(title)}" style="flex: 1; width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; min-height: 400px;">${escapeHtml(currentContent)}</textarea>
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;">
+          <button class="modal-cancel-btn" style="padding: 8px 20px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 14px;">取消</button>
+          <button class="modal-confirm-btn" style="padding: 8px 20px; border: none; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer; font-size: 14px;">确定</button>
+        </div>
+      `;
+      
+      modal.appendChild(modalContent);
+      document.body.appendChild(modal);
+
+      const closeBtn = modalContent.querySelector('.modal-close-btn');
+      const cancelBtn = modalContent.querySelector('.modal-cancel-btn');
+      const confirmBtn = modalContent.querySelector('.modal-confirm-btn');
+      const expandTextarea = modalContent.querySelector('.expand-textarea');
+
+      // 关闭模态框
+      function closeModal() {
+        document.body.removeChild(modal);
+      }
+
+      closeBtn.addEventListener('click', closeModal);
+      cancelBtn.addEventListener('click', closeModal);
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          closeModal();
+        }
+      });
+
+      // 确定按钮
+      confirmBtn.addEventListener('click', () => {
+        const newContent = expandTextarea.value;
+        textareaEl.value = newContent;
+        
+        // 调用更新回调函数
+        if (onUpdate) {
+          onUpdate(newContent);
+        }
+        
+        closeModal();
+        showToast(`${title}已更新`, 'success');
+      });
+
+      // 自动聚焦到文本框末尾
+      expandTextarea.focus();
+      expandTextarea.setSelectionRange(expandTextarea.value.length, expandTextarea.value.length);
     }
