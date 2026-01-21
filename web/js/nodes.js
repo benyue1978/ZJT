@@ -2761,7 +2761,10 @@
             </div>
           </div>
           <div class="field">
-            <div class="label">编辑提示词（可选）</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div class="label" style="margin: 0;">编辑提示词（可选）</div>
+              <button class="mini-btn image-prompt-expand-btn" type="button" style="font-size: 11px; padding: 4px 8px;" title="放大编辑">⤢</button>
+            </div>
             <textarea class="image-prompt" rows="2" placeholder="输入提示词进行图片编辑"></textarea>
           </div>
           <div class="field">
@@ -2868,6 +2871,7 @@
       const imagePreviewImg = el.querySelector('.image-preview');
       const imageClearBtn = el.querySelector('.image-clear');
       const promptEl = el.querySelector('.image-prompt');
+      const promptExpandBtn = el.querySelector('.image-prompt-expand-btn');
       const ratioEl = el.querySelector('.image-ratio');
       const modelEl = el.querySelector('.image-model');
       const editBtn = el.querySelector('.image-edit-btn');
@@ -2947,6 +2951,15 @@
       promptEl.addEventListener('input', () => {
         node.data.prompt = promptEl.value;
       });
+
+      // 编辑提示词放大按钮
+      promptExpandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showPromptExpandModal(promptEl, '编辑提示词', (newValue) => {
+          node.data.prompt = newValue;
+        });
+      });
+
       ratioEl.addEventListener('change', () => {
         node.data.ratio = ratioEl.value;
       });
