@@ -26,6 +26,7 @@ from model.world import WorldModel
 from model.character import CharacterModel
 from model.location import LocationModel
 from model.script import ScriptModel
+from model.props import PropsModel
 import uuid
 from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix, create_character as create_character_task, get_character_task_result, create_text_to_image
 from PIL import Image
@@ -4860,6 +4861,271 @@ async def update_location(
         )
     except Exception as e:
         logger.error(f"Failed to update location: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
+# ========== 道具相关接口 ==========
+
+@app.get('/api/props')
+async def get_props(
+    world_id: int = Query(..., description="世界ID"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(100, ge=1, le=100, description="每页数量"),
+    keyword: Optional[str] = Query(None, description="搜索关键词"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    获取道具列表
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        logger.info(f"Getting props list - world_id: {world_id}, page: {page}, page_size: {page_size}, keyword: {keyword}")
+        
+        result = PropsModel.list_by_world(
+            world_id=world_id,
+            page=page,
+            page_size=page_size,
+            keyword=keyword
+        )
+        
+        logger.info(f"Props query result - total: {result.get('total', 0)}, data count: {len(result.get('data', []))}")
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': 'success',
+                'data': result
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get props: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
+@app.post('/api/props')
+async def create_props(
+    world_id: int = Form(..., description="世界ID"),
+    name: str = Form(..., description="道具名称"),
+    content: Optional[str] = Form(None, description="道具描述"),
+    other_info: Optional[str] = Form(None, description="其他信息"),
+    reference_image: Optional[UploadFile] = File(None, description="参考图"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    创建道具
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        if not name or not name.strip():
+            return JSONResponse(
+                status_code=400,
+                content={
+                    'code': -1,
+                    'message': '道具名称不能为空',
+                    'data': None
+                }
+            )
+        
+        # 处理图片上传
+        image_path = None
+        if reference_image and reference_image.filename:
+            file_ext = os.path.splitext(reference_image.filename)[1]
+            filename = f"props_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
+            
+            props_upload_dir = os.path.join(upload_dir, "props")
+            os.makedirs(props_upload_dir, exist_ok=True)
+            
+            file_path = os.path.join(props_upload_dir, filename)
+            with open(file_path, "wb") as f:
+                content_data = await reference_image.read()
+                f.write(content_data)
+            
+            image_path = f"{SERVER_HOST}/upload/props/{filename}"
+        
+        props_id = PropsModel.create(
+            world_id=world_id,
+            name=name.strip(),
+            user_id=user_id,
+            content=content.strip() if content else None,
+            other_info=other_info.strip() if other_info else None,
+            reference_image=image_path
+        )
+        
+        props = PropsModel.get_by_id(props_id)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': '创建成功',
+                'data': props.to_dict() if props else None
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to create props: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
+@app.put('/api/props/{props_id}')
+async def update_props(
+    props_id: int,
+    name: Optional[str] = Form(None, description="道具名称"),
+    content: Optional[str] = Form(None, description="道具描述"),
+    other_info: Optional[str] = Form(None, description="其他信息"),
+    reference_image: Optional[UploadFile] = File(None, description="参考图"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    更新道具
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 获取道具信息
+        props = PropsModel.get_by_id(props_id)
+        if not props:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    'code': -1,
+                    'message': '道具不存在',
+                    'data': None
+                }
+            )
+        
+        # 验证权限
+        if props.user_id != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    'code': -1,
+                    'message': '无权限修改此道具',
+                    'data': None
+                }
+            )
+        
+        # 处理图片上传
+        image_path = props.reference_image
+        if reference_image and reference_image.filename:
+            file_ext = os.path.splitext(reference_image.filename)[1]
+            filename = f"props_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
+            
+            props_upload_dir = os.path.join(upload_dir, "props")
+            os.makedirs(props_upload_dir, exist_ok=True)
+            
+            file_path = os.path.join(props_upload_dir, filename)
+            with open(file_path, "wb") as f:
+                content_data = await reference_image.read()
+                f.write(content_data)
+            
+            image_path = f"{SERVER_HOST}/upload/props/{filename}"
+        
+        # 更新道具
+        PropsModel.update(
+            props_id=props_id,
+            name=name.strip() if name else props.name,
+            content=content.strip() if content else props.content,
+            other_info=other_info.strip() if other_info else props.other_info,
+            reference_image=image_path
+        )
+        
+        # 获取更新后的道具
+        updated_props = PropsModel.get_by_id(props_id)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': '更新成功',
+                'data': updated_props.to_dict() if updated_props else None
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to update props: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
+@app.delete('/api/props/{props_id}')
+async def delete_props(
+    props_id: int,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    删除道具
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 获取道具信息
+        props = PropsModel.get_by_id(props_id)
+        if not props:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    'code': -1,
+                    'message': '道具不存在',
+                    'data': None
+                }
+            )
+        
+        # 验证权限
+        if props.user_id != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    'code': -1,
+                    'message': '无权限删除此道具',
+                    'data': None
+                }
+            )
+        
+        # 删除道具
+        PropsModel.delete(props_id)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': '删除成功',
+                'data': None
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to delete props: {e}")
         return JSONResponse(
             status_code=500,
             content={
