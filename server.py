@@ -4979,6 +4979,51 @@ async def get_props(
         )
 
 
+@app.get('/api/props/{props_id}')
+async def get_props_by_id(
+    props_id: int,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: int = Header(None, alias="X-User-Id")
+):
+    """
+    获取单个道具详情
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        logger.info(f"Getting props detail - props_id: {props_id}")
+        
+        props = PropsModel.get_by_id(props_id)
+        
+        if not props:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    'code': -1,
+                    'message': '道具不存在',
+                    'data': None
+                }
+            )
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': 'success',
+                'data': props.to_dict()
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get props detail: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
+
 @app.post('/api/props')
 async def create_props(
     world_id: int = Form(..., description="世界ID"),

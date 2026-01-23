@@ -2499,6 +2499,15 @@
         contentCountEl.textContent = (props.content || '').length;
       }
 
+      const imagePreview = document.getElementById('editPropsImagePreview');
+      const imagePreviewImg = document.getElementById('editPropsImagePreviewImg');
+      if (props.reference_image) {
+        imagePreviewImg.src = props.reference_image;
+        imagePreview.style.display = 'block';
+      } else {
+        imagePreview.style.display = 'none';
+      }
+
       document.getElementById('editPropsModal').classList.add('show');
     }
 

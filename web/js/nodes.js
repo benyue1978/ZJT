@@ -1073,6 +1073,23 @@
         }
       });
 
+      // 收集所有匹配到的道具
+      const referenceProps = new Map();
+      const node = state.nodes.find(n => n.id === nodeId);
+      if(node && node.data.scriptData && node.data.scriptData.props){
+        const propsData = node.data.scriptData.props;
+        propsData.forEach(prop => {
+          if(prop.props_db_id){
+            referenceProps.set(prop.props_db_id, {
+              id: prop.props_db_id,
+              name: prop.name || '未命名道具',
+              description: prop.description || '',
+              category: prop.category || ''
+            });
+          }
+        });
+      }
+
       let html = '';
 
       // 参考场景区域
@@ -1114,6 +1131,7 @@
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">镜头类型</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">运镜</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">参考场景</th>
+              <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">道具</th>
               <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">描述</th>
               <th style="padding: 10px; text-align: center; border: 1px solid #ddd; width: 100px;">操作</th>
             </tr>
@@ -1133,6 +1151,23 @@
           ? `<div style="display: flex; align-items: center; gap: 4px;">${shot.db_location_pic ? `<img src="${escapeHtml(shot.db_location_pic)}" style="width: 30px; height: 30px; object-fit: cover; border-radius: 4px;" alt="场景" />` : ''}<span style="font-size: 11px;">${escapeHtml(shot.location_name || 'ID:' + shot.db_location_id)}</span></div>`
           : '<span style="color: #9ca3af; font-size: 11px;">未匹配</span>';
         
+        // 生成道具显示内容 - 只显示该分镜中涉及的道具
+        let propsDisplay = '<span style="color: #9ca3af; font-size: 11px;">无</span>';
+        const propsPresent = shot.props_present || [];
+        if(propsPresent.length > 0 && node && node.data.scriptData && node.data.scriptData.props){
+          const scriptProps = node.data.scriptData.props;
+          const shotPropsList = [];
+          propsPresent.forEach(propId => {
+            const prop = scriptProps.find(p => p.id === propId);
+            if(prop && prop.props_db_id){
+              shotPropsList.push(`<div style="display: inline-block; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 4px; padding: 2px 6px; margin: 2px; font-size: 11px; color: #92400e;" title="${escapeHtml(prop.description || '')}">${escapeHtml(prop.name)}</div>`);
+            }
+          });
+          if(shotPropsList.length > 0){
+            propsDisplay = `<div style="display: flex; flex-wrap: wrap; gap: 4px;">${shotPropsList.join('')}</div>`;
+          }
+        }
+        
         html += `
           <tr style="border-bottom: 1px solid #eee;">
             <td style="padding: 10px; border: 1px solid #ddd; font-weight: 600;">${shotId}</td>
@@ -1142,6 +1177,7 @@
             <td style="padding: 10px; border: 1px solid #ddd;">${shotType}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${cameraMovement}</td>
             <td style="padding: 10px; border: 1px solid #ddd;">${locationDisplay}</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${propsDisplay}</td>
             <td style="padding: 10px; border: 1px solid #ddd; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${description}</td>
             <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
               <button class="mini-btn view-shot-detail" data-shot-index="${index}" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;">查看</button>
@@ -3753,10 +3789,11 @@
       }
 
       shots.forEach((shot, index) => {
-        // 为每个镜头添加场景信息
+        // 为每个镜头添加场景信息和scriptData
         const shotDataWithLocation = {
           ...shot,
-          allLocationInfo: locationInfo
+          allLocationInfo: locationInfo,
+          scriptData: shotGroupNode.data.scriptData  // 传递scriptData以便获取道具信息
         };
         
         const shotFrameNodeId = createShotFrameNode({
