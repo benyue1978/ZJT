@@ -3563,10 +3563,10 @@
       stopAutoSave();
     });
 
-    // 短剧智能体按钮点击事件
-    const agentBtnWorkflow = document.getElementById('agentBtnWorkflow');
-    if (agentBtnWorkflow) {
-      agentBtnWorkflow.addEventListener('click', async () => {
+    // 一键生成素材按钮点击事件
+    const agentBtnMaterial = document.getElementById('agentBtnMaterial');
+    if (agentBtnMaterial) {
+      agentBtnMaterial.addEventListener('click', async () => {
         const authToken = localStorage.getItem('auth_token') || '';
         const userId = localStorage.getItem('user_id') || '';
         
