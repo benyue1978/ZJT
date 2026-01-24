@@ -2194,6 +2194,12 @@
       }
     });
     
+    // 创建角色 - 如何获取参考音频指南链接
+    document.getElementById('createCharacterVoiceGuideLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.open('/reference_audio_guide.html', '_blank');
+    });
+    
     // 编辑角色音频文件选择预览
     document.getElementById('editCharacterVoiceInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
@@ -2270,6 +2276,12 @@
         voicePreviewAudio.src = '';
         voicePreview.style.display = 'none';
       }
+    });
+    
+    // 编辑角色 - 如何获取参考音频指南链接
+    document.getElementById('editCharacterVoiceGuideLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.open('/reference_audio_guide.html', '_blank');
     });
     
     // ========== 创建场景功能 ==========
