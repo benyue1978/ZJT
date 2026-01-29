@@ -1,6 +1,7 @@
 runninghub:
   host: "https://www.runninghub.cn"
   api_key: "9549532f3c3d435eXXXX"
+  max_concurrent_slots: 3  # RunningHub 最大并发槽位数量
 # Server configuration
 server:
   host: "http://ssh.perseids.cn:12000"
