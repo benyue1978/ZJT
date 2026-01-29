@@ -124,17 +124,18 @@ def _submit_new_task(ai_tool):
         # LTX2.0 图生视频 (type=10)
         result = create_ltx2_image_to_video(
             image_url=ai_tool.image_path,
-            prompt=ai_tool.prompt,
-            duration=ai_tool.duration,
-            ratio=ai_tool.ratio
+            prompt=ai_tool.prompt or "",
+            duration=ai_tool.duration
         )
         logger.info(f"Submit LTX2.0 task result: {result}")
         
-        if result.get("code") != 0:
-            error_msg = result.get("msg", "LTX2.0 API调用失败")
+        # v2 API 响应格式：直接返回 taskId, status, errorCode, errorMessage
+        # 成功时 taskId 存在，失败时 errorCode 或 errorMessage 有值
+        if not result.get("taskId"):
+            error_msg = result.get("errorMessage") or result.get("msg", "LTX2.0 API调用失败")
             
             # 特殊处理：RunningHub 队列已满错误
-            if error_msg == "TASK_QUEUE_MAXED":
+            if error_msg == "TASK_QUEUE_MAXED" or result.get("errorCode") == "TASK_QUEUE_MAXED":
                 logger.warning(f"RunningHub queue maxed for task {task_id}, will retry later")
                 # 延迟60秒后重试，不增加重试计数
                 next_trigger = datetime.now() + timedelta(seconds=60)
@@ -144,7 +145,7 @@ def _submit_new_task(ai_tool):
             logger.error(f"LTX2.0 API error: {error_msg}")
             return False
         
-        project_id = result.get("data", {}).get("taskId")
+        project_id = result.get("taskId")
     elif ai_tool_type == 11:
         # Wan2.2 图生视频 (type=11)
         result = create_wan22_image_to_video(
@@ -156,11 +157,13 @@ def _submit_new_task(ai_tool):
         )
         logger.info(f"Submit Wan2.2 task result: {result}")
         
-        if result.get("code") != 0:
-            error_msg = result.get("msg", "Wan2.2 API调用失败")
+        # v2 API 响应格式：直接返回 taskId, status, errorCode, errorMessage
+        # 成功时 taskId 存在，失败时 errorCode 或 errorMessage 有值
+        if not result.get("taskId"):
+            error_msg = result.get("errorMessage") or result.get("msg", "Wan2.2 API调用失败")
             
             # 特殊处理：RunningHub 队列已满错误
-            if error_msg == "TASK_QUEUE_MAXED":
+            if error_msg == "TASK_QUEUE_MAXED" or result.get("errorCode") == "TASK_QUEUE_MAXED":
                 logger.warning(f"RunningHub queue maxed for task {task_id}, will retry later")
                 # 延迟60秒后重试，不增加重试计数
                 next_trigger = datetime.now() + timedelta(seconds=60)
@@ -170,7 +173,7 @@ def _submit_new_task(ai_tool):
             logger.error(f"Wan2.2 API error: {error_msg}")
             return False
         
-        project_id = result.get("data", {}).get("taskId")
+        project_id = result.get("taskId")
     elif ai_tool_type == 12:
         # 可灵图生视频 (type=12)
         kling_mode = "std"
