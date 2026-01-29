@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>英仙智能AI工具箱</title>
+  <title>智剧通 AI短剧制作平台</title>
   <link rel="icon" href="/files/logo.ico" type="image/vnd.microsoft.icon"/>
   <link rel="stylesheet" href="/css/index.css" />
 </head>
@@ -44,6 +44,24 @@
     <footer class="icp-footer">
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">浙ICP备2023022572号-1</a>
     </footer>
+
+    <!-- 意见反馈按钮 -->
+    <button class="feedback-btn" @click="showFeedbackModal = true">
+      💬 意见反馈
+    </button>
+
+    <!-- 意见反馈弹窗 -->
+    <div class="modal-overlay" v-if="showFeedbackModal" @click.self="showFeedbackModal = false">
+      <div class="modal" style="position: relative; max-width: 400px;">
+        <button class="modal-close" @click="showFeedbackModal = false">×</button>
+        <div class="modal-title">意见反馈</div>
+        <div class="feedback-modal-content">
+          <p style="color: var(--muted); margin-bottom: 16px;">扫描二维码添加微信，提交您的宝贵意见</p>
+          <img src="/files/二维码.jpg" alt="微信二维码" class="feedback-qr-code">
+          <p class="feedback-tip">我们会认真听取每一条反馈，持续改进产品体验</p>
+        </div>
+      </div>
+    </div>
 
     <!-- Login/Register Modal -->
     <div class="modal-overlay" v-if="showLoginModal" @click.self="closeModal">
@@ -302,6 +320,63 @@
         </div>
       </div>
     </div>
+    
+    <!-- Admin Switch User Modal -->
+    <div class="modal-overlay" v-if="showAdminSwitchModal" @click.self="closeAdminSwitchModal">
+      <div class="modal" style="position: relative; max-width: 500px;">
+        <button class="modal-close" @click="closeAdminSwitchModal">×</button>
+        <div class="modal-title">管理员 - 切换用户身份</div>
+        <div style="padding: 20px;">
+          <div class="field">
+            <label class="label">用户Token <span style="color: red;">*</span></label>
+            <textarea 
+              class="input" 
+              v-model="adminSwitchToken" 
+              placeholder="请输入用户的auth_token" 
+              rows="2"
+            ></textarea>
+            <div class="muted" style="margin-top: 4px;">从数据库获取用户的token</div>
+          </div>
+          <div class="field" style="margin-top: 12px;">
+            <label class="label">手机号 <span style="color: red;">*</span></label>
+            <input 
+              class="input" 
+              v-model="adminSwitchPhone" 
+              placeholder="请输入用户手机号" 
+              maxlength="11"
+            />
+            <div class="muted" style="margin-top: 4px;">从数据库获取用户的手机号</div>
+          </div>
+          <div class="field" style="margin-top: 12px;">
+            <label class="label">用户ID（选填）</label>
+            <input 
+              class="input" 
+              v-model="adminSwitchUserId" 
+              placeholder="请输入user_id（选填）"
+            />
+          </div>
+          <div class="field" style="margin-top: 20px;">
+            <button class="btn" style="width: 100%;" @click="handleAdminSwitchUser" :disabled="adminSwitchLoading || !adminSwitchToken.trim() || !adminSwitchPhone.trim()">
+              {{ adminSwitchLoading ? '切换中...' : '切换用户' }}
+            </button>
+          </div>
+          <div class="status danger" v-if="adminSwitchError" style="text-align: center; margin-top: 10px;">{{ adminSwitchError }}</div>
+          <div class="status success" v-if="adminSwitchSuccess" style="text-align: center; margin-top: 10px;">{{ adminSwitchSuccess }}</div>
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+            <div style="font-size: 12px; color: var(--muted); line-height: 1.6;">
+              <strong>使用说明：</strong><br/>
+              1. 从数据库查询用户的 auth_token 和 phone<br/>
+              2. 将信息填入上方输入框<br/>
+              3. 点击"切换用户"按钮<br/>
+              4. 切换成功后页面会自动刷新<br/>
+              <br/>
+              <strong>快捷键：</strong> Ctrl+Shift+A 打开此窗口<br/>
+              <strong>提示：</strong> 切换后会显示完整手机号和管理员标识
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -311,7 +386,22 @@
   const ListPage = {
     name: 'ListPage',
     template: `
-      <div class="list">
+      <div>
+        <div class="feature-cards">
+          <div class="feature-card" @click="handleVideoWorkflowClick">
+            <div class="feature-card-icon">🎬</div>
+            <div class="feature-card-title">视频工作流</div>
+            <div class="feature-card-desc">空画布 + 节点式工作流编辑<br>创建和管理您的视频项目</div>
+            <div class="feature-card-arrow">→</div>
+          </div>
+          <div class="feature-card" @click="handleScriptWriterClick">
+            <div class="feature-card-icon">✨</div>
+            <div class="feature-card-title">剧本智能创作系统</div>
+            <div class="feature-card-desc">AI智能体生成剧本、人物、场景、道具<br>一键创作完整短剧素材</div>
+            <div class="feature-card-arrow">→</div>
+          </div>
+        </div>
+        <div class="list">
         <div class="list-item">
           <div>
             <div style="font-weight:700">图片编辑</div>
@@ -325,13 +415,6 @@
             <div class="muted">输入文本提示词生成图片</div>
           </div>
           <button class="btn" @click="$router.push({name:'text-to-image'})">打开</button>
-        </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">视频工作流</div>
-            <div class="muted">空画布 + 节点式工作流编辑</div>
-          </div>
-          <button class="btn" onclick="location.href='/video-workflow-list'">打开</button>
         </div>
         <div class="list-item">
           <div>
@@ -390,7 +473,42 @@
           <button class="btn" onclick="location.href='http://ssh.perseids.cn:15678/form/8cd1955c-5cf6-4111-a3a4-406001d7e3b2'">打开</button>
         </div>-->
       </div>
+      </div>
     `,
+    methods: {
+      handleVideoWorkflowClick() {
+        window.location.href = '/video-workflow-list';
+      },
+      async handleScriptWriterClick() {
+        const authToken = localStorage.getItem('auth_token');
+        const userId = localStorage.getItem('user_id');
+        
+        if (!authToken || !userId) {
+          alert('请先登录');
+          return;
+        }
+        
+        try {
+          const response = await axios.get('/api/script-writer-url', {
+            headers: {
+              'Authorization': authToken,
+              'X-User-Id': userId
+            }
+          });
+          
+          if (response.data.code === 0 && response.data.data && response.data.data.url) {
+            const baseUrl = response.data.data.url;
+            const url = `${baseUrl}?auth_token=${encodeURIComponent(authToken)}&user_id=${encodeURIComponent(userId)}`;
+            window.open(url, '_blank');
+          } else {
+            alert(response.data.message || '获取服务地址失败');
+          }
+        } catch (error) {
+          console.error('Failed to get script writer url:', error);
+          alert('网络错误');
+        }
+      }
+    }
   };
 
 
@@ -4713,6 +4831,7 @@
       showLoginModal: false,
       showInviteModal: false,
       showRechargePowerModal: false,
+      showFeedbackModal: false,
       authMode: 'login', // 'login' or 'register'
       loginForm: {
         phone: '',
@@ -4756,7 +4875,15 @@
       paymentError: '',
       wechatOpenid: '',
       userIp: '',
-      nativeCodeUrl: ''
+      nativeCodeUrl: '',
+      showAdminSwitchModal: false,
+      adminSwitchToken: '',
+      adminSwitchPhone: '',
+      adminSwitchUserId: '',
+      adminSwitchLoading: false,
+      adminSwitchError: '',
+      adminSwitchSuccess: '',
+      isAdminMode: false
     } },
     mounted() {
       // Extract auth_token from URL query parameters at app level
@@ -4838,11 +4965,22 @@
           return Promise.reject(error);
         }
       );
+      
+      // 添加管理员快捷键监听 (Ctrl+Shift+A)
+      document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+          e.preventDefault();
+          this.showAdminSwitchModal = true;
+        }
+      });
+      
+      // 检查是否处于管理员模式
+      this.isAdminMode = localStorage.getItem('admin_mode') === 'true';
     },
     computed: {
       route(){ return this.$route },
       pageTitle(){ 
-        if (this.route.name === 'list') return '英仙智能AI工具箱';
+        if (this.route.name === 'list') return '智剧通 AI短剧制作平台';
         if (this.route.name === 'image-edit') return '图片编辑';
         if (this.route.name === 'ai-video-gen') return 'AI 视频生成';
         if (this.route.name === 'image-to-video') return '图片生成视频';
@@ -4857,6 +4995,10 @@
       maskedPhone() {
         if (!this.userPhone || this.userPhone.length !== 11) {
           return this.userPhone;
+        }
+        // 管理员模式下显示完整手机号
+        if (this.isAdminMode) {
+          return '🔧 ' + this.userPhone + ' (管理员模式)';
         }
         // 隐藏中间4位：138****5678
         return this.userPhone.substring(0, 3) + '****' + this.userPhone.substring(7);
@@ -4972,8 +5114,8 @@
                 return;
               }
               
-              // 刷新页面以使用新的登录信息
-              window.location.reload();
+              // 登录成功后跳转到视频工作流列表页面
+              window.location.href = '/video-workflow-list';
             }
             
             // 关闭模态框并清空表单
@@ -5121,6 +5263,8 @@
             localStorage.removeItem('phone');
             localStorage.removeItem('user_id');
             localStorage.removeItem('invite_code');
+            localStorage.removeItem('admin_mode');
+            this.isAdminMode = false;
           } else {
             // 即使后端登出失败，也清除本地状态
             console.error('Logout error:', response.data.message);
@@ -5131,6 +5275,8 @@
             localStorage.removeItem('phone');
             localStorage.removeItem('user_id');
             localStorage.removeItem('invite_code');
+            localStorage.removeItem('admin_mode');
+            this.isAdminMode = false;
           }
         } catch (error) {
           console.error('Logout error:', error);
@@ -5142,7 +5288,71 @@
           localStorage.removeItem('phone');
           localStorage.removeItem('user_id');
           localStorage.removeItem('invite_code');
+          localStorage.removeItem('admin_mode');
+          this.isAdminMode = false;
         }
+      },
+      
+      closeAdminSwitchModal() {
+        this.showAdminSwitchModal = false;
+        this.adminSwitchToken = '';
+        this.adminSwitchPhone = '';
+        this.adminSwitchUserId = '';
+        this.adminSwitchError = '';
+        this.adminSwitchSuccess = '';
+      },
+      
+      handleAdminSwitchUser() {
+        this.adminSwitchError = '';
+        this.adminSwitchSuccess = '';
+        
+        const token = this.adminSwitchToken.trim();
+        const phone = this.adminSwitchPhone.trim();
+        const userId = this.adminSwitchUserId.trim();
+        
+        if (!token) {
+          this.adminSwitchError = '请输入用户token';
+          return;
+        }
+        
+        if (!phone) {
+          this.adminSwitchError = '请输入用户手机号';
+          return;
+        }
+        
+        // 验证手机号格式
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+          this.adminSwitchError = '请输入正确的手机号格式';
+          return;
+        }
+        
+        this.adminSwitchLoading = true;
+        
+        // 清除旧的登录数据
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('phone');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('invite_code');
+        
+        // 保存新的用户信息
+        this.authToken = token;
+        this.userPhone = phone;
+        this.userId = userId || '';
+        
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('phone', phone);
+        if (userId) {
+          localStorage.setItem('user_id', userId);
+        }
+        localStorage.setItem('admin_mode', 'true');
+        this.isAdminMode = true;
+        
+        this.adminSwitchSuccess = '切换成功！页面即将刷新...';
+        
+        // 延迟刷新页面
+        setTimeout(() => {
+          window.location.reload();
+        }, 800);
       },
       
       async fetchComputingPower() {
