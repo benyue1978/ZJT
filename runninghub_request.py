@@ -496,9 +496,9 @@ def create_ltx2_image_to_video(
     prompt: str = "",
     duration: int = 15,
     max_edge: int = 1280,
-    camera_movement: int = 7,
+    camera_movement: int = 1,
     prompt_mode: int = 1,
-    webapp_id: str = "2008966334171844609",
+    webapp_id: str = "2011014079896358914",
     api_key: str = None,
     config_path: str = None,
     instance_type: str = "plus",
@@ -512,9 +512,9 @@ def create_ltx2_image_to_video(
         prompt: Text prompt for video generation (optional, can be empty for auto mode)
         duration: Video duration in seconds (default: 15)
         max_edge: Maximum edge length in pixels (default: 1280)
-        camera_movement: Camera movement selection (default: 7)
+        camera_movement: Camera movement selection (default: 1)
         prompt_mode: Prompt mode switch - 1=auto, 2=manual (default: 1)
-        webapp_id: The webapp ID for LTX2.0 v2 (default: "2008966334171844609")
+        webapp_id: The webapp ID for LTX2.0 v2 (default: "2011014079896358914")
         api_key: API key for authentication (default: from config)
         config_path: Path to configuration file (default: auto-detect)
         instance_type: Instance type for the task (default: "plus")
@@ -549,37 +549,49 @@ def create_ltx2_image_to_video(
     # Build node info list for LTX2.0 v2
     node_info_list = [
         {
-            "nodeId": "106",
+            "nodeId": "67",
             "fieldName": "image",
             "fieldValue": image_url,
             "description": "图像image"
         },
         {
-            "nodeId": "120",
-            "fieldName": "value",
-            "fieldValue": str(duration),
-            "description": "时长"
+            "nodeId": "123",
+            "fieldName": "text",
+            "fieldValue": "",
+            "description": "魔搭社区的key"
         },
         {
-            "nodeId": "210",
+            "nodeId": "66",
             "fieldName": "value",
             "fieldValue": str(max_edge),
             "description": "最长边"
         },
         {
-            "nodeId": "193",
+            "nodeId": "52",
+            "fieldName": "value",
+            "fieldValue": str(duration),
+            "description": "时长"
+        },
+        {
+            "nodeId": "108",
             "fieldName": "select",
             "fieldValue": str(camera_movement),
             "description": "镜头运动选择"
         },
         {
-            "nodeId": "208",
+            "nodeId": "109",
             "fieldName": "select",
-            "fieldValue": str(prompt_mode),
-            "description": "提示词模式切换"
+            "fieldValue": "3",
+            "description": "手动选择运镜"
         },
         {
-            "nodeId": "162",
+            "nodeId": "160",
+            "fieldName": "select",
+            "fieldValue": "1",
+            "description": "提示词设置"
+        },
+        {
+            "nodeId": "96",
             "fieldName": "text",
             "fieldValue": prompt,
             "description": "提示词【自动可不填】"
