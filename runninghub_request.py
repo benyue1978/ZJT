@@ -496,9 +496,9 @@ def create_ltx2_image_to_video(
     prompt: str = "",
     duration: int = 15,
     max_edge: int = 1280,
-    camera_movement: int = 7,
+    camera_movement: int = 1,
     prompt_mode: int = 1,
-    webapp_id: str = "2008966334171844609",
+    webapp_id: str = "2011014079896358914",
     api_key: str = None,
     config_path: str = None,
     instance_type: str = "plus",
@@ -512,9 +512,9 @@ def create_ltx2_image_to_video(
         prompt: Text prompt for video generation (optional, can be empty for auto mode)
         duration: Video duration in seconds (default: 15)
         max_edge: Maximum edge length in pixels (default: 1280)
-        camera_movement: Camera movement selection (default: 7)
+        camera_movement: Camera movement selection (default: 1)
         prompt_mode: Prompt mode switch - 1=auto, 2=manual (default: 1)
-        webapp_id: The webapp ID for LTX2.0 v2 (default: "2008966334171844609")
+        webapp_id: The webapp ID for LTX2.0 v2 (default: "2011014079896358914")
         api_key: API key for authentication (default: from config)
         config_path: Path to configuration file (default: auto-detect)
         instance_type: Instance type for the task (default: "plus")
@@ -549,37 +549,49 @@ def create_ltx2_image_to_video(
     # Build node info list for LTX2.0 v2
     node_info_list = [
         {
-            "nodeId": "106",
+            "nodeId": "67",
             "fieldName": "image",
             "fieldValue": image_url,
             "description": "图像image"
         },
         {
-            "nodeId": "120",
-            "fieldName": "value",
-            "fieldValue": str(duration),
-            "description": "时长"
+            "nodeId": "123",
+            "fieldName": "text",
+            "fieldValue": "",
+            "description": "魔搭社区的key"
         },
         {
-            "nodeId": "129",
+            "nodeId": "66",
             "fieldName": "value",
             "fieldValue": str(max_edge),
             "description": "最长边"
         },
         {
-            "nodeId": "193",
+            "nodeId": "52",
+            "fieldName": "value",
+            "fieldValue": str(duration),
+            "description": "时长"
+        },
+        {
+            "nodeId": "108",
             "fieldName": "select",
             "fieldValue": str(camera_movement),
             "description": "镜头运动选择"
         },
         {
-            "nodeId": "208",
+            "nodeId": "109",
             "fieldName": "select",
-            "fieldValue": str(prompt_mode),
-            "description": "提示词模式切换"
+            "fieldValue": "3",
+            "description": "手动选择运镜"
         },
         {
-            "nodeId": "162",
+            "nodeId": "160",
+            "fieldName": "select",
+            "fieldValue": "2",
+            "description": "提示词设置"
+        },
+        {
+            "nodeId": "96",
             "fieldName": "text",
             "fieldValue": prompt,
             "description": "提示词【自动可不填】"
@@ -773,6 +785,151 @@ def create_wan22_image_to_video(
         raise requests.RequestException(f"Request failed: {str(e)}")
     except ValueError as e:
         logger.error(f"[RunningHub API v2 Wan2.2] Invalid response format: {str(e)}")
+        raise ValueError(f"Invalid response format: {str(e)}")
+
+
+def create_digital_human(
+    image_url: str,
+    text: str,
+    audio_url: str,
+    aspect_ratio: str = "9:16",
+    webapp_id: str = "2017494689997398017",
+    api_key: str = None,
+    config_path: str = None,
+    instance_type: str = "plus",
+    use_personal_queue: str = "false"
+) -> Dict[str, Any]:
+    """
+    Create digital human video using v2 API (async, returns task_id immediately)
+    
+    Args:
+        image_url: URL or filename of the input image
+        text: Text content for the digital human to speak (max 1000 characters)
+        audio_url: URL or filename of the reference audio
+        aspect_ratio: Video aspect ratio (9:16, 16:9, 1:1, 3:2, 4:3, 2:3, 3:4, original, custom)
+        webapp_id: The webapp ID for digital human (default: "2017494689997398017")
+        api_key: API key for authentication (default: from config)
+        config_path: Path to configuration file (default: auto-detect)
+        instance_type: Instance type for the task (default: "default")
+        use_personal_queue: Whether to use personal queue (default: "false")
+        
+    Returns:
+        API response with task_id
+        
+    Raises:
+        requests.RequestException: If request fails
+        ValueError: If response format is invalid
+    """
+    # Auto-detect config file if not specified
+    if config_path is None:
+        config_path = get_config_path()
+    
+    # Load config
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    
+    with open(config_path, 'r', encoding='utf-8') as file:
+        config = yaml.safe_load(file)
+    
+    # Load API key from config if not provided
+    if api_key is None:
+        api_key = config["runninghub"]["api_key"]
+    
+    host = config["runninghub"]["host"]
+    endpoint = f"/openapi/v2/run/ai-app/{webapp_id}"
+    url = f"{host}{endpoint}"
+    
+    # Map aspect_ratio to value
+    ratio_map = {
+        "original": "original",
+        "custom": "custom",
+        "1:1": "1:1",
+        "3:2": "3:2",
+        "4:3": "4:3",
+        "16:9": "16:9",
+        "2:3": "2:3",
+        "3:4": "3:4",
+        "9:16": "9:16"
+    }
+    ratio_value = ratio_map.get(aspect_ratio, "3:4")  # Default to 9:16 (竖屏)
+    
+    # Build node info list for digital human
+    node_info_list = [
+        {
+            "nodeId": "126",
+            "fieldName": "image",
+            "fieldValue": image_url,
+            "description": "上传图像"
+        },
+        {
+            "nodeId": "127",
+            "fieldName": "aspect_ratio",
+            "fieldData": "[[\"original\", \"custom\", \"1:1\", \"3:2\", \"4:3\", \"16:9\", \"2:3\", \"3:4\", \"9:16\"]]",
+            "fieldValue": ratio_value,
+            "description": "设置输出比例"
+        },
+        {
+            "nodeId": "184",
+            "fieldName": "text",
+            "fieldValue": text,
+            "description": "输入一段讲话内容（文本不要超过1000个字）"
+        },
+        {
+            "nodeId": "185",
+            "fieldName": "audio",
+            "fieldValue": audio_url,
+            "description": "audio"
+        },
+        {
+            "nodeId": "217",
+            "fieldName": "select",
+            "fieldValue": "11",
+            "description": "select"
+        },
+        {
+            "nodeId": "249",
+            "fieldName": "prompt",
+            "fieldValue": "",
+            "description": "prompt"
+        }
+    ]
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    
+    payload = {
+        "nodeInfoList": node_info_list,
+        "instanceType": instance_type,
+        "usePersonalQueue": use_personal_queue
+    }
+    
+    # 记录请求日志
+    logger.info(f"[RunningHub API v2 Digital Human] Request URL: {url}")
+    logger.info(f"[RunningHub API v2 Digital Human] Request Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+    
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=config["timeout"]["request_timeout"]
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # 记录响应日志
+        logger.info(f"[RunningHub API v2 Digital Human] Response: {json.dumps(result, ensure_ascii=False, indent=2)}")
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"[RunningHub API v2 Digital Human] Request failed: {str(e)}")
+        raise requests.RequestException(f"Request failed: {str(e)}")
+    except ValueError as e:
+        logger.error(f"[RunningHub API v2 Digital Human] Invalid response format: {str(e)}")
         raise ValueError(f"Invalid response format: {str(e)}")
 
 

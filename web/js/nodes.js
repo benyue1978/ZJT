@@ -13,6 +13,7 @@
           file: null,
           url: '',
           name: '',
+          project_id: null,
         }
       };
       state.nodes.push(node);
@@ -1957,6 +1958,7 @@
               <option value="sora2">Sora2</option>
               <option value="ltx2">LTX2.0</option>
               <option value="kling">可灵</option>
+              <option value="vidu">Vidu</option>
             </select>
           </div>
           <!-- 运镜功能暂时隐藏
@@ -2073,6 +2075,14 @@
           } else {
             power = klingPower || 0;
           }
+        } else if(videoModel === 'vidu') {
+          // type=13: Vidu根据时长区分算力
+          const viduPower = config[13];
+          if(typeof viduPower === 'object') {
+            power = viduPower[duration] || viduPower[5] || 0;
+          } else {
+            power = viduPower || 0;
+          }
         }
         
         return power;
@@ -2114,11 +2124,11 @@
             <option value="8">8秒 (201帧)</option>
             <option value="10">10秒 (241帧)</option>
           `;
-          if(![5, 8, 10].includes(Number(currentDuration))) {
+          if(['5', '8', '10'].includes(currentDuration)) {
+            durationSelect.value = currentDuration;
+          } else {
             durationSelect.value = '5';
             node.data.duration = 5;
-          } else {
-            durationSelect.value = currentDuration;
           }
         } else if(videoModel === 'wan22' || videoModel === 'kling') {
           // Wan2.2 和可灵: 5, 10秒
@@ -2126,11 +2136,23 @@
             <option value="5">5秒</option>
             <option value="10">10秒</option>
           `;
-          if(![5, 10].includes(Number(currentDuration))) {
+          if(['5', '10'].includes(currentDuration)) {
+            durationSelect.value = currentDuration;
+          } else {
             durationSelect.value = '5';
             node.data.duration = 5;
-          } else {
+          }
+        } else if(videoModel === 'vidu') {
+          // Vidu: 5, 8秒
+          durationSelect.innerHTML = `
+            <option value="5">5秒</option>
+            <option value="8">8秒</option>
+          `;
+          if(['5', '8'].includes(currentDuration)) {
             durationSelect.value = currentDuration;
+          } else {
+            durationSelect.value = '5';
+            node.data.duration = 5;
           }
         } else {
           // Sora2: 10, 15秒
@@ -2138,17 +2160,28 @@
             <option value="10">10秒</option>
             <option value="15">15秒</option>
           `;
-          if(![10, 15].includes(Number(currentDuration))) {
+          if(['10', '15'].includes(currentDuration)) {
+            durationSelect.value = currentDuration;
+          } else {
             durationSelect.value = '10';
             node.data.duration = 10;
-          } else {
-            durationSelect.value = currentDuration;
           }
         }
       }
       
       // 根据模型更新比例选项（所有模型都只支持16:9和9:16）
       function updateRatioOptions(videoModel) {
+        const ratioField = ratioSelect.closest('.field');
+        
+        // vidu 模型隐藏比例选择器
+        if(videoModel === 'vidu') {
+          if(ratioField) ratioField.style.display = 'none';
+          return;
+        }
+        
+        // 其他模型显示比例选择器
+        if(ratioField) ratioField.style.display = '';
+        
         const currentRatio = ratioSelect.value;
         ratioSelect.innerHTML = `
           <option value="9:16">9:16 (竖屏)</option>
@@ -2290,6 +2323,16 @@
       genBtnMain.addEventListener('click', async (e) => {
         e.stopPropagation();
 
+        // 检查提示词是否存在
+        const prompt = (node.data.prompt || '').trim();
+        if(!prompt){
+          genStatus.style.display = 'block';
+          genStatus.style.color = '#dc2626';
+          genStatus.textContent = '请先输入提示词';
+          showToast('请先输入提示词', 'error');
+          return;
+        }
+
         // 获取首帧图片URL
         let startImageUrl = '';
         if(node.data.startUrl){
@@ -2311,6 +2354,23 @@
           return;
         }
 
+        // 获取尾帧图片URL（可选）
+        let endImageUrl = '';
+        if(node.data.endUrl){
+          endImageUrl = node.data.endUrl;
+        } else {
+          const endConn = state.imageConnections.find(c => c.to === id && c.portType === 'end');
+          if(endConn){
+            const fromNode = state.nodes.find(n => n.id === endConn.from);
+            if(fromNode && fromNode.type === 'image' && fromNode.data && fromNode.data.url){
+              endImageUrl = fromNode.data.url;
+            }
+          }
+        }
+
+        // 拼接图片URL：如果有尾帧，用逗号拼接；否则只传首帧
+        const imageUrls = endImageUrl ? `${startImageUrl},${endImageUrl}` : startImageUrl;
+
         // 禁用按钮
         genBtnMain.disabled = true;
         genBtnMain.textContent = '生成中...';
@@ -2325,10 +2385,10 @@
           const ratio = node.data.ratio || state.ratio || '9:16';
           const videoModel = node.data.videoModel || 'sora2';
           
-          console.log('[DEBUG] 生成视频参数:', { drawCount: node.data.drawCount, desiredCount, duration, prompt, ratio, videoModel });
+          console.log('[DEBUG] 生成视频参数:', { drawCount: node.data.drawCount, desiredCount, duration, prompt, ratio, videoModel, imageUrls });
 
           // 调用生成API
-          const result = await generateVideoFromImage(startImageUrl, prompt, duration, desiredCount, ratio, videoModel);
+          const result = await generateVideoFromImage(imageUrls, prompt, duration, desiredCount, ratio, videoModel);
           console.log('[DEBUG] API返回:', { projectIds: result.projectIds, count: result.projectIds?.length });
           
           genStatus.textContent = '任务已提交，正在生成视频...';
@@ -2352,7 +2412,24 @@
             const newVideoId = createVideoNode({ x: node.x + 380, y: node.y + i * 260 });
             state.connections.push({ id: state.nextConnId++, from: id, to: newVideoId });
             newVideoNodeIds.push(newVideoId);
+            
+            // 立即为新创建的视频节点绑定 project_id
+            const newVideoNode = state.nodes.find(n => n.id === newVideoId);
+            if(newVideoNode && result.projectIds){
+              const projectIdIndex = connectedVideoIds.length + i;
+              newVideoNode.data.project_id = result.projectIds[projectIdIndex] || result.projectIds[0];
+              console.log(`[图生视频] 新建视频节点 ${newVideoId} 绑定 project_id:`, newVideoNode.data.project_id);
+            }
           }
+          
+          // 为已存在的连接视频节点也绑定 project_id
+          connectedVideoIds.forEach((videoNodeId, idx) => {
+            const videoNode = state.nodes.find(n => n.id === videoNodeId);
+            if(videoNode && result.projectIds){
+              videoNode.data.project_id = result.projectIds[idx] || result.projectIds[0];
+              console.log(`[图生视频] 已存在视频节点 ${videoNodeId} 绑定 project_id:`, videoNode.data.project_id);
+            }
+          });
           
           // 合并所有视频节点ID
           const allVideoNodeIds = [...connectedVideoIds, ...newVideoNodeIds];
@@ -2420,6 +2497,8 @@
                   if(videoUrl){
                     videoNode.data.url = videoUrl;
                     videoNode.data.name = `视频${idx + 1}`;
+                    videoNode.data.project_id = node.data.projectIds[idx] || node.data.projectIds[0];
+                    console.log(`[图生视频] 视频节点 ${videoNodeId} 绑定 project_id:`, videoNode.data.project_id, '来源:', node.data.projectIds, 'index:', idx);
                     
                     if(previewField && thumbVideo && nameEl){
                       thumbVideo.src = proxyDownloadUrl(videoUrl);
@@ -2600,7 +2679,8 @@
         }
 
         // 如果从图生视频节点拖拽，查找视频节点输入端口
-        if(fromNode && fromNode.type === 'image_to_video'){
+        const fromNodeForI2V = state.connecting ? state.nodes.find(n => n.id === state.connecting.fromId) : null;
+        if(fromNodeForI2V && fromNodeForI2V.type === 'image_to_video'){
           for(const node of state.nodes){
             if(node.type !== 'video') continue;
             const toEl = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
@@ -2768,6 +2848,7 @@
           ratio: defaultRatio,
           model: 'gemini-2.5-pro-image-preview',
           drawCount: 1,
+          project_id: null,
         }
       };
       state.nodes.push(node);
@@ -3071,29 +3152,59 @@
           statusEl.textContent = '任务已提交，正在生成图片...';
           node.data.projectIds = submitRes.projectIds;
 
+          // 立即创建对应数量的图片节点并绑定 project_id
+          const createdImageNodeIds = [];
+          const projectIds = submitRes.projectIds || [];
+          const imageCount = projectIds.length;
+
+          for(let i = 0; i < imageCount; i++){
+            const offsetY = i * 280;
+            const newNodeId = createImageNode({ 
+              x: node.x + 380, 
+              y: node.y + offsetY 
+            });
+            const newNode = state.nodes.find(n => n.id === newNodeId);
+            if(newNode){
+              newNode.data.name = imageCount > 1 ? `编辑结果${i + 1}` : '编辑结果';
+              newNode.data.project_id = projectIds[i] || projectIds[0];
+              createdImageNodeIds.push(newNodeId);
+              
+              // 创建从原节点到新节点的连接
+              const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              state.connections.push({
+                id: connectionId,
+                from: node.id,
+                to: newNodeId
+              });
+            }
+          }
+
+          // 立即渲染连接线
+          renderConnections();
+          renderImageConnections();
+          renderFirstFrameConnections();
+          renderVideoConnections();
+
+          try{ autoSaveWorkflow(); } catch(e){}
+          renderMinimap();
+
           pollVideoStatus(
             submitRes.projectIds,
             (progressText) => { statusEl.textContent = progressText; },
             (statusResult) => {
-              console.log('Image edit status result:', statusResult);
-              
               // 从 tasks 数组中提取结果
               let imageUrls = [];
               if(statusResult.tasks && Array.isArray(statusResult.tasks)){
-                // 多任务或单任务包装格式
                 imageUrls = statusResult.tasks
                   .filter(task => task.status === 'SUCCESS' && task.result)
                   .map(task => normalizeVideoUrl(task.result))
                   .filter(Boolean);
               } else {
-                // 直接从 statusResult 提取
                 const rawResults = extractResultsArray(statusResult);
                 imageUrls = Array.isArray(rawResults)
                   ? rawResults.map(normalizeVideoUrl).filter(Boolean)
                   : [];
               }
-              
-              console.log('Extracted image URLs:', imageUrls);
 
               if(imageUrls.length === 0){
                 statusEl.style.color = '#dc2626';
@@ -3107,21 +3218,22 @@
               statusEl.textContent = `生成完成！共${imageUrls.length}张图片`;
               editBtn.disabled = false;
 
-              // 为每个生成的图片创建新的图片节点
+              // 更新已创建的图片节点
               imageUrls.forEach((imageUrl, index) => {
-                const offsetY = index * 280; // 每个节点垂直间隔280px
-                const newNodeId = createImageNode({ x: node.x + 380, y: node.y + offsetY });
-                const newNode = state.nodes.find(n => n.id === newNodeId);
-                if(newNode){
-                  newNode.data.url = imageUrl;
-                  newNode.data.preview = imageUrl;
-                  newNode.data.name = imageUrls.length > 1 ? `编辑结果${index + 1}` : '编辑结果';
-                  const newEl = canvasEl.querySelector(`.node[data-node-id="${newNodeId}"]`);
-                  if(newEl){
-                    const newImg = newEl.querySelector('.image-preview');
-                    const newRow = newEl.querySelector('.image-preview-row');
-                    if(newImg) newImg.src = proxyImageUrl(imageUrl);
-                    if(newRow) newRow.style.display = 'flex';
+                const nodeId = createdImageNodeIds[index];
+                if(!nodeId) return;
+                
+                const imageNode = state.nodes.find(n => n.id === nodeId);
+                if(imageNode){
+                  imageNode.data.url = imageUrl;
+                  imageNode.data.preview = imageUrl;
+                  
+                  const nodeEl = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+                  if(nodeEl){
+                    const imgEl = nodeEl.querySelector('.image-preview');
+                    const rowEl = nodeEl.querySelector('.image-preview-row');
+                    if(imgEl) imgEl.src = proxyImageUrl(imageUrl);
+                    if(rowEl) rowEl.style.display = 'flex';
                   }
                 }
               });
@@ -4182,6 +4294,7 @@
               <option value="sora2">Sora2</option>
               <option value="ltx2">LTX2.0</option>
               <option value="kling">可灵</option>
+              <option value="vidu">Vidu</option>
             </select>
           </div>
           <div class="field">
@@ -4272,11 +4385,11 @@
             <option value="8">8秒 (201帧)</option>
             <option value="10">10秒 (241帧)</option>
           `;
-          if(![5, 8, 10].includes(Number(currentDuration))) {
+          if(['5', '8', '10'].includes(currentDuration)) {
+            videoDurationEl.value = currentDuration;
+          } else {
             videoDurationEl.value = '5';
             node.data.videoDuration = 5;
-          } else {
-            videoDurationEl.value = currentDuration;
           }
         } else if(videoModel === 'wan22' || videoModel === 'kling') {
           // Wan2.2 和可灵: 5, 10秒
@@ -4284,11 +4397,23 @@
             <option value="5">5秒</option>
             <option value="10">10秒</option>
           `;
-          if(![5, 10].includes(Number(currentDuration))) {
+          if(['5', '10'].includes(currentDuration)) {
+            videoDurationEl.value = currentDuration;
+          } else {
             videoDurationEl.value = '5';
             node.data.videoDuration = 5;
-          } else {
+          }
+        } else if(videoModel === 'vidu') {
+          // Vidu: 5, 8秒
+          videoDurationEl.innerHTML = `
+            <option value="5">5秒</option>
+            <option value="8">8秒</option>
+          `;
+          if(['5', '8'].includes(currentDuration)) {
             videoDurationEl.value = currentDuration;
+          } else {
+            videoDurationEl.value = '5';
+            node.data.videoDuration = 5;
           }
         } else {
           // Sora2: 10, 15秒
@@ -4296,11 +4421,11 @@
             <option value="10">10秒</option>
             <option value="15">15秒</option>
           `;
-          if(![10, 15].includes(Number(currentDuration))) {
+          if(['10', '15'].includes(currentDuration)) {
+            videoDurationEl.value = currentDuration;
+          } else {
             videoDurationEl.value = '10';
             node.data.videoDuration = 10;
-          } else {
-            videoDurationEl.value = currentDuration;
           }
         }
       }
@@ -4344,6 +4469,14 @@
             power = klingPower[duration] || klingPower[5] || 0;
           } else {
             power = klingPower || 0;
+          }
+        } else if(videoModel === 'vidu') {
+          // type=13: Vidu根据时长区分算力
+          const viduPower = config[13];
+          if(typeof viduPower === 'object') {
+            power = viduPower[duration] || viduPower[5] || 0;
+          } else {
+            power = viduPower || 0;
           }
         }
         
@@ -4716,7 +4849,12 @@
 
       generateBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        generateShotFrameImage(id, node);
+        if(typeof generateShotFrameImage === 'function'){
+          generateShotFrameImage(id, node);
+        } else {
+          console.error('generateShotFrameImage function is not loaded yet');
+          showToast('功能加载中，请稍后再试', 'warning');
+        }
       });
 
       // 检查是否有对话数据，更新生成对话音频按钮状态

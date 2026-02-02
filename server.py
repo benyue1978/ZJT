@@ -4,7 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import requests
+import httpx
+import asyncio
 import uuid
+from io import BytesIO
 import json
 import os
 import time
@@ -18,8 +21,8 @@ from typing import List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import mimetypes
 from pydantic import BaseModel
-from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
-from config_util import get_config_path, is_dev_environment
+from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
+from config_util import get_config_path
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
 from model.world import WorldModel
@@ -28,7 +31,7 @@ from model.location import LocationModel
 from model.script import ScriptModel
 from model.props import PropsModel
 import uuid
-from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix, create_character as create_character_task, get_character_task_result, create_text_to_image
+from duomi_api_requset import create_video_remix, create_character as create_character_task, get_character_task_result
 from PIL import Image
 from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
@@ -113,18 +116,21 @@ def _normalize_server(server: str) -> str:
     return server
 
 
-def _upload_image_to_comfyui(server: str, upload_file: UploadFile) -> str:
+async def _upload_image_to_comfyui(server: str, upload_file: UploadFile) -> str:
     """
     Upload the file to ComfyUI's /upload/image endpoint and return the stored filename.
     """
     url = f"{server}upload/image"
+    file_content = await upload_file.read()
+    await upload_file.seek(0)
     files = {
-        "image": (upload_file.filename, upload_file.file, upload_file.content_type or "application/octet-stream")
+        "image": (upload_file.filename, file_content, upload_file.content_type or "application/octet-stream")
     }
     try:
-        resp = requests.post(url, files=files, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, files=files)
+            resp.raise_for_status()
+            data = resp.json()
         # ComfyUI commonly returns {"name": "uploaded.png"}
         name = data.get("name") if isinstance(data, dict) else None
         if not name:
@@ -134,7 +140,7 @@ def _upload_image_to_comfyui(server: str, upload_file: UploadFile) -> str:
         if not name:
             raise HTTPException(status_code=502, detail=f"Unexpected upload response: {data}")
         return name
-    except requests.RequestException as e:
+    except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"Failed to upload image to ComfyUI: {e}")
 
 
@@ -186,78 +192,81 @@ def _build_prompt_payload(image_name: str, text_prompt: str) -> dict:
     return data
 
 
-def _submit_prompt(server: str, payload: dict) -> str:
+async def _submit_prompt(server: str, payload: dict) -> str:
     url = f"{server}prompt"
     try:
-        resp = requests.post(url, json=payload, timeout=30)
-        resp.raise_for_status()
-        # Prefer server-assigned prompt_id if present
-        try:
-            rj = resp.json()
-            prompt_id = rj.get("prompt_id") or payload.get("client_id")
-        except Exception:
-            prompt_id = payload.get("client_id")
-        return prompt_id
-    except requests.RequestException as e:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            # Prefer server-assigned prompt_id if present
+            try:
+                rj = resp.json()
+                prompt_id = rj.get("prompt_id") or payload.get("client_id")
+            except Exception:
+                prompt_id = payload.get("client_id")
+            return prompt_id
+    except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"Failed to submit prompt: {e}")
 
 
-def _check_queue_status(server: str, prompt_id: str) -> str:
+async def _check_queue_status(server: str, prompt_id: str) -> str:
     """Check if prompt is in queue (running or pending)"""
     try:
         queue_url = f"{server}queue"
-        r = requests.get(queue_url, timeout=5)
-        if r.status_code == 200:
-            queue_data = r.json()
-            
-            # Check running jobs
-            if "queue_running" in queue_data:
-                running_jobs = queue_data["queue_running"]
-                if isinstance(running_jobs, list):
-                    for job in running_jobs:
-                        if isinstance(job, list) and len(job) >= 2 and job[1] == prompt_id:
-                            return "running"
-            
-            # Check pending jobs
-            if "queue_pending" in queue_data:
-                pending_jobs = queue_data["queue_pending"]
-                if isinstance(pending_jobs, list):
-                    for job in pending_jobs:
-                        if isinstance(job, list) and len(job) >= 2 and job[1] == prompt_id:
-                            return "pending"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(queue_url)
+            if r.status_code == 200:
+                queue_data = r.json()
+                
+                # Check running jobs
+                if "queue_running" in queue_data:
+                    running_jobs = queue_data["queue_running"]
+                    if isinstance(running_jobs, list):
+                        for job in running_jobs:
+                            if isinstance(job, list) and len(job) >= 2 and job[1] == prompt_id:
+                                return "running"
+                
+                # Check pending jobs
+                if "queue_pending" in queue_data:
+                    pending_jobs = queue_data["queue_pending"]
+                    if isinstance(pending_jobs, list):
+                        for job in pending_jobs:
+                            if isinstance(job, list) and len(job) >= 2 and job[1] == prompt_id:
+                                return "pending"
         return "not_found"
     except Exception:
         return "error"
 
 
-def _check_history_for_images(server: str, prompt_id: str) -> List[str]:
+async def _check_history_for_images(server: str, prompt_id: str) -> List[str]:
     """Check history for completed results"""
     try:
         history_url = f"{server}history/{prompt_id}"
         view_url = f"{server}view?filename="
         
-        r = requests.get(history_url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            # ComfyUI history format: {prompt_id: {outputs: {...}, status: {...}, ...}}
-            if isinstance(data, dict) and prompt_id in data:
-                prompt_data = data[prompt_id]
-                outputs = prompt_data.get("outputs") if isinstance(prompt_data, dict) else None
-                if outputs:
-                    image_urls: List[str] = []
-                    for node_id, node_out in outputs.items():
-                        if not isinstance(node_out, dict):
-                            continue
-                        for out_type, out_items in node_out.items():
-                            if not isinstance(out_items, list):
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(history_url)
+            if r.status_code == 200:
+                data = r.json()
+                # ComfyUI history format: {prompt_id: {outputs: {...}, status: {...}, ...}}
+                if isinstance(data, dict) and prompt_id in data:
+                    prompt_data = data[prompt_id]
+                    outputs = prompt_data.get("outputs") if isinstance(prompt_data, dict) else None
+                    if outputs:
+                        image_urls: List[str] = []
+                        for node_id, node_out in outputs.items():
+                            if not isinstance(node_out, dict):
                                 continue
-                            for item in out_items:
-                                if not isinstance(item, dict):
+                            for out_type, out_items in node_out.items():
+                                if not isinstance(out_items, list):
                                     continue
-                                fname = item.get("filename")
-                                if fname:
-                                    image_urls.append(view_url + fname)
-                    return image_urls
+                                for item in out_items:
+                                    if not isinstance(item, dict):
+                                        continue
+                                    fname = item.get("filename")
+                                    if fname:
+                                        image_urls.append(view_url + fname)
+                        return image_urls
         return []
     except Exception:
         return []
@@ -276,13 +285,13 @@ async def qwen_image_edit(
     srv = _normalize_server(server)
 
     # Step 1: Upload image to ComfyUI input folder via API
-    image_name = _upload_image_to_comfyui(srv, image)
+    image_name = await _upload_image_to_comfyui(srv, image)
 
     # Step 2: Build workflow payload with updated nodes
     payload = _build_prompt_payload(image_name, prompt)
 
     # Step 3: Submit prompt
-    prompt_id = _submit_prompt(srv, payload)
+    prompt_id = await _submit_prompt(srv, payload)
 
     return JSONResponse({
         "prompt_id": prompt_id,
@@ -302,7 +311,7 @@ async def check_status(
     srv = _normalize_server(server)
     
     # First check if it's completed
-    image_urls = _check_history_for_images(srv, prompt_id)
+    image_urls = await _check_history_for_images(srv, prompt_id)
     if image_urls:
         return JSONResponse({
             "status": "completed",
@@ -310,7 +319,7 @@ async def check_status(
         })
     
     # Check queue status
-    queue_status = _check_queue_status(srv, prompt_id)
+    queue_status = await _check_queue_status(srv, prompt_id)
     
     return JSONResponse({
         "status": queue_status,
@@ -327,47 +336,47 @@ async def download_image(
     Proxy download for media files (images/videos) to handle CORS and provide proper download headers
     """
     try:
-        # Fetch the file from remote server
-        response = requests.get(url, timeout=30, stream=True)
-        response.raise_for_status()
-        
-        # Determine filename
-        if not filename:
-            # Extract filename from URL or generate one
-            if "filename=" in url:
-                filename = url.split("filename=")[-1].split("&")[0]
-            else:
-                # Try to get extension from URL
-                url_path = url.split('?')[0]
-                ext = url_path.split('.')[-1] if '.' in url_path else 'bin'
-                filename = f"generated_file_{int(time.time())}.{ext}"
-        
-        # Don't add extension if filename already has a valid one
-        valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv')
-        if not filename.lower().endswith(valid_extensions):
-            # Try to detect from content-type
-            content_type = response.headers.get('content-type', '')
-            if 'video' in content_type:
-                filename += '.mp4'
-            elif 'image' in content_type:
-                filename += '.png'
-        
-        # Get content type
-        content_type = response.headers.get('content-type', 'application/octet-stream')
-        
-        def generate():
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
-        
-        return StreamingResponse(
-            generate(),
-            media_type=content_type,
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}",
-                "Content-Type": content_type
-            }
-        )
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            
+            # Determine filename
+            if not filename:
+                # Extract filename from URL or generate one
+                if "filename=" in url:
+                    filename = url.split("filename=")[-1].split("&")[0]
+                else:
+                    # Try to get extension from URL
+                    url_path = url.split('?')[0]
+                    ext = url_path.split('.')[-1] if '.' in url_path else 'bin'
+                    filename = f"generated_file_{int(time.time())}.{ext}"
+            
+            # Don't add extension if filename already has a valid one
+            valid_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv')
+            if not filename.lower().endswith(valid_extensions):
+                # Try to detect from content-type
+                content_type = response.headers.get('content-type', '')
+                if 'video' in content_type:
+                    filename += '.mp4'
+                elif 'image' in content_type:
+                    filename += '.png'
+            
+            # Get content type
+            content_type = response.headers.get('content-type', 'application/octet-stream')
+            
+            # Return content as streaming response
+            content_stream = BytesIO(response.content)
+            
+            return StreamingResponse(
+                content_stream,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Type": content_type
+                }
+            )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Download failed: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
@@ -378,36 +387,40 @@ async def proxy_image(url: str = Query(..., description="Image URL to proxy")):
     Proxy image requests to avoid CORS issues in Electron
     """
     try:
-        # Fetch the image from the external server
-        response = requests.get(url, timeout=30, stream=True)
-        response.raise_for_status()
-        
-        # Get content type
-        content_type = response.headers.get('content-type', 'image/png')
-        
-        def generate():
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
-        
-        return StreamingResponse(
-            generate(),
-            media_type=content_type,
-            headers={
-                "Content-Type": content_type,
-                "Cache-Control": "public, max-age=3600"
-            }
-        )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            
+            # Get content type
+            content_type = response.headers.get('content-type', 'image/png')
+            
+            # Return content as streaming response
+            content_stream = BytesIO(response.content)
+            
+            return StreamingResponse(
+                content_stream,
+                media_type=content_type,
+                headers={
+                    "Content-Type": content_type,
+                    "Cache-Control": "public, max-age=3600"
+                }
+            )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Image proxy failed: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image proxy failed: {str(e)}")
 
 
 def _save_uploaded_image(upload_file: UploadFile) -> str:
     """
-    Save uploaded image to upload directory and return the file URL
+    Save uploaded image to upload/temp/date directory and return the file URL
     """
-    # Ensure upload directory exists
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    # Get current date for directory name
+    date_str = datetime.now().strftime("%Y%m%d")
+    
+    # Create upload/temp/date directory structure
+    temp_dir = os.path.join(UPLOAD_DIR, "temp", date_str)
+    os.makedirs(temp_dir, exist_ok=True)
     
     # Generate unique filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -416,13 +429,13 @@ def _save_uploaded_image(upload_file: UploadFile) -> str:
     filename = f"upload_{timestamp}_{unique_id}{file_extension}"
     
     # Save file
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    file_path = os.path.join(temp_dir, filename)
     with open(file_path, "wb") as f:
         content = upload_file.file.read()
         f.write(content)
     
     # Return URL that can be accessed via static file serving
-    return f"{SERVER_HOST}/upload/{filename}"
+    return f"{SERVER_HOST}/upload/temp/{date_str}/{filename}"
 
 def _save_user_asset(
     upload_file: UploadFile,
@@ -608,7 +621,7 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
         return audio_path
 
 
-def _download_and_extract_audio_from_video(video_url: str) -> str:
+async def _download_and_extract_audio_from_video(video_url: str) -> str:
     """
     Download video from URL, validate size and duration, extract audio, and clean up.
     
@@ -629,39 +642,39 @@ def _download_and_extract_audio_from_video(video_url: str) -> str:
         temp_dir = tempfile.mkdtemp(prefix="video_audio_extract_")
         video_path = os.path.join(temp_dir, "temp_video.mp4")
         
-        # Download video with size limit check
+        # Download video with size limit check (async)
         logger.info(f"Downloading video from: {video_url}")
-        response = requests.get(video_url, stream=True, timeout=30)
-        response.raise_for_status()
-        
-        # Check Content-Length header if available
-        content_length = response.headers.get('Content-Length')
-        if content_length:
-            size_mb = int(content_length) / (1024 * 1024)
-            if size_mb > 40:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"视频文件过大: {size_mb:.1f}MB，限制为40MB"
-                )
-        
-        # Download video with size check
-        downloaded_size = 0
-        max_size = 40 * 1024 * 1024  # 40MB in bytes
-        
-        with open(video_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    downloaded_size += len(chunk)
-                    if downloaded_size > max_size:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream('GET', video_url) as response:
+                response.raise_for_status()
+                
+                # Check Content-Length header if available
+                content_length = response.headers.get('Content-Length')
+                if content_length:
+                    size_mb = int(content_length) / (1024 * 1024)
+                    if size_mb > 40:
                         raise HTTPException(
                             status_code=400,
-                            detail=f"视频文件超过40MB限制"
+                            detail=f"视频文件过大: {size_mb:.1f}MB, 限制为40MB"
                         )
-                    f.write(chunk)
+                
+                # Download video with size check
+                downloaded_size = 0
+                max_size = 40 * 1024 * 1024  # 40MB in bytes
+                
+                with open(video_path, 'wb') as f:
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        downloaded_size += len(chunk)
+                        if downloaded_size > max_size:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"视频文件超过40MB限制"
+                            )
+                        f.write(chunk)
         
         logger.info(f"Video downloaded: {downloaded_size / (1024*1024):.2f}MB")
         
-        # Check video duration using ffprobe
+        # Check video duration using ffprobe (async subprocess)
         try:
             duration_cmd = [
                 'ffprobe', '-v', 'error',
@@ -669,30 +682,31 @@ def _download_and_extract_audio_from_video(video_url: str) -> str:
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 video_path
             ]
-            duration_result = subprocess.run(
-                duration_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
+            proc = await asyncio.create_subprocess_exec(
+                *duration_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            
-            if duration_result.returncode == 0:
-                duration = float(duration_result.stdout.strip())
-                logger.info(f"Video duration: {duration:.2f}s")
-                
-                if duration > 20:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"视频时长过长: {duration:.1f}秒，限制为20秒"
-                    )
-            else:
-                logger.warning(f"Failed to get video duration: {duration_result.stderr}")
-        except subprocess.TimeoutExpired:
-            logger.warning("ffprobe timeout when checking duration")
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
+                if proc.returncode == 0:
+                    duration = float(stdout.decode().strip())
+                    logger.info(f"Video duration: {duration:.2f}s")
+                    
+                    if duration > 20:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"视频时长过长: {duration:.1f}秒, 限制为20秒"
+                        )
+                else:
+                    logger.warning(f"Failed to get video duration: {stderr.decode()}")
+            except asyncio.TimeoutError:
+                proc.kill()
+                logger.warning("ffprobe timeout when checking duration")
         except Exception as e:
             logger.warning(f"Error checking video duration: {e}")
         
-        # Extract audio using ffmpeg
+        # Extract audio using ffmpeg (async subprocess)
         audio_dir = "/nas/comfyui_upload/tts/tmp_ref_audio"
         os.makedirs(audio_dir, exist_ok=True)
         
@@ -714,18 +728,27 @@ def _download_and_extract_audio_from_video(video_url: str) -> str:
             audio_path
         ]
         
-        result = subprocess.run(
-            ffmpeg_cmd,
-            capture_output=True,
-            text=True,
-            timeout=60
+        proc = await asyncio.create_subprocess_exec(
+            *ffmpeg_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        
-        if result.returncode != 0:
-            logger.error(f"ffmpeg error: {result.stderr}")
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            logger.error("ffmpeg timeout")
             raise HTTPException(
                 status_code=500,
-                detail=f"音频提取失败: {result.stderr[:200]}"
+                detail="音频提取超时"
+            )
+        
+        if proc.returncode != 0:
+            error_msg = stderr.decode()[:200] if stderr else "Unknown error"
+            logger.error(f"ffmpeg error: {error_msg}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"音频提取失败: {error_msg}"
             )
         
         if not os.path.exists(audio_path):
@@ -739,17 +762,11 @@ def _download_and_extract_audio_from_video(video_url: str) -> str:
         
     except HTTPException:
         raise
-    except requests.RequestException as e:
+    except httpx.HTTPStatusError as e:
         logger.error(f"Failed to download video: {e}")
         raise HTTPException(
             status_code=400,
             detail=f"视频下载失败: {str(e)}"
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("ffmpeg timeout")
-        raise HTTPException(
-            status_code=500,
-            detail="音频提取超时"
         )
     except Exception as e:
         logger.error(f"Error processing video: {e}")
@@ -914,6 +931,7 @@ async def image_edit(
         # Handle multiple images - limit to maximum 5 images
         images_to_process = image[:5] if len(image) > 5 else image
         image_urls = [_save_uploaded_image(img) for img in images_to_process]
+        logger.info(f"[image_edit] Input image URLs: {image_urls}")
         
         # Submit tasks according to generation count
         project_ids = []
@@ -1359,16 +1377,16 @@ async def ai_app_run_image(
     prompt: str = Form(..., description="Text prompt for the AI app"),
     images: List[UploadFile] = File(None, description="Image files for the AI app (1-5 images)"),
     image_urls: str = Form(None, description="Comma-separated image URLs (alternative to uploading files)"),
-    video_model: str = Form("sora2", description="Video model: sora2, ltx2, wan22, kling"),
-    ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9 (sora2/kling); 9:16, 16:9, 3:4, 1:1, 4:3 (wan22)"),
-    duration_seconds: int = Form(15, description="Duration in seconds (sora2: 10/15, ltx2: 5/8/10, wan22: 5/10, kling: 5/10)"),
+    video_model: str = Form("sora2", description="Video model: sora2, ltx2, wan22, kling, vidu"),
+    ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9 (sora2/kling); 9:16, 16:9, 3:4, 1:1, 4:3 (wan22); 16:9, 9:16, 1:1 (vidu)"),
+    duration_seconds: int = Form(15, description="Duration in seconds (sora2: 10/15, ltx2: 5/8/10, wan22: 5/10, kling: 5/10, vidu: 5/8)"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
     """
     Submit image to video task.
-    Supports four video models:
+    Supports five video models:
     1. sora2: Uses Sora2 model with ratio and duration parameters
        - Ratio: 9:16, 16:9
        - Duration: 10秒, 15秒
@@ -1382,12 +1400,29 @@ async def ai_app_run_image(
     4. kling: Uses Kling model with ratio and duration parameters
        - Ratio: 9:16, 16:9
        - Duration: 5秒, 10秒
+    5. vidu: Uses Vidu model with ratio and duration parameters
+       - Ratio: 16:9, 9:16, 1:1
+       - Duration: 5秒, 8秒
     
     Supports two image input modes:
     1. Upload images: Provide 1-5 images via 'images' parameter (will be concatenated horizontally)
     2. Use image URLs: Provide comma-separated URLs via 'image_urls' parameter
     """
     try:
+        # 记录输入的图片信息
+        logger.info(f"AI app run image request - prompt: {prompt}, video_model: {video_model}, ratio: {ratio}, duration: {duration_seconds}, count: {count}, user_id: {user_id}")
+        
+        if image_urls:
+            url_list = [url.strip() for url in image_urls.split(',') if url.strip()]
+            logger.info(f"Input mode: image_urls, URLs: {url_list}")
+        elif images and len(images) > 0:
+            image_info = []
+            for img in images:
+                image_info.append(f"filename: {img.filename}, content_type: {img.content_type}, size: {getattr(img, 'size', 'unknown')}")
+            logger.info(f"Input mode: uploaded images, count: {len(images)}, details: {image_info}")
+        else:
+            logger.warning("No image input provided")
+        
         if CHECK_AUTH_TOKEN and auth_token is None:
             raise HTTPException(
                 status_code=400, 
@@ -1415,6 +1450,8 @@ async def ai_app_run_image(
                 # For multiple URLs, we use the first one for now
                 # TODO: Consider downloading and concatenating multiple URLs if needed
                 image_url = url_list[0]
+            if video_model == "vidu":
+                image_url = image_urls
         elif images and len(images) > 0:
             # Mode 2: Upload images
             if len(images) > 5:
@@ -1433,6 +1470,9 @@ async def ai_app_run_image(
                 detail="Either 'images' (uploaded files) or 'image_urls' (comma-separated URLs) must be provided"
             )
 
+        # 记录最终使用的图片URL
+        logger.info(f"Final image URL for processing: {image_url}")
+
         # Determine task type and computing power based on video_model
         if video_model == "ltx2":
             task_type = 10  # LTX2.0 图生视频
@@ -1447,6 +1487,11 @@ async def ai_app_run_image(
             # 可灵根据时长区分算力：5秒=38，10秒=55
             kling_power_map = TASK_COMPUTING_POWER[task_type]
             computing_power = kling_power_map.get(duration_seconds, 38)
+        elif video_model == "vidu":
+            task_type = 14  # Vidu 图生视频
+            # Vidu根据时长区分算力：5秒=16
+            vidu_power_map = TASK_COMPUTING_POWER[task_type]
+            computing_power = vidu_power_map.get(duration_seconds, 16)
         else:
             task_type = 3   # Sora2 图生视频
             computing_power = TASK_COMPUTING_POWER[task_type]
@@ -1522,6 +1567,11 @@ async def ai_app_run_image(
                         elif video_model == "kling":
                             # 可灵图生视频: type=12
                             task_type = 12
+                            ratio_value = ratio
+                            duration_value = duration_seconds
+                        elif video_model == "vidu":
+                            # Vidu 图生视频: type=14
+                            task_type = 14
                             ratio_value = ratio
                             duration_value = duration_seconds
                         else:
@@ -2976,6 +3026,127 @@ async def api_create_character(
         raise HTTPException(status_code=500, detail=f"创建角色失败: {str(e)}")
 
 
+@app.post("/api/digital-human")
+async def digital_human_generate(
+    image: UploadFile = File(..., description="Input image for digital human"),
+    text: str = Form(..., description="Text content for digital human to speak (max 1000 characters)"),
+    audio: UploadFile = File(..., description="Reference audio file"),
+    aspect_ratio: str = Form("9:16", description="Video aspect ratio: 9:16, 16:9, 1:1, 3:2, 4:3, 2:3, 3:4"),
+    user_id: int = Form(None, description="User ID"),
+    auth_token: str = Form(None, description="Authentication token")
+):
+    """
+    Generate digital human video from image, text and audio
+    """
+    try:
+        if CHECK_AUTH_TOKEN and auth_token is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Authentication token is required"
+            )
+        
+        # Validate text length
+        if len(text) > 1000:
+            raise HTTPException(
+                status_code=400,
+                detail="文本内容不能超过1000个字"
+            )
+        
+        # Save uploaded image
+        image_url = _save_uploaded_image(image)
+        
+        # Save uploaded audio
+        audio_url = _save_uploaded_image(audio)  # Reuse the same function for audio
+        
+        # Task type for digital human
+        task_type = 13
+        computing_power = TASK_COMPUTING_POWER[task_type]
+        
+        if CHECK_AUTH_TOKEN:
+            headers = {'Authorization': f'Bearer {auth_token}'}
+            # Check computing power
+            success, message, response_data = make_perseids_request(
+                endpoint='user/check_computing_power',
+                method='GET',
+                headers=headers
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400,
+                    detail=message
+                )
+            
+            user_computing_power = response_data.get('computing_power', 0)
+            user_id_from_token = response_data.get('user_id')
+            if user_computing_power < computing_power:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"您的算力不足，需要 {computing_power} 算力，当前仅有 {user_computing_power} 算力"
+                )
+            if user_id_from_token != user_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="用户ID不匹配"
+                )
+        
+        # Generate unique transaction ID
+        transaction_id = str(uuid.uuid4())
+        
+        # Deduct computing power
+        if CHECK_AUTH_TOKEN:
+            success, message, response_data = make_perseids_request(
+                endpoint='user/calculate_computing_power',
+                method='POST',
+                headers=headers,
+                data={
+                    "computing_power": computing_power,
+                    "behavior": "deduct",
+                    "transaction_id": transaction_id
+                }
+            )
+            if not success:
+                logger.error(f"Computing power deduction failed: {message}")
+        
+        # Create database record
+        if user_id:
+            try:
+                id = AIToolsModel.create(
+                    prompt=text,
+                    user_id=user_id,
+                    type=task_type,
+                    image_path=image_url,
+                    ratio=aspect_ratio,
+                    message=audio_url,  # Store audio URL in message field
+                    transaction_id=transaction_id,
+                    status=0
+                )
+                TasksModel.create(
+                    task_type=TASK_TYPE_GENERATE_VIDEO,
+                    task_id=id,
+                    status=0
+                )
+                
+                return JSONResponse({
+                    "success": True,
+                    "project_id": id,
+                    "status": "submitted",
+                    "image_url": image_url,
+                    "audio_url": audio_url
+                })
+            except Exception as db_error:
+                logger.error(f"Failed to create database record: {db_error}")
+                raise HTTPException(status_code=500, detail=f"数据库错误: {str(db_error)}")
+        else:
+            raise HTTPException(status_code=400, detail="用户ID不能为空")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Digital human generation failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"数字人生成失败: {str(e)}")
+
+
 @app.post("/api/audio-generate")
 async def audio_generate(
     text: str = Form(..., description="Text to generate audio from"),
@@ -3015,7 +3186,7 @@ async def audio_generate(
             emo_ref_path = _save_uploaded_audio(emo_ref_audio)
         elif emo_ref_video_url:
             # Download video and extract audio
-            emo_ref_path = _download_and_extract_audio_from_video(emo_ref_video_url)
+            emo_ref_path = await _download_and_extract_audio_from_video(emo_ref_video_url)
         elif emo_ref_audio_url:
             emo_ref_path = emo_ref_audio_url
         
@@ -3259,8 +3430,6 @@ async def get_wechat_openid(code: str):
         包含openid的响应
     """
     try:
-        import requests
-        
         # 从配置文件读取微信配置
         wechat_config = config.get("pay", {}).get("wxpay", {})
         app_id = wechat_config.get("appId")
@@ -3269,7 +3438,7 @@ async def get_wechat_openid(code: str):
         if not app_id or not app_secret:
             raise HTTPException(status_code=500, detail="微信配置不完整")
         
-        # 调用微信接口获取openid
+        # 调用微信接口获取openid (使用异步 httpx)
         url = "https://api.weixin.qq.com/sns/oauth2/access_token"
         params = {
             "appid": app_id,
@@ -3278,8 +3447,9 @@ async def get_wechat_openid(code: str):
             "grant_type": "authorization_code"
         }
         
-        response = requests.get(url, params=params)
-        result = response.json()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            result = response.json()
         
         if "openid" in result:
             return JSONResponse({
@@ -3834,6 +4004,105 @@ async def get_video_workflow(
         return JSONResponse(
             status_code=500,
             content={"code": -1, "message": f"获取工作流详情失败: {str(e)}"}
+        )
+
+
+@app.get('/api/video-workflow/{workflow_id}/poll-status')
+async def poll_workflow_node_status(
+    workflow_id: int,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: Optional[int] = Header(None, alias="X-User-Id")
+):
+    """
+    轮询工作流中节点的生成状态
+    查询有 project_id 但 url 为空的节点，并返回其完成状态
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 获取工作流数据
+        workflow = VideoWorkflowModel.get_by_id(workflow_id)
+        if not workflow:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "工作流不存在"}
+            )
+        
+        if getattr(workflow, 'user_id', None) != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={"code": -1, "message": "无权限访问该工作流"}
+            )
+        
+        # 解析 workflow_data
+        workflow_data = workflow.workflow_data
+        if isinstance(workflow_data, str):
+            try:
+                workflow_data = json.loads(workflow_data)
+            except:
+                workflow_data = {}
+        
+        if not workflow_data or 'nodes' not in workflow_data:
+            return JSONResponse({
+                "code": 0,
+                "message": "success",
+                "data": {"updated_nodes": []}
+            })
+        
+        # 查找有 project_id 但 url 为空的节点
+        nodes = workflow_data.get('nodes', [])
+        updated_nodes = []
+        
+        for node in nodes:
+            node_data = node.get('data', {})
+            project_id = node_data.get('project_id')
+            url = node_data.get('url', '')
+            
+            # 只处理有 project_id 但 url 为空的节点
+            if project_id and not url:
+                # 查询 ai_tools 表获取状态
+                try:
+                    ai_tool = AIToolsModel.get_by_id(project_id)
+                    if ai_tool:
+                        # 状态为完成(status==2)且有结果URL
+                        if ai_tool.status == 2 and ai_tool.result_url:
+                            updated_nodes.append({
+                                'node_id': node.get('id'),
+                                'node_type': node.get('type'),
+                                'project_id': project_id,
+                                'url': ai_tool.result_url,
+                                'status': ai_tool.status,
+                                'message': None
+                            })
+                        # 状态为失败(status==-1)
+                        elif ai_tool.status == -1:
+                            updated_nodes.append({
+                                'node_id': node.get('id'),
+                                'node_type': node.get('type'),
+                                'project_id': project_id,
+                                'url': None,
+                                'status': ai_tool.status,
+                                'message': ai_tool.message or '生成失败'
+                            })
+                except Exception as e:
+                    logger.error(f"Failed to query ai_tool for project_id {project_id}: {e}")
+                    continue
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": {
+                "updated_nodes": updated_nodes,
+                "total": len(updated_nodes)
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to poll workflow node status for workflow {workflow_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"轮询节点状态失败: {str(e)}"}
         )
 
 
@@ -5523,27 +5792,26 @@ async def export_timeline_draft(
                     else:
                         logger.info(f"正在下载视频 {idx + 1}/{len(payload.video_clips)}: {video_name}")
                         
-                        # 下载视频
-                        response = requests.get(video_url, stream=True, timeout=300)
-                        response.raise_for_status()
-                        
-                        # 确定文件扩展名
-                        file_ext = '.mp4'
-                        if 'content-type' in response.headers:
-                            content_type = response.headers['content-type']
-                            if 'video/quicktime' in content_type or video_url.endswith('.mov'):
-                                file_ext = '.mov'
-                            elif 'video/x-msvideo' in content_type or video_url.endswith('.avi'):
-                                file_ext = '.avi'
-                        
-                        # 保存文件
-                        safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
-                        file_path = os.path.join(temp_download_dir, safe_name)
-                        
-                        with open(file_path, 'wb') as f:
-                            for chunk in response.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
+                        # 下载视频 (异步)
+                        async with httpx.AsyncClient(timeout=300.0) as http_client:
+                            async with http_client.stream('GET', video_url) as response:
+                                response.raise_for_status()
+                                
+                                # 确定文件扩展名
+                                file_ext = '.mp4'
+                                content_type = response.headers.get('content-type', '')
+                                if 'video/quicktime' in content_type or video_url.endswith('.mov'):
+                                    file_ext = '.mov'
+                                elif 'video/x-msvideo' in content_type or video_url.endswith('.avi'):
+                                    file_ext = '.avi'
+                                
+                                # 保存文件
+                                safe_name = f"video_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
+                                file_path = os.path.join(temp_download_dir, safe_name)
+                                
+                                with open(file_path, 'wb') as f:
+                                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                                        f.write(chunk)
                         
                         logger.info(f"视频下载完成: {safe_name}")
                     
@@ -5597,29 +5865,28 @@ async def export_timeline_draft(
                     else:
                         logger.info(f"正在下载音频 {idx + 1}/{len(payload.audio_clips)}: {audio_name}")
                         
-                        # 下载音频
-                        response = requests.get(audio_url, stream=True, timeout=300)
-                        response.raise_for_status()
-                        
-                        # 确定文件扩展名
-                        file_ext = '.mp3'
-                        if 'content-type' in response.headers:
-                            content_type = response.headers['content-type']
-                            if 'audio/wav' in content_type or audio_url.endswith('.wav'):
-                                file_ext = '.wav'
-                            elif 'audio/aac' in content_type or audio_url.endswith('.aac'):
-                                file_ext = '.aac'
-                            elif 'audio/mpeg' in content_type or audio_url.endswith('.mp3'):
+                        # 下载音频 (异步)
+                        async with httpx.AsyncClient(timeout=300.0) as http_client:
+                            async with http_client.stream('GET', audio_url) as response:
+                                response.raise_for_status()
+                                
+                                # 确定文件扩展名
                                 file_ext = '.mp3'
-                        
-                        # 保存文件
-                        safe_name = f"audio_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
-                        file_path = os.path.join(temp_download_dir, safe_name)
-                        
-                        with open(file_path, 'wb') as f:
-                            for chunk in response.iter_content(chunk_size=8192):
-                                if chunk:
-                                    f.write(chunk)
+                                content_type = response.headers.get('content-type', '')
+                                if 'audio/wav' in content_type or audio_url.endswith('.wav'):
+                                    file_ext = '.wav'
+                                elif 'audio/aac' in content_type or audio_url.endswith('.aac'):
+                                    file_ext = '.aac'
+                                elif 'audio/mpeg' in content_type or audio_url.endswith('.mp3'):
+                                    file_ext = '.mp3'
+                                
+                                # 保存文件
+                                safe_name = f"audio_{idx:03d}_{uuid.uuid4().hex[:8]}{file_ext}"
+                                file_path = os.path.join(temp_download_dir, safe_name)
+                                
+                                with open(file_path, 'wb') as f:
+                                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                                        f.write(chunk)
                         
                         logger.info(f"音频下载完成: {safe_name}")
                     

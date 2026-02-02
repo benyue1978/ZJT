@@ -911,6 +911,14 @@
               if(![5, 10].includes(node.data.duration)) {
                 node.data.duration = 5;
               }
+            } else if(videoModel === 'vidu') {
+              durationSelect.innerHTML = `
+                <option value="5">5秒</option>
+                <option value="8">8秒</option>
+              `;
+              if(![5, 8].includes(node.data.duration)) {
+                node.data.duration = 5;
+              }
             } else {
               durationSelect.innerHTML = `
                 <option value="10">10秒</option>
@@ -923,18 +931,29 @@
             durationSelect.value = node.data.duration;
           }
           
-          // 根据模型更新比例选项（所有模型都只支持16:9和9:16）
+          // 根据模型更新比例选项
           const ratioSelect = el.querySelector('.ratio-select');
           if(ratioSelect) {
-            ratioSelect.innerHTML = `
-              <option value="9:16">9:16 (竖屏)</option>
-              <option value="16:9">16:9 (横屏)</option>
-            `;
-            // 如果保存的比例不在支持列表中，使用16:9
-            if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') {
-              node.data.ratio = '16:9';
+            const ratioField = ratioSelect.closest('.field');
+            const videoModel = node.data.videoModel;
+            
+            // vidu 模型隐藏比例选择器
+            if(videoModel === 'vidu') {
+              if(ratioField) ratioField.style.display = 'none';
+            } else {
+              // 其他模型显示比例选择器
+              if(ratioField) ratioField.style.display = '';
+              
+              ratioSelect.innerHTML = `
+                <option value="9:16">9:16 (竖屏)</option>
+                <option value="16:9">16:9 (横屏)</option>
+              `;
+              // 如果保存的比例不在支持列表中，使用16:9
+              if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') {
+                node.data.ratio = '16:9';
+              }
+              ratioSelect.value = node.data.ratio;
             }
-            ratioSelect.value = node.data.ratio;
           }
           
           // 更新抽卡次数标签
@@ -969,6 +988,13 @@
                   singlePower = klingPower[duration] || klingPower[5] || 0;
                 } else {
                   singlePower = klingPower || 0;
+                }
+              } else if(videoModel === 'vidu') {
+                const viduPower = config[13];
+                if(typeof viduPower === 'object') {
+                  singlePower = viduPower[duration] || viduPower[5] || 0;
+                } else {
+                  singlePower = viduPower || 0;
                 }
               }
             }
@@ -1025,7 +1051,7 @@
         node.data.url = nodeData.data.url || '';
         node.data.name = nodeData.data.name || '';
         node.data.duration = nodeData.data.duration || 0;
-        node.data.project_id = nodeData.data.project_id || '';
+        node.data.project_id = nodeData.data.project_id !== undefined ? nodeData.data.project_id : null;
         // 如果有URL，显示预览
         if(node.data.url){
           const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
@@ -1074,6 +1100,7 @@
         node.data.ratio = nodeData.data.ratio || '9:16';
         node.data.model = nodeData.data.model || 'gemini-2.5-pro-image-preview';
         node.data.drawCount = nodeData.data.drawCount || 1;
+        node.data.project_id = nodeData.data.project_id !== undefined ? nodeData.data.project_id : null;
         
         // 恢复节点标题
         if(nodeData.title){
@@ -1170,6 +1197,205 @@
       });
       
       state.nextNodeId = Math.max(savedNextNodeId, nodeData.id + 1);
+    }
+
+    // ============ 节点状态轮询功能 ============
+    
+    let pollStatusTimer = null;
+    
+    // 轮询工作流节点状态
+    async function pollWorkflowNodeStatus(){
+      // 从 URL 参数中获取 workflowId
+      const urlParams = new URLSearchParams(window.location.search);
+      const workflowId = urlParams.get('id');
+      if(!workflowId) return;
+      
+      try {
+        const userId = localStorage.getItem('user_id');
+        const authToken = localStorage.getItem('auth_token');
+        
+        if(!userId || !authToken){
+          return;
+        }
+        
+        const response = await fetch(`/api/video-workflow/${workflowId}/poll-status`, {
+          method: 'GET',
+          headers: {
+            'X-User-Id': userId,
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        const result = await response.json();
+        
+        if(result.code === 0 && result.data && result.data.updated_nodes){
+          const updatedNodes = result.data.updated_nodes;
+          
+          if(updatedNodes.length > 0){
+            updatedNodes.forEach(updatedNode => {
+              const node = state.nodes.find(n => n.id === updatedNode.node_id);
+              
+              if(node && node.data){
+                if(updatedNode.status === 2 && updatedNode.url){
+                  // 成功状态:更新URL和预览
+                  node.data.url = updatedNode.url;
+                  updateNodePreview(node, updatedNode.url);
+                } else if(updatedNode.status === -1){
+                  // 失败状态:显示错误信息
+                  const errorMessage = updatedNode.message || '生成失败';
+                  node.data.error = errorMessage;
+                  updateNodeErrorDisplay(node, errorMessage);
+                }
+              }
+            });
+            
+            try {
+              await autoSaveWorkflow();
+            } catch(e){
+              console.error('[轮询] 自动保存失败:', e);
+            }
+          }
+        }
+      } catch(error){
+        console.error('[轮询] 查询节点状态失败:', error);
+      }
+    }
+    
+    // 更新节点错误显示
+    function updateNodeErrorDisplay(node, errorMessage){
+      const canvasEl = document.getElementById('canvas');
+      const nodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${node.id}"]`) : null;
+      
+      if(!nodeEl) return;
+      
+      // 检查是否已有错误提示元素
+      let errorEl = nodeEl.querySelector('.node-error-message');
+      
+      if(!errorEl){
+        // 创建错误提示元素
+        errorEl = document.createElement('div');
+        errorEl.className = 'node-error-message';
+        errorEl.style.cssText = 'background: #fee; color: #c33; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px; border: 1px solid #fcc;';
+        
+        // 插入到 .node-body 的顶部
+        const nodeBody = nodeEl.querySelector('.node-body');
+        if(nodeBody){
+          nodeBody.insertBefore(errorEl, nodeBody.firstChild);
+        } else {
+          // 如果没有 .node-body,直接插入到节点内部
+          nodeEl.insertBefore(errorEl, nodeEl.firstChild);
+        }
+      }
+      
+      errorEl.innerHTML = `<strong>生成失败:</strong> ${errorMessage}`;
+      
+      // 给节点添加错误样式
+      nodeEl.style.borderColor = '#f44';
+    }
+    
+    // 更新节点预览显示
+    function updateNodePreview(node, url){
+      const canvasEl = document.getElementById('canvas');
+      const nodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${node.id}"]`) : null;
+      
+      if(!nodeEl) return;
+      
+      if(node.type === 'video'){
+        // 更新视频节点预览
+        const previewField = nodeEl.querySelector('.video-preview-field');
+        const thumbVideo = nodeEl.querySelector('.video-thumb');
+        
+        if(previewField && thumbVideo){
+          thumbVideo.src = proxyDownloadUrl(url);
+          thumbVideo.muted = true;
+          thumbVideo.loop = true;
+          thumbVideo.controls = false;
+          thumbVideo.preload = 'metadata';
+          thumbVideo.playsInline = true;
+          thumbVideo.onloadedmetadata = () => {
+            try{
+              if(isFinite(thumbVideo.duration) && thumbVideo.duration > 0){
+                thumbVideo.currentTime = Math.min(0.1, Math.max(0, thumbVideo.duration - 0.1));
+              }
+            } catch(e){}
+            try{
+              const p = thumbVideo.play();
+              if(p && typeof p.catch === 'function') p.catch(() => {});
+            } catch(e){}
+          };
+          try{ thumbVideo.load(); } catch(e){}
+          previewField.style.display = 'block';
+        }
+      } else if(node.type === 'image'){
+        // 更新图片节点预览
+        node.data.preview = url;
+        const previewImg = nodeEl.querySelector('.image-preview');
+        const previewRow = nodeEl.querySelector('.image-preview-row');
+        
+        if(previewImg && previewRow){
+          previewImg.src = proxyImageUrl(url);
+          previewRow.style.display = 'flex';
+        }
+        
+        // 检查该图片节点是否连接到分镜节点,如果是则同步更新分镜节点的视频首帧
+        // 注意:连接方向是 分镜节点 -> 图片节点,所以要查找入站连接(to === node.id)
+        const incomingConnections = state.connections.filter(c => c.to === node.id);
+        const connectedNodes = incomingConnections.map(c => state.nodes.find(n => n.id === c.from));
+        const connectedShotFrameNode = connectedNodes.find(n => n && n.type === 'shot_frame');
+        
+        if(connectedShotFrameNode){
+          connectedShotFrameNode.data.previewImageUrl = url;
+          
+          const shotFrameNodeEl = canvasEl.querySelector(`.node[data-node-id="${connectedShotFrameNode.id}"]`);
+          if(shotFrameNodeEl){
+            const shotFramePreviewImg = shotFrameNodeEl.querySelector('.shot-frame-preview-image');
+            const shotFramePreviewField = shotFrameNodeEl.querySelector('.shot-frame-preview-field');
+            
+            if(shotFramePreviewImg){
+              shotFramePreviewImg.src = proxyImageUrl(url);
+              shotFramePreviewImg.style.display = 'block';
+            }
+            if(shotFramePreviewField){
+              shotFramePreviewField.style.display = 'block';
+            }
+          }
+        }
+      }
+    }
+    
+    // 启动轮询定时器
+    function startPolling(){
+      // 清除旧的定时器
+      if(pollStatusTimer){
+        clearInterval(pollStatusTimer);
+      }
+      
+      // 立即执行一次
+      pollWorkflowNodeStatus();
+      
+      // 每分钟执行一次 (60000 毫秒)
+      pollStatusTimer = setInterval(pollWorkflowNodeStatus, 60000);
+    }
+    
+    // 停止轮询定时器
+    function stopPolling(){
+      if(pollStatusTimer){
+        clearInterval(pollStatusTimer);
+        pollStatusTimer = null;
+      }
+    }
+    
+    // 页面加载完成后启动轮询
+    if(typeof window !== 'undefined'){
+      // 等待页面完全加载后启动
+      if(document.readyState === 'complete'){
+        startPolling();
+      } else {
+        window.addEventListener('load', startPolling);
+      }
+      
+      // 页面卸载时停止轮询
+      window.addEventListener('beforeunload', stopPolling);
     }
 
     // 带数据创建分镜节点
