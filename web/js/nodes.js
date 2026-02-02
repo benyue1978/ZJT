@@ -3152,29 +3152,59 @@
           statusEl.textContent = '任务已提交，正在生成图片...';
           node.data.projectIds = submitRes.projectIds;
 
+          // 立即创建对应数量的图片节点并绑定 project_id
+          const createdImageNodeIds = [];
+          const projectIds = submitRes.projectIds || [];
+          const imageCount = projectIds.length;
+
+          for(let i = 0; i < imageCount; i++){
+            const offsetY = i * 280;
+            const newNodeId = createImageNode({ 
+              x: node.x + 380, 
+              y: node.y + offsetY 
+            });
+            const newNode = state.nodes.find(n => n.id === newNodeId);
+            if(newNode){
+              newNode.data.name = imageCount > 1 ? `编辑结果${i + 1}` : '编辑结果';
+              newNode.data.project_id = projectIds[i] || projectIds[0];
+              createdImageNodeIds.push(newNodeId);
+              
+              // 创建从原节点到新节点的连接
+              const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              state.connections.push({
+                id: connectionId,
+                from: node.id,
+                to: newNodeId
+              });
+            }
+          }
+
+          // 立即渲染连接线
+          renderConnections();
+          renderImageConnections();
+          renderFirstFrameConnections();
+          renderVideoConnections();
+
+          try{ autoSaveWorkflow(); } catch(e){}
+          renderMinimap();
+
           pollVideoStatus(
             submitRes.projectIds,
             (progressText) => { statusEl.textContent = progressText; },
             (statusResult) => {
-              console.log('Image edit status result:', statusResult);
-              
               // 从 tasks 数组中提取结果
               let imageUrls = [];
               if(statusResult.tasks && Array.isArray(statusResult.tasks)){
-                // 多任务或单任务包装格式
                 imageUrls = statusResult.tasks
                   .filter(task => task.status === 'SUCCESS' && task.result)
                   .map(task => normalizeVideoUrl(task.result))
                   .filter(Boolean);
               } else {
-                // 直接从 statusResult 提取
                 const rawResults = extractResultsArray(statusResult);
                 imageUrls = Array.isArray(rawResults)
                   ? rawResults.map(normalizeVideoUrl).filter(Boolean)
                   : [];
               }
-              
-              console.log('Extracted image URLs:', imageUrls);
 
               if(imageUrls.length === 0){
                 statusEl.style.color = '#dc2626';
@@ -3188,25 +3218,23 @@
               statusEl.textContent = `生成完成！共${imageUrls.length}张图片`;
               editBtn.disabled = false;
 
-              // 为每个生成的图片创建新的图片节点
-              const projectIds = node.data.projectIds || [];
+              // 更新已创建的图片节点
               imageUrls.forEach((imageUrl, index) => {
-                const offsetY = index * 280; // 每个节点垂直间隔280px
-                const newNodeId = createImageNode({ x: node.x + 380, y: node.y + offsetY });
-                const newNode = state.nodes.find(n => n.id === newNodeId);
-                if(newNode){
-                  newNode.data.url = imageUrl;
-                  newNode.data.preview = imageUrl;
-                  newNode.data.name = imageUrls.length > 1 ? `编辑结果${index + 1}` : '编辑结果';
-                  newNode.data.project_id = projectIds[index] || projectIds[0];
-                  const newEl = canvasEl.querySelector(`.node[data-node-id="${newNodeId}"]`);
-                  if(newEl){
-                    const newImg = newEl.querySelector('.image-preview');
-                    const newRow = newEl.querySelector('.image-preview-row');
-                    if(newImg) newImg.src = proxyImageUrl(imageUrl);
-                    if(newRow) newRow.style.display = 'flex';
+                const nodeId = createdImageNodeIds[index];
+                if(!nodeId) return;
+                
+                const imageNode = state.nodes.find(n => n.id === nodeId);
+                if(imageNode){
+                  imageNode.data.url = imageUrl;
+                  imageNode.data.preview = imageUrl;
+                  
+                  const nodeEl = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+                  if(nodeEl){
+                    const imgEl = nodeEl.querySelector('.image-preview');
+                    const rowEl = nodeEl.querySelector('.image-preview-row');
+                    if(imgEl) imgEl.src = proxyImageUrl(imageUrl);
+                    if(rowEl) rowEl.style.display = 'flex';
                   }
-                  console.log(`Created image node ${newNodeId} with project_id:`, newNode.data.project_id);
                 }
               });
 
