@@ -4727,7 +4727,12 @@
 
       generateBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        generateShotFrameImage(id, node);
+        if(typeof generateShotFrameImage === 'function'){
+          generateShotFrameImage(id, node);
+        } else {
+          console.error('generateShotFrameImage function is not loaded yet');
+          showToast('功能加载中，请稍后再试', 'warning');
+        }
       });
 
       // 检查是否有对话数据，更新生成对话音频按钮状态

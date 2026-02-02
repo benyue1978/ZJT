@@ -174,13 +174,36 @@ async function generateShotFrameImage(nodeId, node){
       // 合并分镜模式：收集所有场景的参考图
       const allLocationInfo = shotData.allLocationInfo || [];
       for(const locInfo of allLocationInfo){
-        if(locInfo.pic){
+        if(locInfo.id){
           try {
-            const locationFile = await fetchFileFromUrl(locInfo.pic);
-            if(locationFile){
-              referenceImages.push(locationFile);
-              promptSuffix.push(`图${imageIndex}是${locInfo.name}所在地点`);
-              imageIndex++;
+            const userId = localStorage.getItem('user_id') || '1';
+            const authToken = localStorage.getItem('auth_token') || '';
+            
+            const response = await fetch(`/api/location/${locInfo.id}`, {
+              headers: {
+                'Authorization': authToken,
+                'X-User-Id': userId
+              }
+            });
+            
+            if(response.ok){
+              const result = await response.json();
+              if(result.code === 0 && result.data && result.data.reference_image){
+                console.log(`[场景匹配] 场景有参考图: ${result.data.reference_image}`);
+                const locationFile = await fetchFileFromUrl(result.data.reference_image);
+                if(locationFile){
+                  referenceImages.push(locationFile);
+                  const locationName = result.data.name || locInfo.name || '场景';
+                  promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
+                  imageIndex++;
+                } else {
+                  console.warn(`[场景匹配] fetchFileFromUrl 返回空`);
+                }
+              } else {
+                console.warn(`[场景匹配] 数据结构不符合预期或无参考图`);
+              }
+            } else {
+              console.error(`[场景匹配] API调用失败: ${response.status}`);
             }
           } catch(error){
             console.error('添加场景参考图失败:', error);
@@ -189,14 +212,40 @@ async function generateShotFrameImage(nodeId, node){
       }
     } else {
       // 独立分镜模式：只添加单个场景参考图
-      if(shotData.db_location_id && shotData.db_location_pic){
+      if(shotData.db_location_id){
         try {
-          const locationFile = await fetchFileFromUrl(shotData.db_location_pic);
-          if(locationFile){
-            referenceImages.push(locationFile);
-            const locationName = shotData.location_name || '场景';
-            promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
-            imageIndex++;
+          const userId = localStorage.getItem('user_id') || '1';
+          const authToken = localStorage.getItem('auth_token') || '';
+          
+          console.log(`[场景匹配] 开始调用API获取场景 (ID: ${shotData.db_location_id})`);
+          const response = await fetch(`/api/location/${shotData.db_location_id}`, {
+            headers: {
+              'Authorization': authToken,
+              'X-User-Id': userId
+            }
+          });
+          
+          console.log(`[场景匹配] API响应状态: ${response.status}, ok: ${response.ok}`);
+          if(response.ok){
+            const result = await response.json();
+            console.log(`[场景匹配] 场景查询结果:`, result);
+            if(result.code === 0 && result.data && result.data.reference_image){
+              console.log(`[场景匹配] 场景有参考图: ${result.data.reference_image}`);
+              const locationFile = await fetchFileFromUrl(result.data.reference_image);
+              if(locationFile){
+                referenceImages.push(locationFile);
+                const locationName = result.data.name || shotData.location_name || '场景';
+                promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
+                imageIndex++;
+                console.log(`[场景匹配] 成功添加场景参考图: ${locationName}`);
+              } else {
+                console.warn(`[场景匹配] fetchFileFromUrl 返回空`);
+              }
+            } else {
+              console.warn(`[场景匹配] 数据结构不符合预期或无参考图`);
+            }
+          } else {
+            console.error(`[场景匹配] API调用失败: ${response.status}`);
           }
         } catch(error){
           console.error('添加场景参考图失败:', error);
