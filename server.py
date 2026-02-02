@@ -3989,6 +3989,105 @@ async def get_video_workflow(
         )
 
 
+@app.get('/api/video-workflow/{workflow_id}/poll-status')
+async def poll_workflow_node_status(
+    workflow_id: int,
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: Optional[int] = Header(None, alias="X-User-Id")
+):
+    """
+    轮询工作流中节点的生成状态
+    查询有 project_id 但 url 为空的节点，并返回其完成状态
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 获取工作流数据
+        workflow = VideoWorkflowModel.get_by_id(workflow_id)
+        if not workflow:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "工作流不存在"}
+            )
+        
+        if getattr(workflow, 'user_id', None) != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={"code": -1, "message": "无权限访问该工作流"}
+            )
+        
+        # 解析 workflow_data
+        workflow_data = workflow.workflow_data
+        if isinstance(workflow_data, str):
+            try:
+                workflow_data = json.loads(workflow_data)
+            except:
+                workflow_data = {}
+        
+        if not workflow_data or 'nodes' not in workflow_data:
+            return JSONResponse({
+                "code": 0,
+                "message": "success",
+                "data": {"updated_nodes": []}
+            })
+        
+        # 查找有 project_id 但 url 为空的节点
+        nodes = workflow_data.get('nodes', [])
+        updated_nodes = []
+        
+        for node in nodes:
+            node_data = node.get('data', {})
+            project_id = node_data.get('project_id')
+            url = node_data.get('url', '')
+            
+            # 只处理有 project_id 但 url 为空的节点
+            if project_id and not url:
+                # 查询 ai_tools 表获取状态
+                try:
+                    ai_tool = AIToolsModel.get_by_id(project_id)
+                    if ai_tool:
+                        # 状态为完成(status==2)且有结果URL
+                        if ai_tool.status == 2 and ai_tool.result_url:
+                            updated_nodes.append({
+                                'node_id': node.get('id'),
+                                'node_type': node.get('type'),
+                                'project_id': project_id,
+                                'url': ai_tool.result_url,
+                                'status': ai_tool.status,
+                                'message': None
+                            })
+                        # 状态为失败(status==-1)
+                        elif ai_tool.status == -1:
+                            updated_nodes.append({
+                                'node_id': node.get('id'),
+                                'node_type': node.get('type'),
+                                'project_id': project_id,
+                                'url': None,
+                                'status': ai_tool.status,
+                                'message': ai_tool.message or '生成失败'
+                            })
+                except Exception as e:
+                    logger.error(f"Failed to query ai_tool for project_id {project_id}: {e}")
+                    continue
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": {
+                "updated_nodes": updated_nodes,
+                "total": len(updated_nodes)
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to poll workflow node status for workflow {workflow_id}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"轮询节点状态失败: {str(e)}"}
+        )
+
+
 @app.post('/api/video-workflow/upload')
 async def upload_workflow_asset(
     request: Request,

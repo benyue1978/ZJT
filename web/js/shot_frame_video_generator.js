@@ -137,9 +137,56 @@ async function generateShotFrameVideo(nodeId, node){
     }
 
     const projectIds = data.project_ids;
+    node.data.projectIds = projectIds;
     showToast(`视频生成任务已提交，正在处理...`, 'info');
 
-    // 轮询视频生成状态
+    // 立即创建对应数量的视频节点并绑定 project_id
+    const createdVideoNodeIds = [];
+    const videoCount = projectIds.length;
+    
+    for(let i = 0; i < videoCount; i++){
+      const offsetY = i * 280;
+      const newVideoNodeId = createVideoNode({ 
+        x: node.x + 380, 
+        y: node.y + offsetY 
+      });
+      
+      const newVideoNode = state.nodes.find(n => n.id === newVideoNodeId);
+      if(newVideoNode){
+        newVideoNode.data.name = videoCount > 1 ? `分镜视频${i + 1}` : '分镜视频';
+        newVideoNode.data.project_id = projectIds[i] || projectIds[0];
+        newVideoNode.title = newVideoNode.data.name;
+        
+        // 更新节点标题显示
+        const canvasEl = document.getElementById('canvas');
+        const newNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${newVideoNodeId}"]`) : null;
+        if(newNodeEl){
+          const titleEl = newNodeEl.querySelector('.node-title');
+          if(titleEl) titleEl.textContent = newVideoNode.title;
+          
+          const nameEl = newNodeEl.querySelector('.video-name');
+          if(nameEl) nameEl.textContent = newVideoNode.data.name;
+        }
+        
+        // 创建从分镜节点到视频节点的连接
+        state.connections.push({
+          id: state.nextConnId++,
+          from: nodeId,
+          to: newVideoNodeId
+        });
+        
+        createdVideoNodeIds.push(newVideoNodeId);
+        console.log(`[分镜视频] 创建视频节点 ${newVideoNodeId} 并绑定 project_id:`, newVideoNode.data.project_id);
+      }
+    }
+    
+    // 重新渲染连接线
+    renderConnections();
+    renderImageConnections();
+    renderFirstFrameConnections();
+    renderMinimap();
+
+    // 轮询视频生成状态,更新视频URL
     pollVideoStatus(
       projectIds,
       (msg) => {
@@ -176,46 +223,46 @@ async function generateShotFrameVideo(nodeId, node){
           return;
         }
 
-        // 为每个生成的视频创建新的视频节点
+        // 更新已创建的视频节点的URL和预览
         videoUrls.forEach((videoUrl, index) => {
-          const offsetY = index * 280;
-          const newVideoNodeId = createVideoNode({ 
-            x: node.x + 380, 
-            y: node.y + offsetY 
-          });
+          if(index >= createdVideoNodeIds.length) return;
           
-          const newVideoNode = state.nodes.find(n => n.id === newVideoNodeId);
-          if(newVideoNode){
-            newVideoNode.data.url = videoUrl;
-            newVideoNode.data.name = videoUrls.length > 1 ? `分镜视频${index + 1}` : '分镜视频';
-            newVideoNode.title = newVideoNode.data.name;
+          const videoNodeId = createdVideoNodeIds[index];
+          const videoNode = state.nodes.find(n => n.id === videoNodeId);
+          
+          if(videoNode){
+            videoNode.data.url = videoUrl;
             
             // 更新节点显示
             const canvasEl = document.getElementById('canvas');
-            const newNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${newVideoNodeId}"]`) : null;
-            if(newNodeEl){
-              const titleEl = newNodeEl.querySelector('.node-title');
-              if(titleEl) titleEl.textContent = newVideoNode.title;
-              
-              const nameEl = newNodeEl.querySelector('.video-name');
-              if(nameEl) nameEl.textContent = newVideoNode.data.name;
-              
-              const previewField = newNodeEl.querySelector('.video-preview-field');
-              const thumbVideo = newNodeEl.querySelector('.video-thumb');
+            const videoNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${videoNodeId}"]`) : null;
+            if(videoNodeEl){
+              const previewField = videoNodeEl.querySelector('.video-preview-field');
+              const thumbVideo = videoNodeEl.querySelector('.video-thumb');
               if(previewField && thumbVideo){
-                thumbVideo.src = proxyImageUrl(videoUrl);
+                thumbVideo.src = proxyDownloadUrl(videoUrl);
+                thumbVideo.muted = true;
+                thumbVideo.loop = true;
+                thumbVideo.controls = false;
+                thumbVideo.preload = 'metadata';
+                thumbVideo.playsInline = true;
+                thumbVideo.onloadedmetadata = () => {
+                  try{
+                    if(isFinite(thumbVideo.duration) && thumbVideo.duration > 0){
+                      thumbVideo.currentTime = Math.min(0.1, Math.max(0, thumbVideo.duration - 0.1));
+                    }
+                  } catch(e){}
+                  try{
+                    const p = thumbVideo.play();
+                    if(p && typeof p.catch === 'function') p.catch(() => {});
+                  } catch(e){}
+                };
+                try{ thumbVideo.load(); } catch(e){}
                 previewField.style.display = 'block';
               }
             }
             
-            // 创建从分镜节点到视频节点的连接
-            state.connections.push({
-              id: state.nextConnId++,
-              from: nodeId,
-              to: newVideoNodeId
-            });
-            
-            console.log(`Created video node ${newVideoNodeId} with URL:`, videoUrl);
+            console.log(`[分镜视频] 更新视频节点 ${videoNodeId} URL:`, videoUrl);
           }
         });
         

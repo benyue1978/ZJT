@@ -13,6 +13,7 @@
           file: null,
           url: '',
           name: '',
+          project_id: null,
         }
       };
       state.nodes.push(node);
@@ -2411,7 +2412,24 @@
             const newVideoId = createVideoNode({ x: node.x + 380, y: node.y + i * 260 });
             state.connections.push({ id: state.nextConnId++, from: id, to: newVideoId });
             newVideoNodeIds.push(newVideoId);
+            
+            // 立即为新创建的视频节点绑定 project_id
+            const newVideoNode = state.nodes.find(n => n.id === newVideoId);
+            if(newVideoNode && result.projectIds){
+              const projectIdIndex = connectedVideoIds.length + i;
+              newVideoNode.data.project_id = result.projectIds[projectIdIndex] || result.projectIds[0];
+              console.log(`[图生视频] 新建视频节点 ${newVideoId} 绑定 project_id:`, newVideoNode.data.project_id);
+            }
           }
+          
+          // 为已存在的连接视频节点也绑定 project_id
+          connectedVideoIds.forEach((videoNodeId, idx) => {
+            const videoNode = state.nodes.find(n => n.id === videoNodeId);
+            if(videoNode && result.projectIds){
+              videoNode.data.project_id = result.projectIds[idx] || result.projectIds[0];
+              console.log(`[图生视频] 已存在视频节点 ${videoNodeId} 绑定 project_id:`, videoNode.data.project_id);
+            }
+          });
           
           // 合并所有视频节点ID
           const allVideoNodeIds = [...connectedVideoIds, ...newVideoNodeIds];
@@ -2479,6 +2497,8 @@
                   if(videoUrl){
                     videoNode.data.url = videoUrl;
                     videoNode.data.name = `视频${idx + 1}`;
+                    videoNode.data.project_id = node.data.projectIds[idx] || node.data.projectIds[0];
+                    console.log(`[图生视频] 视频节点 ${videoNodeId} 绑定 project_id:`, videoNode.data.project_id, '来源:', node.data.projectIds, 'index:', idx);
                     
                     if(previewField && thumbVideo && nameEl){
                       thumbVideo.src = proxyDownloadUrl(videoUrl);
@@ -2828,6 +2848,7 @@
           ratio: defaultRatio,
           model: 'gemini-2.5-pro-image-preview',
           drawCount: 1,
+          project_id: null,
         }
       };
       state.nodes.push(node);
@@ -3168,6 +3189,7 @@
               editBtn.disabled = false;
 
               // 为每个生成的图片创建新的图片节点
+              const projectIds = node.data.projectIds || [];
               imageUrls.forEach((imageUrl, index) => {
                 const offsetY = index * 280; // 每个节点垂直间隔280px
                 const newNodeId = createImageNode({ x: node.x + 380, y: node.y + offsetY });
@@ -3176,6 +3198,7 @@
                   newNode.data.url = imageUrl;
                   newNode.data.preview = imageUrl;
                   newNode.data.name = imageUrls.length > 1 ? `编辑结果${index + 1}` : '编辑结果';
+                  newNode.data.project_id = projectIds[index] || projectIds[0];
                   const newEl = canvasEl.querySelector(`.node[data-node-id="${newNodeId}"]`);
                   if(newEl){
                     const newImg = newEl.querySelector('.image-preview');
@@ -3183,6 +3206,7 @@
                     if(newImg) newImg.src = proxyImageUrl(imageUrl);
                     if(newRow) newRow.style.display = 'flex';
                   }
+                  console.log(`Created image node ${newNodeId} with project_id:`, newNode.data.project_id);
                 }
               });
 

@@ -366,10 +366,55 @@ async function generateShotFrameImage(nodeId, node){
       throw new Error(data.detail || data.message || '提交任务失败');
     }
     
-    // 7. 轮询任务状态
+    // 7. 保存 project_ids 并立即创建图片节点
     node.data.projectIds = data.project_ids;
     showToast('任务已提交，正在生成分镜图...', 'info');
     
+    // 立即创建对应数量的图片节点并绑定 project_id
+    const createdImageNodeIds = [];
+    const projectIds = data.project_ids;
+    const imageCount = projectIds.length;
+    
+    for(let i = 0; i < imageCount; i++){
+      const offsetY = i * 280;
+      const newNodeId = createImageNode({ 
+        x: node.x + 380, 
+        y: node.y + offsetY 
+      });
+      
+      const newNode = state.nodes.find(n => n.id === newNodeId);
+      if(newNode){
+        newNode.data.name = imageCount > 1 ? `分镜图${i + 1}` : '分镜图';
+        newNode.data.project_id = projectIds[i] || projectIds[0];
+        newNode.title = newNode.data.name;
+        
+        // 更新节点标题显示
+        const canvasEl = document.getElementById('canvas');
+        const newNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${newNodeId}"]`) : null;
+        if(newNodeEl){
+          const titleEl = newNodeEl.querySelector('.node-title');
+          if(titleEl) titleEl.textContent = newNode.title;
+        }
+        
+        // 创建从分镜节点到图片节点的连接
+        state.connections.push({
+          id: state.nextConnId++,
+          from: nodeId,
+          to: newNodeId
+        });
+        
+        createdImageNodeIds.push(newNodeId);
+        console.log(`[分镜图] 创建图片节点 ${newNodeId} 并绑定 project_id:`, newNode.data.project_id);
+      }
+    }
+    
+    // 重新渲染连接线
+    renderConnections();
+    renderImageConnections();
+    renderFirstFrameConnections();
+    renderMinimap();
+    
+    // 轮询任务状态,更新图片URL
     pollVideoStatus(
       data.project_ids,
       (progressText) => {
@@ -404,48 +449,30 @@ async function generateShotFrameImage(nodeId, node){
           return;
         }
         
-        console.log('Creating image node with URL:', imageUrls[0]);
-        
-        // 为每个生成的图片创建新的图片节点
-        const createdImageNodeIds = [];
+        // 更新已创建的图片节点的URL和预览
         imageUrls.forEach((imageUrl, index) => {
-          const offsetY = index * 280; // 每个节点垂直间隔280px
-          const newNodeId = createImageNode({ 
-            x: node.x + 380, 
-            y: node.y + offsetY 
-          });
+          if(index >= createdImageNodeIds.length) return;
           
-          const newNode = state.nodes.find(n => n.id === newNodeId);
-          if(newNode){
-            newNode.data.url = imageUrl;
-            newNode.data.preview = imageUrl;
-            newNode.data.name = imageUrls.length > 1 ? `分镜图${index + 1}` : '分镜图';
-            newNode.title = newNode.data.name;
+          const imageNodeId = createdImageNodeIds[index];
+          const imageNode = state.nodes.find(n => n.id === imageNodeId);
+          
+          if(imageNode){
+            imageNode.data.url = imageUrl;
+            imageNode.data.preview = imageUrl;
             
             // 更新节点显示
             const canvasEl = document.getElementById('canvas');
-            const newNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${newNodeId}"]`) : null;
-            if(newNodeEl){
-              const titleEl = newNodeEl.querySelector('.node-title');
-              if(titleEl) titleEl.textContent = newNode.title;
-              
-              const previewImg = newNodeEl.querySelector('.image-preview');
-              const previewRow = newNodeEl.querySelector('.image-preview-row');
+            const imageNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${imageNodeId}"]`) : null;
+            if(imageNodeEl){
+              const previewImg = imageNodeEl.querySelector('.image-preview');
+              const previewRow = imageNodeEl.querySelector('.image-preview-row');
               if(previewImg && previewRow){
                 previewImg.src = proxyImageUrl(imageUrl);
                 previewRow.style.display = 'flex';
               }
             }
             
-            // 创建从分镜节点到图片节点的连接
-            state.connections.push({
-              id: state.nextConnId++,
-              from: nodeId,
-              to: newNodeId
-            });
-            
-            createdImageNodeIds.push(newNodeId);
-            console.log(`Created image node ${newNodeId} with URL:`, imageUrl);
+            console.log(`[分镜图] 更新图片节点 ${imageNodeId} URL:`, imageUrl);
           }
         });
         
