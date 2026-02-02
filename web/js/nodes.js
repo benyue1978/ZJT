@@ -2322,6 +2322,16 @@
       genBtnMain.addEventListener('click', async (e) => {
         e.stopPropagation();
 
+        // 检查提示词是否存在
+        const prompt = (node.data.prompt || '').trim();
+        if(!prompt){
+          genStatus.style.display = 'block';
+          genStatus.style.color = '#dc2626';
+          genStatus.textContent = '请先输入提示词';
+          showToast('请先输入提示词', 'error');
+          return;
+        }
+
         // 获取首帧图片URL
         let startImageUrl = '';
         if(node.data.startUrl){
@@ -2649,7 +2659,8 @@
         }
 
         // 如果从图生视频节点拖拽，查找视频节点输入端口
-        if(fromNode && fromNode.type === 'image_to_video'){
+        const fromNodeForI2V = state.connecting ? state.nodes.find(n => n.id === state.connecting.fromId) : null;
+        if(fromNodeForI2V && fromNodeForI2V.type === 'image_to_video'){
           for(const node of state.nodes){
             if(node.type !== 'video') continue;
             const toEl = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
