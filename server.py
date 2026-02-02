@@ -931,6 +931,7 @@ async def image_edit(
         # Handle multiple images - limit to maximum 5 images
         images_to_process = image[:5] if len(image) > 5 else image
         image_urls = [_save_uploaded_image(img) for img in images_to_process]
+        logger.info(f"[image_edit] Input image URLs: {image_urls}")
         
         # Submit tasks according to generation count
         project_ids = []
@@ -1408,6 +1409,20 @@ async def ai_app_run_image(
     2. Use image URLs: Provide comma-separated URLs via 'image_urls' parameter
     """
     try:
+        # 记录输入的图片信息
+        logger.info(f"AI app run image request - prompt: {prompt}, video_model: {video_model}, ratio: {ratio}, duration: {duration_seconds}, count: {count}, user_id: {user_id}")
+        
+        if image_urls:
+            url_list = [url.strip() for url in image_urls.split(',') if url.strip()]
+            logger.info(f"Input mode: image_urls, URLs: {url_list}")
+        elif images and len(images) > 0:
+            image_info = []
+            for img in images:
+                image_info.append(f"filename: {img.filename}, content_type: {img.content_type}, size: {getattr(img, 'size', 'unknown')}")
+            logger.info(f"Input mode: uploaded images, count: {len(images)}, details: {image_info}")
+        else:
+            logger.warning("No image input provided")
+        
         if CHECK_AUTH_TOKEN and auth_token is None:
             raise HTTPException(
                 status_code=400, 
@@ -1454,6 +1469,9 @@ async def ai_app_run_image(
                 status_code=400,
                 detail="Either 'images' (uploaded files) or 'image_urls' (comma-separated URLs) must be provided"
             )
+
+        # 记录最终使用的图片URL
+        logger.info(f"Final image URL for processing: {image_url}")
 
         # Determine task type and computing power based on video_model
         if video_model == "ltx2":
