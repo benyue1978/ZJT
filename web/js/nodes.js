@@ -4675,60 +4675,44 @@
       }
       if(videoModelEl) videoModelEl.value = node.data.videoModel;
       
-      // 根据模型更新时长选项
+      // 根据模型更新时长选项（使用全局配置）
       function updateVideoDurationOptions(videoModel) {
-        const currentDuration = videoDurationEl.value;
+        const currentDuration = node.data.videoDuration;  // 使用 node.data 中的值而非 DOM
         videoDurationEl.innerHTML = '';
         
-        if(videoModel === 'ltx2') {
-          // LTX2.0: 5, 8, 10秒
-          videoDurationEl.innerHTML = `
-            <option value="5">5秒 (121帧)</option>
-            <option value="8">8秒 (201帧)</option>
-            <option value="10">10秒 (241帧)</option>
-          `;
-          if(['5', '8', '10'].includes(currentDuration)) {
-            videoDurationEl.value = currentDuration;
-          } else {
-            videoDurationEl.value = '5';
-            node.data.videoDuration = 5;
-          }
-        } else if(videoModel === 'wan22' || videoModel === 'kling') {
-          // Wan2.2 和可灵: 5, 10秒
-          videoDurationEl.innerHTML = `
-            <option value="5">5秒</option>
-            <option value="10">10秒</option>
-          `;
-          if(['5', '10'].includes(currentDuration)) {
-            videoDurationEl.value = currentDuration;
-          } else {
-            videoDurationEl.value = '5';
-            node.data.videoDuration = 5;
-          }
-        } else if(videoModel === 'vidu') {
-          // Vidu: 5, 8秒
-          videoDurationEl.innerHTML = `
-            <option value="5">5秒</option>
-            <option value="8">8秒</option>
-          `;
-          if(['5', '8'].includes(currentDuration)) {
-            videoDurationEl.value = currentDuration;
-          } else {
-            videoDurationEl.value = '5';
-            node.data.videoDuration = 5;
-          }
+        // 从全局配置获取时长选项
+        const durationConfig = getVideoModelDurationOptions();
+        let durationOptions = durationConfig[videoModel];
+        
+        // 如果配置未加载或不存在，使用默认值
+        if(!durationOptions || durationOptions.length === 0) {
+          const defaultOptions = {
+            'ltx2': [5, 8, 10],
+            'wan22': [5, 10],
+            'kling': [5, 10],
+            'vidu': [5, 8],
+            'sora2': [10, 15]
+          };
+          durationOptions = defaultOptions[videoModel] || [5, 10];
+        }
+        
+        // 生成选项
+        durationOptions.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d;
+          opt.textContent = `${d}秒`;
+          videoDurationEl.appendChild(opt);
+        });
+        
+        // 检查当前时长是否在新选项中
+        const durationStrings = durationOptions.map(d => String(d));
+        if(durationStrings.includes(String(currentDuration))) {
+          videoDurationEl.value = currentDuration;
         } else {
-          // Sora2: 10, 15秒
-          videoDurationEl.innerHTML = `
-            <option value="10">10秒</option>
-            <option value="15">15秒</option>
-          `;
-          if(['10', '15'].includes(currentDuration)) {
-            videoDurationEl.value = currentDuration;
-          } else {
-            videoDurationEl.value = '10';
-            node.data.videoDuration = 10;
-          }
+          // 使用第一个可用选项
+          const firstOption = durationOptions[0];
+          videoDurationEl.value = firstOption;
+          node.data.videoDuration = firstOption;
         }
       }
       
