@@ -659,31 +659,6 @@
 
       if(!Array.isArray(node.data.shots)) node.data.shots = [];
       
-      // 获取镜头组最大时长
-      let maxGroupDuration = 15;
-      const incomingConns = state.connections.filter(c => c.to === currentEditingNodeId);
-      if(incomingConns.length > 0){
-        const scriptNode = state.nodes.find(n => n.id === incomingConns[0].from);
-        if(scriptNode && scriptNode.type === 'script' && scriptNode.data.maxGroupDuration){
-          maxGroupDuration = scriptNode.data.maxGroupDuration;
-        }
-      }
-      
-      // 计算当前所有分镜的总时长
-      const currentTotalDuration = node.data.shots.reduce((sum, shot) => {
-        const dur = parseFloat(shot.duration) || 0;
-        return sum + dur;
-      }, 0);
-      
-      // 新分镜默认时长
-      const newShotDuration = 5.0;
-      
-      // 检查是否会超过最大时长
-      if(currentTotalDuration + newShotDuration > maxGroupDuration){
-        alert(`无法添加新分镜：当前总时长 ${currentTotalDuration.toFixed(1)}秒，添加新分镜(${newShotDuration}秒)后将超过镜头组最大时长 ${maxGroupDuration}秒`);
-        return;
-      }
-      
       const idx = (typeof insertIndex === 'number' && !Number.isNaN(insertIndex))
         ? Math.max(0, Math.min(insertIndex, node.data.shots.length))
         : node.data.shots.length;
@@ -3883,9 +3858,31 @@
         return;
       }
 
+      // 获取已存在的分镜节点（通过连接关系查找）
+      const existingConnections = state.connections.filter(c => c.from === shotGroupNodeId);
+      const existingShotIds = new Set();
+      let maxExistingY = shotGroupNode.y;
+      
+      existingConnections.forEach(conn => {
+        const targetNode = state.nodes.find(n => n.id === conn.to);
+        if(targetNode && targetNode.type === 'shot_frame'){
+          // 收集已存在的 shotId
+          const shotId = targetNode.data.shotId || (targetNode.data.shotJson && targetNode.data.shotJson.shot_id);
+          if(shotId){
+            existingShotIds.add(shotId);
+          }
+          // 记录最大的 Y 坐标
+          if(targetNode.y > maxExistingY){
+            maxExistingY = targetNode.y;
+          }
+        }
+      });
+
       const createdNodeIds = [];
       const offsetX = 400;
-      const baseY = shotGroupNode.y;
+      // 新节点从已有节点下方开始排列
+      let nextY = existingShotIds.size > 0 ? maxExistingY + 700 : shotGroupNode.y;
+      let skippedCount = 0;
       
       // 从第一个镜头获取场景信息（所有镜头使用同一个场景）
       const firstShot = shots[0];
@@ -3898,7 +3895,13 @@
         });
       }
 
-      shots.forEach((shot, index) => {
+      shots.forEach((shot) => {
+        // 检查该分镜是否已有对应的分镜节点
+        if(existingShotIds.has(shot.shot_id)){
+          skippedCount++;
+          return;
+        }
+        
         // 为每个镜头添加场景信息和scriptData
         const shotDataWithLocation = {
           ...shot,
@@ -3908,11 +3911,12 @@
         
         const shotFrameNodeId = createShotFrameNode({
           x: shotGroupNode.x + offsetX,
-          y: baseY + (index * 700),
+          y: nextY,
           shotData: shotDataWithLocation,
           model: shotGroupNode.data.model
         });
         createdNodeIds.push(shotFrameNodeId);
+        nextY += 700;
 
         // 创建从分镜组到分镜图节点的连接
         state.connections.push({
@@ -3927,7 +3931,15 @@
       renderFirstFrameConnections();
       renderVideoConnections();
       try{ autoSaveWorkflow(); } catch(e){}
-      showToast(`已生成 ${shots.length} 个独立分镜节点`, 'success');
+      
+      // 显示合理的提示信息
+      if(createdNodeIds.length === 0 && skippedCount > 0){
+        showToast(`所有 ${skippedCount} 个分镜已存在对应节点，无需新增`, 'info');
+      } else if(skippedCount > 0){
+        showToast(`已生成 ${createdNodeIds.length} 个独立分镜节点，跳过 ${skippedCount} 个已存在的分镜`, 'success');
+      } else {
+        showToast(`已生成 ${createdNodeIds.length} 个独立分镜节点`, 'success');
+      }
     }
 
     // 生成分镜图节点 - 合并分镜模式
