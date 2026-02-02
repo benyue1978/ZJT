@@ -18,8 +18,8 @@ from typing import List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import mimetypes
 from pydantic import BaseModel
-from runninghub_request import RunningHubClient, create_image_edit_nodes, TaskStatus, run_image_edit_task, run_ai_app_task_sync, run_ai_app_task
-from config_util import get_config_path, is_dev_environment
+from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
+from config_util import get_config_path
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
 from model.world import WorldModel
@@ -28,7 +28,7 @@ from model.location import LocationModel
 from model.script import ScriptModel
 from model.props import PropsModel
 import uuid
-from duomi_api_requset import create_image_to_video, get_ai_task_result, create_ai_image, create_video_remix, create_character as create_character_task, get_character_task_result, create_text_to_image
+from duomi_api_requset import create_video_remix, create_character as create_character_task, get_character_task_result
 from PIL import Image
 from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
@@ -1363,16 +1363,16 @@ async def ai_app_run_image(
     prompt: str = Form(..., description="Text prompt for the AI app"),
     images: List[UploadFile] = File(None, description="Image files for the AI app (1-5 images)"),
     image_urls: str = Form(None, description="Comma-separated image URLs (alternative to uploading files)"),
-    video_model: str = Form("sora2", description="Video model: sora2, ltx2, wan22, kling"),
-    ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9 (sora2/kling); 9:16, 16:9, 3:4, 1:1, 4:3 (wan22)"),
-    duration_seconds: int = Form(15, description="Duration in seconds (sora2: 10/15, ltx2: 5/8/10, wan22: 5/10, kling: 5/10)"),
+    video_model: str = Form("sora2", description="Video model: sora2, ltx2, wan22, kling, vidu"),
+    ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9 (sora2/kling); 9:16, 16:9, 3:4, 1:1, 4:3 (wan22); 16:9, 9:16, 1:1 (vidu)"),
+    duration_seconds: int = Form(15, description="Duration in seconds (sora2: 10/15, ltx2: 5/8/10, wan22: 5/10, kling: 5/10, vidu: 5/8)"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
     """
     Submit image to video task.
-    Supports four video models:
+    Supports five video models:
     1. sora2: Uses Sora2 model with ratio and duration parameters
        - Ratio: 9:16, 16:9
        - Duration: 10秒, 15秒
@@ -1386,6 +1386,9 @@ async def ai_app_run_image(
     4. kling: Uses Kling model with ratio and duration parameters
        - Ratio: 9:16, 16:9
        - Duration: 5秒, 10秒
+    5. vidu: Uses Vidu model with ratio and duration parameters
+       - Ratio: 16:9, 9:16, 1:1
+       - Duration: 5秒, 8秒
     
     Supports two image input modes:
     1. Upload images: Provide 1-5 images via 'images' parameter (will be concatenated horizontally)
@@ -1419,6 +1422,8 @@ async def ai_app_run_image(
                 # For multiple URLs, we use the first one for now
                 # TODO: Consider downloading and concatenating multiple URLs if needed
                 image_url = url_list[0]
+            if video_model == "vidu":
+                image_url = image_urls
         elif images and len(images) > 0:
             # Mode 2: Upload images
             if len(images) > 5:
@@ -1451,6 +1456,11 @@ async def ai_app_run_image(
             # 可灵根据时长区分算力：5秒=38，10秒=55
             kling_power_map = TASK_COMPUTING_POWER[task_type]
             computing_power = kling_power_map.get(duration_seconds, 38)
+        elif video_model == "vidu":
+            task_type = 14  # Vidu 图生视频
+            # Vidu根据时长区分算力：5秒=16
+            vidu_power_map = TASK_COMPUTING_POWER[task_type]
+            computing_power = vidu_power_map.get(duration_seconds, 16)
         else:
             task_type = 3   # Sora2 图生视频
             computing_power = TASK_COMPUTING_POWER[task_type]
@@ -1526,6 +1536,11 @@ async def ai_app_run_image(
                         elif video_model == "kling":
                             # 可灵图生视频: type=12
                             task_type = 12
+                            ratio_value = ratio
+                            duration_value = duration_seconds
+                        elif video_model == "vidu":
+                            # Vidu 图生视频: type=13
+                            task_type = 13
                             ratio_value = ratio
                             duration_value = duration_seconds
                         else:
