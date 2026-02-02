@@ -587,7 +587,7 @@ def create_ltx2_image_to_video(
         {
             "nodeId": "160",
             "fieldName": "select",
-            "fieldValue": "1",
+            "fieldValue": "2",
             "description": "提示词设置"
         },
         {
