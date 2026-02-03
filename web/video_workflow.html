@@ -798,9 +798,10 @@
   <script src="/js/workflow.js"></script>
   <script src="/js/canvas.js"></script>
   <!-- 意见反馈按钮 -->
-  <button class="feedback-btn" type="button" onclick="document.getElementById('feedbackModal').classList.add('active')">
-    💬 意见反馈
-  </button>
+  <div class="feedback-btn-wrapper" id="feedbackBtnWrapper">
+    <button class="feedback-btn" id="feedbackBtn" type="button" onclick="handleFeedbackBtnClick(event)">意见反馈</button>
+    <button class="feedback-btn-delete" id="feedbackMinimizeBtn" type="button" onclick="minimizeFeedbackBtn(); event.stopPropagation(); event.preventDefault();" title="最小化">×</button>
+  </div>
 
   <!-- 意见反馈弹窗 -->
   <div class="modal-overlay" id="feedbackModal" aria-hidden="true" onclick="if(event.target === this){ this.classList.remove('active'); }">
