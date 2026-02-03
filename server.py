@@ -37,6 +37,7 @@ from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
 from config.constant import TASK_COMPUTING_POWER, TASK_TYPE_GENERATE_VIDEO, TASK_TYPE_GENERATE_AUDIO, RECHARGE_PACKAGES, AUTHENTICATION_ID, VIDEO_MODEL_DURATION_OPTIONS
 from utils.wechat_pay_util import WechatPayUtil
+from utils.image_grid_splitter import ImageGridSplitter
 
 def _get_user_id_from_header(user_id: Optional[int]) -> int:
     if user_id is None:
@@ -4207,6 +4208,179 @@ async def upload_workflow_asset(
         return JSONResponse(
             status_code=500,
             content={"code": -1, "message": f"上传失败: {str(e)}"}
+        )
+
+
+@app.get('/api/ai-tools/{ai_tools_id}/grid-split')
+async def get_grid_split_image(
+    ai_tools_id: int,
+    grid_index: int = Query(..., ge=1, le=9, description="宫格位置，1-4或1-9"),
+    user_id: int = Query(...),
+    auth_token: Optional[str] = Query(None)
+):
+    """
+    获取宫格图片的指定位置拆分图
+    
+    1. 验证ai_tools_id属于该用户
+    2. 验证ai_tools.type in [1, 7]（图片编辑类型）
+    3. 验证ai_tools.status == 2（已完成）
+    4. 根据type判断是4宫格还是9宫格
+    5. 调用ImageGridSplitter拆分图片
+    6. 返回拆分后的图片URL
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 1. 获取ai_tools记录
+        ai_tool = AIToolsModel.get_by_id(ai_tools_id)
+        if not ai_tool:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "AI工具记录不存在"}
+            )
+        
+        # 2. 验证用户权限
+        if ai_tool.user_id != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={"code": -1, "message": "无权访问该AI工具记录"}
+            )
+        
+        # 3. 验证类型（1=标准版图片编辑，7=加强版图片编辑）
+        if ai_tool.type not in [1, 7]:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "该AI工具不是图片编辑类型"}
+            )
+        
+        # 4. 验证状态（2=已完成）
+        if ai_tool.status != 2:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": f"AI工具未完成，当前状态: {ai_tool.status}"}
+            )
+        
+        # 5. 确定宫格大小
+        # type=1: 标准版，4宫格；type=7: 加强版，9宫格
+        grid_size = 4 if ai_tool.type == 1 else 9
+        
+        if grid_index < 1 or grid_index > grid_size:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": f"宫格位置超出范围，有效范围: 1-{grid_size}"}
+            )
+        
+        # 6. 获取原图路径
+        if not ai_tool.result_url:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "AI工具未生成结果图片"}
+            )
+        
+        # 准备缓存目录
+        cache_dir = os.path.join(os.getcwd(), "upload", "workflow", str(user_id), "grid_cache", str(ai_tools_id))
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        result_url = ai_tool.result_url
+        grid_image_path = None
+        
+        # 判断是远程URL还是本地路径
+        if result_url.startswith('http://') or result_url.startswith('https://'):
+            # 远程URL：下载到本地缓存
+            cached_image_path = os.path.join(cache_dir, "original.png")
+            
+            if not os.path.exists(cached_image_path):
+                logger.info(f"Downloading grid image from: {result_url}")
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.get(result_url)
+                        if response.status_code == 200:
+                            with open(cached_image_path, 'wb') as f:
+                                f.write(response.content)
+                            logger.info(f"Grid image downloaded to: {cached_image_path}")
+                        else:
+                            logger.error(f"Failed to download grid image, status: {response.status_code}")
+                            return JSONResponse(
+                                status_code=500,
+                                content={"code": -1, "message": f"下载原图失败，状态码: {response.status_code}"}
+                            )
+                except Exception as e:
+                    logger.error(f"Failed to download grid image: {str(e)}")
+                    return JSONResponse(
+                        status_code=500,
+                        content={"code": -1, "message": f"下载原图失败: {str(e)}"}
+                    )
+            
+            grid_image_path = cached_image_path
+        else:
+            # 本地路径
+            result_path = result_url.lstrip('/')
+            grid_image_path = os.path.join(os.getcwd(), result_path)
+        
+        if not os.path.exists(grid_image_path):
+            logger.error(f"Grid image not found: {grid_image_path}")
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "原图文件不存在"}
+            )
+        
+        # 7. 准备拆分输出目录
+        output_dir = os.path.join(os.getcwd(), "upload", "workflow", str(user_id), "grid_split", str(ai_tools_id))
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 8. 检查缓存
+        split_image_name = f"{grid_index}.png"
+        split_image_path = os.path.join(output_dir, split_image_name)
+        
+        if not os.path.exists(split_image_path):
+            # 需要拆分
+            logger.info(f"Splitting grid image {ai_tools_id} (grid_size={grid_size})")
+            splitter = ImageGridSplitter()
+            
+            try:
+                if grid_size == 4:
+                    output_paths = splitter.split_2x2_grid(
+                        grid_image_path=grid_image_path,
+                        output_dir=output_dir,
+                        output_names=[str(i) for i in range(1, 5)],
+                        output_format="png"
+                    )
+                else:  # grid_size == 9
+                    output_paths = splitter.split_3x3_grid(
+                        grid_image_path=grid_image_path,
+                        output_dir=output_dir,
+                        output_names=[str(i) for i in range(1, 10)],
+                        output_format="png"
+                    )
+                logger.info(f"Grid split completed: {len(output_paths)} images")
+            except Exception as e:
+                logger.error(f"Failed to split grid image: {str(e)}")
+                logger.error(traceback.format_exc())
+                return JSONResponse(
+                    status_code=500,
+                    content={"code": -1, "message": f"图片拆分失败: {str(e)}"}
+                )
+        
+        # 9. 返回拆分后的图片URL
+        split_image_url = f"/upload/workflow/{user_id}/grid_split/{ai_tools_id}/{split_image_name}"
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "获取成功",
+            "data": {
+                "image_url": split_image_url,
+                "grid_index": grid_index,
+                "grid_size": grid_size
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get grid split image: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"获取拆分图片失败: {str(e)}"}
         )
 
 
