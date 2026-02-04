@@ -4926,6 +4926,8 @@
                     gridImageNode.data.gridIndex = gridIndex;
                     gridImageNode.data.gridSize = gridSize;
                     gridImageNode.data.shotFrameNodeId = shotFrameNode.id;
+                    gridImageNode.data.isSplit = false;
+                    gridImageNode.data.status = 'pending';
                     gridImageNode.title = gridImageNode.data.name;
                     
                     const nodeEl = canvasEl.querySelector(`.node[data-node-id="${gridImageNodeId}"]`);
@@ -5389,6 +5391,8 @@
                 gridImageNode.data.gridIndex = gridIndex;
                 gridImageNode.data.gridSize = gridSize;
                 gridImageNode.data.shotFrameNodeId = shotFrameNode.id;
+                gridImageNode.data.isSplit = false;
+                gridImageNode.data.status = 'pending';
                 gridImageNode.title = gridImageNode.data.name;
                 
                 const nodeEl = canvasEl.querySelector(`.node[data-node-id="${gridImageNodeId}"]`);
