@@ -1198,8 +1198,8 @@
             </select>
           </div>
           <div class="field btn-row">
-            <button class="mini-btn secondary shot-group-detail-btn" type="button">详情</button>
-            <button class="mini-btn shot-group-generate-btn" type="button" style="background: #22c55e; color: white; flex: 1;">生成分镜</button>
+            <button class="mini-btn secondary shot-group-detail-btn" type="button" style="flex: 1;">查看/编辑</button>
+            <button class="mini-btn gen-btn-white shot-group-generate-btn" type="button">生成分镜</button>
           </div>
         `;
 
@@ -3282,6 +3282,13 @@
             <div class="preview-row image-preview-row" style="display:none;">
               <img class="preview image-preview" />
               <button class="mini-btn image-clear" type="button">×</button>
+              <button class="icon-btn image-download-icon-btn" type="button" title="下载图片">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </button>
             </div>
           </div>
           <div class="field">
@@ -3320,7 +3327,6 @@
                   <div class="gen-item" data-count="4">X4</div>
                 </div>
               </div>
-              <button class="mini-btn image-download-btn" type="button" style="border-radius: 10px;">下载图片</button>
               <button class="mini-btn secondary image-coloring-btn" type="button" style="border-radius: 10px;">涂色编辑</button>
             </div>
             <div class="gen-meta image-draw-count-label"></div>
@@ -3400,7 +3406,7 @@
       const ratioEl = el.querySelector('.image-ratio');
       const modelEl = el.querySelector('.image-model');
       const editBtn = el.querySelector('.image-edit-btn');
-      const downloadBtn = el.querySelector('.image-download-btn');
+      const downloadBtn = el.querySelector('.image-download-icon-btn');
       const coloringBtn = el.querySelector('.image-coloring-btn');
       const statusEl = el.querySelector('.image-edit-status');
       const drawCountLabel = el.querySelector('.image-draw-count-label');
@@ -3884,7 +3890,7 @@
             <div class="gen-meta" style="color: #f59e0b;">文件内容超过30000字符，已自动截取前30000字符。建议将剧本分段处理。</div>
           </div>
           <div class="field">
-            <button class="gen-btn script-split-btn" type="button" style="border-radius: 10px; width: 100%;" disabled>拆分镜组</button>
+            <button class="gen-btn gen-btn-white script-split-btn" type="button" style="border-radius: 10px; width: 100%;" disabled>拆分镜组</button>
             <div class="gen-meta script-status" style="display:none; margin-top: 8px;"></div>
           </div>
           <div class="field">
@@ -3896,7 +3902,7 @@
             </select>
           </div>
           <div class="field">
-            <button class="gen-btn script-split-grid-btn" type="button" style="border-radius: 10px; width: 100%; background: #8b5cf6;">拆分分镜组 + 宫格生图</button>
+            <button class="gen-btn gen-btn-green script-split-grid-btn" type="button" style="border-radius: 10px; width: 100%;">拆分分镜组 + 宫格生图</button>
             <div class="gen-meta script-grid-status" style="display:none; margin-top: 8px;"></div>
           </div>
         </div>
@@ -5130,8 +5136,8 @@
             </select>
           </div>
           <div class="field btn-row">
-            <button class="mini-btn secondary shot-group-detail-btn" type="button">详情</button>
-            <button class="mini-btn shot-group-generate-btn" type="button" style="background: #22c55e; color: white; flex: 1;">生成分镜</button>
+            <button class="mini-btn secondary shot-group-detail-btn" type="button" style="flex: 1;">查看/编辑</button>
+            <button class="mini-btn gen-btn-white shot-group-generate-btn" type="button">生成分镜</button>
           </div>
           <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
           <div class="field">
@@ -5143,7 +5149,7 @@
             </select>
           </div>
           <div class="field btn-row">
-            <button class="mini-btn shot-group-grid-btn" type="button" style="background: #8b5cf6; color: white; width: 100%;">宫格生图</button>
+            <button class="mini-btn gen-btn-green shot-group-grid-btn" type="button" style="width: 100%;">宫格生图</button>
           </div>
           <div class="gen-meta shot-group-grid-status" style="display:none; margin-top: 8px;"></div>
         </div>
