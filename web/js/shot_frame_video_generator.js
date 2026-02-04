@@ -101,11 +101,6 @@ async function generateShotFrameVideo(nodeId, node){
 
     showToast(`正在生成 ${count} 个视频...`, 'info');
 
-    // 从URL获取图片文件
-    const response = await fetch(proxyImageUrl(imageUrl));
-    const blob = await response.blob();
-    const file = new File([blob], 'shot_frame.png', { type: 'image/png' });
-
     // 调用图生视频API
     const userId = localStorage.getItem('user_id') || '1';
     const authToken = localStorage.getItem('auth_token') || '';
