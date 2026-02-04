@@ -331,6 +331,7 @@ async def parse_script_to_shots(
     force_medium_shot: bool = False,
     no_bg_music: bool = False,
     split_multi_dialogue: bool = False,
+    narration_as_dialogue: bool = False,
     auth_token: Optional[str] = None,
     vendor_id: Optional[int] = None,
     model_id: Optional[int] = None
@@ -347,6 +348,7 @@ async def parse_script_to_shots(
         force_medium_shot: 是否强制对话内容使用中景(半身像)，默认False
         no_bg_music: 是否不生成背景音乐，默认False
         split_multi_dialogue: 是否将多人对话镜头拆分为单人对话镜头，默认False
+        narration_as_dialogue: 是否将旁白内容视为角色"旁白"的对话，默认False
         auth_token: 认证token
         vendor_id: 商家ID
         model_id: 模型ID
@@ -452,6 +454,8 @@ async def parse_script_to_shots(
         
         # 构建特殊要求文本
         special_requirements = ""
+        logger.info(f"Script parser parameters - force_medium_shot: {force_medium_shot}, no_bg_music: {no_bg_music}, split_multi_dialogue: {split_multi_dialogue}, narration_as_dialogue: {narration_as_dialogue}")
+        
         if force_medium_shot:
             special_requirements += """
 **【对话镜头特殊要求】**
@@ -541,6 +545,58 @@ async def parse_script_to_shots(
   * 保持场景的连续性，location_id、time_of_day、weather等保持一致
   * 通过"看向镜头外"、"看向右侧/左侧"等描述暗示对话对象的存在，但不要直接描述对方
   * 确保拆分后的镜头在视觉上能够自然衔接（通过轴线原则）
+
+"""
+        
+        if narration_as_dialogue:
+            logger.info("narration_as_dialogue is True, adding narration-as-dialogue requirements to prompt")
+            special_requirements += """
+**【旁白视为对话特殊要求】**
+- **将剧本中的旁白内容视为角色"旁白"的对话**
+- 在characters数组中自动创建一个特殊角色：
+  * id: "char_narrator"
+  * name: "旁白"
+  * role: "旁白"
+  * description: "剧本旁白角色，用于叙述画面描述和背景信息"
+  * gender: "中性"
+  * age_range: "不适用"
+  
+- **旁白内容识别规则：**
+  * 剧本中标注为"旁白台本"、"旁白"、"narration"等的内容
+  * 剧本中标注为"画面描述"但包含叙述性文字的内容
+  * 非角色对话的叙述性文字
+  
+- **旁白对话处理：**
+  * 将识别到的旁白内容添加到对应镜头的dialogue数组中
+  * dialogue格式：{"character_id": "char_narrator", "character_name": "【【旁白】】", "text": "旁白内容"}
+  * 旁白对话应该与画面描述相匹配，增强叙事效果
+  
+- **示例：**
+  * 原剧本：
+    ```
+    **【画面描述】**
+    航拍视角。清晨的阳光洒在如森林般的摩天大楼上。
+    **【旁白台本】**
+    注意看，这个男人叫苏晨。他刚刚发现，自己穿越到了一个疯掉的世界。
+    ```
+  
+  * 解析后的shot节点：
+    ```json
+    {
+      "shot_id": "s001",
+      "description": "航拍城市摩天大楼",
+      "opening_frame_description": "航拍视角：清晨的阳光洒在如森林般的摩天大楼上...",
+      "scene_detail": "城市天际线，晨光照耀...",
+      "characters_present": ["char_narrator"],
+      "dialogue": [
+        {
+          "character_id": "char_narrator",
+          "character_name": "【【旁白】】",
+          "text": "注意看，这个男人叫苏晨。他刚刚发现，自己穿越到了一个疯掉的世界。"
+        }
+      ]
+    }
+    ```
 
 """
         

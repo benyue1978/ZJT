@@ -1926,6 +1926,120 @@
         }
       ],
       "is_processed": false
+    },
+    {
+      "id": "editor_029",
+      "name": "剧本节点-旁白视为对话功能",
+      "description": "验证剧本节点启用'旁白视为对话'选项后，系统能正确将旁白内容转换为角色'旁白'的对话",
+      "priority": "P1",
+      "page_url": "/video-workflow",
+      "api_endpoint": "POST /api/parse-script",
+      "pass": false,
+      "remark": "",
+      "test_steps": [
+        {
+          "step": 1,
+          "action": "添加剧本节点",
+          "mcp_tool": "mcp1_browser_click",
+          "mcp_params": {
+            "element": "添加按钮",
+            "ref": "<添加按钮ref>"
+          },
+          "expected_result": "显示节点菜单",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 2,
+          "action": "选择剧本节点",
+          "mcp_tool": "mcp1_browser_click",
+          "mcp_params": {
+            "element": "剧本节点菜单项",
+            "ref": "<剧本节点菜单ref>"
+          },
+          "expected_result": "画布上创建剧本节点",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 3,
+          "action": "勾选'旁白视为对话'选项",
+          "mcp_tool": "mcp1_browser_click",
+          "mcp_params": {
+            "element": "旁白视为对话复选框",
+            "ref": "<.script-narration-as-dialogue>"
+          },
+          "expected_result": "复选框被勾选",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 4,
+          "action": "输入包含旁白的剧本内容",
+          "mcp_tool": "mcp1_browser_type",
+          "mcp_params": {
+            "element": "剧本文本域",
+            "ref": "<剧本文本域ref>",
+            "text": "**【画面描述】**\n航拍视角。清晨的阳光洒在如森林般的摩天大楼上。\n**【旁白台本】**\n注意看，这个男人叫苏晨。他刚刚发现，自己穿越到了一个疯掉的世界。"
+          },
+          "expected_result": "剧本内容显示在文本域中",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 5,
+          "action": "点击拆分分镜组按钮",
+          "mcp_tool": "mcp1_browser_click",
+          "mcp_params": {
+            "element": "拆分分镜组按钮",
+            "ref": "<拆分按钮ref>"
+          },
+          "expected_result": "按钮显示加载状态",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 6,
+          "action": "等待API调用完成",
+          "mcp_tool": "mcp1_browser_wait_for",
+          "mcp_params": {
+            "text": "拆分完成",
+            "time": 30
+          },
+          "expected_result": "显示成功提示",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 7,
+          "action": "验证API请求包含narration_as_dialogue参数",
+          "mcp_tool": "mcp1_browser_network_requests",
+          "mcp_params": {},
+          "verify": "存在 POST /api/parse-script 请求，请求体包含 narration_as_dialogue: true",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        },
+        {
+          "step": 8,
+          "action": "验证返回数据包含旁白角色",
+          "mcp_tool": "mcp1_browser_evaluate",
+          "mcp_params": {
+            "function": "async () => {\n  const response = await fetch('/api/parse-script', {\n    method: 'POST',\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': localStorage.getItem('auth_token'),\n      'X-User-Id': localStorage.getItem('user_id')\n    },\n    body: JSON.stringify({\n      script_content: '**【画面描述】**\\n航拍视角。清晨的阳光洒在如森林般的摩天大楼上。\\n**【旁白台本】**\\n注意看，这个男人叫苏晨。',\n      max_group_duration: 15,\n      narration_as_dialogue: true\n    })\n  });\n  const data = await response.json();\n  if (data.code !== 0) return { ok: false, error: data.message };\n  \n  const characters = data.data.characters || [];\n  const narratorChar = characters.find(c => c.id === 'char_narrator' && c.name === '旁白');\n  \n  let hasNarrationDialogue = false;\n  if (data.data.shot_groups && data.data.shot_groups.length > 0) {\n    const shots = data.data.shot_groups[0].shots || [];\n    for (const shot of shots) {\n      if (shot.dialogue && shot.dialogue.length > 0) {\n        const narratorDialogue = shot.dialogue.find(d => d.character_id === 'char_narrator');\n        if (narratorDialogue) {\n          hasNarrationDialogue = true;\n          break;\n        }\n      }\n    }\n  }\n  \n  return {\n    ok: narratorChar && hasNarrationDialogue,\n    has_narrator_character: !!narratorChar,\n    has_narration_dialogue: hasNarrationDialogue,\n    narrator_character: narratorChar\n  };\n}"
+          },
+          "verify": "返回结果 ok=true，has_narrator_character=true，has_narration_dialogue=true，表示旁白角色已创建且旁白内容已转换为对话",
+          "pass": false,
+          "remark": "",
+          "is_processed": false
+        }
+      ],
+      "is_processed": false
     }
   ],
   "remark": ""
