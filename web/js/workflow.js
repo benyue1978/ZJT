@@ -1130,6 +1130,7 @@
           const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
           if(el){
             const previewField = el.querySelector('.video-preview-field');
+            const previewActionsField = el.querySelector('.video-preview-actions-field');
             const thumbVideo = el.querySelector('.video-thumb');
             const nameEl = el.querySelector('.video-name');
             if(previewField && thumbVideo && nameEl){
@@ -1140,6 +1141,9 @@
               nameEl.textContent = displayName;
               nameEl.title = node.data.name;
               previewField.style.display = 'block';
+              if(previewActionsField){
+                previewActionsField.style.display = 'block';
+              }
               
               // 如果没有时长，尝试从视频获取
               if(!node.data.duration){

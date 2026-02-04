@@ -28,12 +28,19 @@
           showToast(`节点 ${node.title} 信息已输出到控制台`, 'info');
         });
         
-        // 插入到删除按钮之前
-        const deleteBtn = headerEl.querySelector('.icon-btn');
-        if (deleteBtn) {
-          headerEl.insertBefore(debugBtn, deleteBtn);
+        // 查找按钮容器（场景节点等有按钮容器的情况）
+        const btnContainer = headerEl.querySelector('div[style*="display: flex"]');
+        if (btnContainer) {
+          // 插入到按钮容器的第一个位置
+          btnContainer.insertBefore(debugBtn, btnContainer.firstChild);
         } else {
-          headerEl.appendChild(debugBtn);
+          // 没有按钮容器，查找第一个按钮并插入其前面
+          const firstBtn = headerEl.querySelector('.icon-btn');
+          if (firstBtn && firstBtn.parentNode === headerEl) {
+            headerEl.insertBefore(debugBtn, firstBtn);
+          } else {
+            headerEl.appendChild(debugBtn);
+          }
         }
       }
       
