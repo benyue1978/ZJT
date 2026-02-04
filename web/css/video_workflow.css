@@ -981,6 +981,41 @@ svg.connections path.temp{
 .icon-btn:hover{ background: rgba(0,0,0,0.05); }
 .node-body{ padding: 12px; display:flex; flex-direction:column; gap:12px; }
 .field{ display:flex; flex-direction:column; gap:6px; }
+
+.field-always-visible{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-collapsible{
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  transition: all 0.2s ease;
+}
+
+.node.selected .field-collapsible{
+  max-height: 500px;
+  opacity: 1;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 6px !important;
+}
+
+body.tour-script-input-locked .node:has(.script-textarea) .field-collapsible,
+body.tour-split-shots-locked .node:has(.shot-group-generate-btn) .field-collapsible,
+body.tour-generate-storyboard-locked .node:has(.shot-frame-generate-btn) .field-collapsible,
+body.tour-generate-video-locked .node:has(.shot-frame-generate-video-btn) .field-collapsible,
+body.tour-add-to-timeline-locked .node:has(.video-add-timeline) .field-collapsible{
+  max-height: 500px;
+  opacity: 1;
+  gap: 6px !important;
+}
+
 .field-row{
   display: flex;
   gap: 12px;
@@ -1060,6 +1095,70 @@ svg.connections path.temp{
   justify-content: center;
 }
 .gen-btn:hover{ opacity: 0.95; }
+.gen-btn-white{
+  background: #fff;
+  color: #333;
+  border: 1px solid #ddd;
+}
+.gen-btn-white:hover{
+  background: #f5f5f5;
+  opacity: 1;
+}
+.gen-btn-white:disabled{
+  background: #f9f9f9;
+  color: #999;
+  border-color: #e5e5e5;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.gen-btn-green{
+  background: #10b981;
+  color: #fff;
+  border: 1px solid #10b981;
+}
+.gen-btn-green:hover{
+  background: #059669;
+  border-color: #059669;
+  opacity: 1;
+}
+.gen-btn-green:disabled{
+  background: #6ee7b7;
+  border-color: #6ee7b7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.mini-btn.gen-btn-white{
+  background: #fff;
+  color: #333;
+  border: 1px solid #ddd;
+}
+.mini-btn.gen-btn-white:hover{
+  background: #f5f5f5;
+  opacity: 1;
+}
+.mini-btn.gen-btn-white:disabled{
+  background: #f9f9f9;
+  color: #999;
+  border-color: #e5e5e5;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.mini-btn.gen-btn-green{
+  background: #10b981;
+  color: #fff;
+  border: 1px solid #10b981;
+}
+.mini-btn.gen-btn-green:hover{
+  background: #059669;
+  border-color: #059669;
+  opacity: 1;
+}
+.mini-btn.gen-btn-green:disabled{
+  background: #6ee7b7;
+  border-color: #6ee7b7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 .gen-btn-main{
   border-radius: 10px 0 0 10px;
 }
@@ -1177,6 +1276,30 @@ textarea:focus{ border-color: var(--primary); }
 .image-preview-row .mini-btn:hover{
   background: rgba(220, 38, 38, 0.8);
   transform: scale(1.1);
+}
+.image-preview-row .image-download-icon-btn{
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    top: auto;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    padding: 0;
+    border-radius: 50%;
+    /* background: rgba(34, 197, 94, 0.9); */
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+.image-preview-row .image-download-icon-btn:hover{
+  background: rgba(34, 197, 94, 1);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.4);
 }
 .video-preview{
   position: relative;
@@ -1885,10 +2008,39 @@ textarea:focus{ border-color: var(--primary); }
 }
 
 /* Feedback Button */
-.feedback-btn{
+.feedback-btn-wrapper{
   position: fixed;
   bottom: 24px;
-  right: 24px;
+  right: 120px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 1401;
+  pointer-events: none;
+}
+.feedback-btn-wrapper > button{
+  pointer-events: auto;
+}
+.feedback-btn-wrapper.hidden{
+  display: none;
+}
+.feedback-btn-wrapper.minimized{
+  gap: 0;
+}
+.feedback-btn-wrapper.minimized .feedback-btn{
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 28px;
+  text-align: center;
+}
+.feedback-btn-wrapper.minimized .feedback-btn-delete{
+  display: none;
+}
+.feedback-btn{
   background: linear-gradient(135deg, var(--primary) 0%, #16a34a 100%);
   color: #fff;
   border: none;
@@ -1899,11 +2051,31 @@ textarea:focus{ border-color: var(--primary); }
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(34, 197, 94, 0.4);
   transition: all 0.3s ease;
-  z-index: 1401;
 }
 .feedback-btn:hover{
   transform: translateY(-2px);
   box-shadow: 0 6px 24px rgba(34, 197, 94, 0.5);
+}
+.feedback-btn-delete{
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+  transition: all 0.2s ease;
+  opacity: 1;
+}
+.feedback-btn-delete:hover{
+  background: #dc2626;
+  transform: scale(1.1);
 }
 .modal-overlay{
   position: fixed;
@@ -1961,4 +2133,63 @@ textarea:focus{ border-color: var(--primary); }
   color: var(--muted);
   margin-top: 16px;
   line-height: 1.6;
+}
+
+.coloring-canvas-container{
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f9fafb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.coloring-canvas-container canvas{
+  display: block;
+  max-width: 100%;
+  max-height: 500px;
+  cursor: crosshair;
+}
+.coloring-tools{
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* 文本节点样式 */
+.node[data-type="text"] {
+  min-width: 240px;
+}
+
+.node[data-type="text"] .text-content {
+  width: 100%;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.node[data-type="text"] .text-content:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+}
+
+.node[data-type="text"] .text-expand-btn {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.node[data-type="text"] .text-expand-btn:hover {
+  background: var(--primary);
+  color: white;
 }

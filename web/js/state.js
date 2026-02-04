@@ -44,7 +44,8 @@
       history: [],
       historyPointer: -1,
       historyLimit: 50,
-      isRestoringHistory: false
+      isRestoringHistory: false,
+      debugMode: false
     };
 
     function normalizeVideoUrl(item){
@@ -99,6 +100,24 @@
       } catch(e){
         return true;
       }
+    }
+
+    // 将相对路径转换为完整的HTTP地址
+    function normalizeImageUrl(url){
+      if(!url) return '';
+      if(typeof url !== 'string') return '';
+
+      // 已经是完整的URL
+      if(url.startsWith('http://') || url.startsWith('https://')) return url;
+      if(url.startsWith('data:') || url.startsWith('blob:')) return url;
+
+      // 相对路径，转换为完整URL
+      if(url.startsWith('/')){
+        return `${window.location.origin}${url}`;
+      }
+
+      // 其他情况，返回原值
+      return url;
     }
 
     function proxyImageUrl(url){

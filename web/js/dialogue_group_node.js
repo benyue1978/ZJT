@@ -57,7 +57,7 @@
               <div class="dialogue-status" data-index="${index}" style="display:none; font-size: 12px; color: #6b7280; margin-bottom: 8px;"></div>
               <div class="dialogue-result" data-index="${index}" style="display:none;">
                 <audio controls style="width:100%; max-height:32px; margin-bottom: 6px;"></audio>
-                <button class="mini-btn dialogue-download-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">下载</button>
+                <button class="mini-btn dialogue-download-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px; display: none;">下载</button>
               </div>
             </div>
           `;
@@ -71,11 +71,20 @@
         <div class="port video-input-port" title="视频输入（连接视频节点作为情感参考）"></div>
         <div class="port output" title="输出"></div>
         <div class="node-header">
-          <div class="node-title">${node.title}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M8 12H8.01M12 12H12.01M16 12H16.01" stroke-linecap="round"/><path d="M3 7C3 5.89543 3.89543 5 5 5H19C20.1046 5 21 5.89543 21 7V15C21 16.1046 20.1046 17 19 17H13L9 21V17H5C3.89543 17 3 16.1046 3 15V7Z"/></svg>${node.title}</div>
           <button class="icon-btn" title="删除">×</button>
         </div>
         <div class="node-body">
-          <div class="field" style="margin-bottom: 12px;">
+          <div class="field field-always-visible">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div class="label" style="margin: 0;">对话列表</div>
+            </div>
+            <div class="dialogue-items-container">
+              ${dialogueItemsHtml}
+            </div>
+          </div>
+          
+          <div class="field field-collapsible" style="margin-bottom: 12px;">
             <label class="label" style="font-size: 12px; margin-bottom: 4px;">情感控制方式</label>
             <select class="dialogue-emo-control-select" style="width: 100%; padding: 6px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; background: #ffffff; color: #111827;">
               <option value="0">与参考音频相同</option>
@@ -84,7 +93,7 @@
             </select>
           </div>
           
-          <div class="dialogue-emo-ref-audio-field" style="margin-bottom: 12px;">
+          <div class="dialogue-emo-ref-audio-field field-collapsible" style="margin-bottom: 12px;">
             <label class="label" style="font-size: 12px; margin-bottom: 4px;">情感参考音频</label>
             <input type="file" class="dialogue-emo-ref-audio-input" accept="audio/*" style="width: 100%; padding: 4px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 11px; background: #f9fafb;">
             <div class="dialogue-emo-ref-audio-preview" style="display: none; margin-top: 6px;">
@@ -93,13 +102,13 @@
             </div>
           </div>
           
-          <div class="dialogue-emo-weight-field" style="display: none; margin-bottom: 12px;">
+          <div class="dialogue-emo-weight-field field-collapsible" style="display: none; margin-bottom: 12px;">
             <label class="label" style="font-size: 12px; margin-bottom: 4px;">情感权重: <span class="dialogue-emo-weight-value">1.0</span></label>
             <input type="range" class="dialogue-emo-weight-slider" min="0" max="1.6" step="0.1" value="1" style="width: 100%;">
             <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">调整情感强度，0为无情感，1.6为最强情感</div>
           </div>
           
-          <div class="dialogue-emo-vec-field" style="display: none; margin-bottom: 12px;">
+          <div class="dialogue-emo-vec-field field-collapsible" style="display: none; margin-bottom: 12px;">
             <label class="label" style="font-size: 12px; margin-bottom: 6px;">情感向量控制</label>
             <div class="dialogue-emo-vec-sliders" style="font-size: 11px;">
               ${['喜', '怒', '哀', '惧', '厌恶', '低落', '惊喜', '平静'].map((label, idx) => `
@@ -118,7 +127,7 @@
             </div>
           </div>
           
-          <div class="field" style="margin-bottom: 12px;">
+          <div class="field field-collapsible" style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label class="label" style="font-size: 12px; margin: 0;">参考音频</label>
               <button class="mini-btn dialogue-add-ref-audio-btn" type="button" style="font-size: 11px; padding: 4px 8px;">添加音频</button>
@@ -129,14 +138,8 @@
             <div class="dialogue-ref-audios-list"></div>
           </div>
           
-          <div class="field">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <div class="label" style="margin: 0;">对话列表</div>
-              <button class="mini-btn dialogue-generate-all-btn" type="button" style="font-size: 11px; padding: 4px 8px;">生成全部</button>
-            </div>
-            <div class="dialogue-items-container">
-              ${dialogueItemsHtml}
-            </div>
+          <div class="field field-collapsible">
+            <button class="mini-btn dialogue-generate-all-btn" type="button" style="font-size: 11px; padding: 4px 8px; width: 100%;">生成全部</button>
           </div>
         </div>
       `;
@@ -172,6 +175,7 @@
         e.stopPropagation();
         setSelected(id);
         bringNodeToFront(id);
+        updateButtonsVisibility(true);
       });
 
       headerEl.addEventListener('mousedown', (e) => {
@@ -181,6 +185,7 @@
           setSelected(id);
         }
         bringNodeToFront(id);
+        updateButtonsVisibility(true);
         initNodeDrag(id, e.clientX, e.clientY);
       });
 
@@ -454,6 +459,39 @@
 
       renderRefAudiosList();
 
+      function updateButtonsVisibility(isSelected){
+        const addDialogueBtns = el.querySelectorAll('.dialogue-add-btn');
+        addDialogueBtns.forEach(btn => {
+          const container = btn.parentElement;
+          if(container){
+            container.style.display = isSelected ? 'block' : 'none';
+          }
+        });
+        
+        const downloadBtns = el.querySelectorAll('.dialogue-download-btn');
+        downloadBtns.forEach(btn => {
+          btn.style.display = isSelected ? 'inline-block' : 'none';
+        });
+        
+        const resultDivs = el.querySelectorAll('.dialogue-result');
+        resultDivs.forEach(div => {
+          const btnContainer = div.querySelector('div[style*="display: flex"]');
+          if(btnContainer){
+            btnContainer.style.display = isSelected ? 'flex' : 'none';
+          }
+        });
+      }
+      
+      const nodeObserver = new MutationObserver(() => {
+        const isSelected = el.classList.contains('selected');
+        updateButtonsVisibility(isSelected);
+      });
+      
+      nodeObserver.observe(el, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+
       function updateDialogueList(){
         const container = el.querySelector('.dialogue-items-container');
         if(!container) return;
@@ -461,7 +499,7 @@
         if(!node.data.dialogues || node.data.dialogues.length === 0){
           container.innerHTML = `
             <div class="gen-meta" style="text-align:center; padding: 20px;">暂无对话数据</div>
-            <div style="margin-top: 12px; text-align: center;">
+            <div style="margin-top: 12px; text-align: center; display: none;">
               <button class="mini-btn dialogue-add-btn" type="button" style="font-size: 11px; padding: 6px 12px; background: #3b82f6; color: white;">+ 添加对话</button>
             </div>
           `;
@@ -497,7 +535,7 @@
               <div class="dialogue-status" data-index="${index}" style="display:none; font-size: 12px; color: #6b7280; margin-bottom: 8px;"></div>
               <div class="dialogue-result" data-index="${index}" style="display:${hasAudio ? 'block' : 'none'};">
                 <audio controls style="width:100%; max-height:32px; margin-bottom: 6px;"></audio>
-                <div style="display: flex; gap: 4px;">
+                <div style="display: flex; gap: 4px; display: none;">
                   <button class="mini-btn dialogue-download-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px;">下载</button>
                   <button class="mini-btn dialogue-add-timeline-btn" data-index="${index}" type="button" style="font-size: 11px; padding: 4px 8px; background: #10b981; color: white;">添加到时间轴</button>
                 </div>
@@ -507,13 +545,16 @@
         });
         
         html += `
-          <div style="margin-top: 12px; text-align: center;">
+          <div style="margin-top: 12px; text-align: center; display: none;">
             <button class="mini-btn dialogue-add-btn" type="button" style="font-size: 11px; padding: 6px 12px; background: #3b82f6; color: white;">+ 添加对话</button>
           </div>
         `;
         
         container.innerHTML = html;
         attachDialogueItemEvents();
+        
+        const isSelected = el.classList.contains('selected');
+        updateButtonsVisibility(isSelected);
         
         node.data.dialogues.forEach((dialogue, index) => {
           if(node.data.audioResults[index] && node.data.audioResults[index].audioUrl){
@@ -1152,6 +1193,9 @@
       
       // 暴露渲染参考音频列表的方法，供恢复节点时使用
       node.renderRefAudiosList = renderRefAudiosList;
+      
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
       
       canvasEl.appendChild(el);
       setSelected(id);

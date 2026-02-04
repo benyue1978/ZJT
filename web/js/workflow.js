@@ -98,8 +98,9 @@
             if(data.data.task_computing_power){
               taskComputingPowerConfig = data.data.task_computing_power;
               console.log('[算力配置] 已加载:', taskComputingPowerConfig);
-              // 配置加载完成后，更新所有图生视频节点的算力显示
+              // 配置加载完成后，更新所有图生视频节点和分镜节点的算力显示
               updateAllImageToVideoNodesPower();
+              updateAllShotFrameNodesPower();
             }
             if(data.data.video_model_duration_options){
               videoModelDurationOptions = data.data.video_model_duration_options;
@@ -122,6 +123,46 @@
       return videoModelDurationOptions;
     }
     
+    // 计算视频生成算力（公共函数）
+    function calculateVideoGenerationPower(videoModel, duration){
+      if(!taskComputingPowerConfig || Object.keys(taskComputingPowerConfig).length === 0){
+        return 0;
+      }
+      
+      let power = 0;
+      
+      if(videoModel === 'sora2'){
+        power = taskComputingPowerConfig[3] || 0;
+      } else if(videoModel === 'ltx2'){
+        power = taskComputingPowerConfig[10] || 0;
+      } else if(videoModel === 'wan22'){
+        const wan22Power = taskComputingPowerConfig[11];
+        if(typeof wan22Power === 'object'){
+          power = wan22Power[duration] || wan22Power[5] || 0;
+        } else {
+          power = wan22Power || 0;
+        }
+      } else if(videoModel === 'kling'){
+        const klingPower = taskComputingPowerConfig[12];
+        if(typeof klingPower === 'object'){
+          power = klingPower[duration] || klingPower[5] || 0;
+        } else {
+          power = klingPower || 0;
+        }
+      } else if(videoModel === 'vidu'){
+        const viduPower = taskComputingPowerConfig[14];
+        if(typeof viduPower === 'object'){
+          power = viduPower[duration] || viduPower[5] || 0;
+        } else {
+          power = viduPower || 0;
+        }
+      } else if(videoModel === 'veo3'){
+        power = taskComputingPowerConfig[15] || 0;
+      }
+      
+      return power;
+    }
+    
     // 更新所有图生视频节点的算力显示
     function updateAllImageToVideoNodesPower(){
       if(!state || !state.nodes) return;
@@ -133,33 +174,34 @@
             const computingPowerValue = el.querySelector('.computing-power-value');
             const computingPowerDetail = el.querySelector('.computing-power-detail');
             if(computingPowerValue && computingPowerDetail){
-              // 计算算力
-              let singlePower = 0;
-              if(taskComputingPowerConfig && Object.keys(taskComputingPowerConfig).length > 0){
-                const videoModel = node.data.videoModel || 'sora2';
-                const duration = node.data.duration || 10;
-                
-                if(videoModel === 'sora2'){
-                  singlePower = taskComputingPowerConfig[3] || 0;
-                } else if(videoModel === 'ltx2'){
-                  singlePower = taskComputingPowerConfig[10] || 0;
-                } else if(videoModel === 'wan22'){
-                  const wan22Power = taskComputingPowerConfig[11];
-                  if(typeof wan22Power === 'object'){
-                    singlePower = wan22Power[duration] || wan22Power[5] || 0;
-                  } else {
-                    singlePower = wan22Power || 0;
-                  }
-                } else if(videoModel === 'kling'){
-                  const klingPower = taskComputingPowerConfig[12];
-                  if(typeof klingPower === 'object'){
-                    singlePower = klingPower[duration] || klingPower[5] || 0;
-                  } else {
-                    singlePower = klingPower || 0;
-                  }
-                }
-              }
+              const videoModel = node.data.videoModel || 'sora2';
+              const duration = node.data.duration || 10;
+              const singlePower = calculateVideoGenerationPower(videoModel, duration);
               const count = node.data.drawCount || 1;
+              const totalPower = singlePower * count;
+              computingPowerValue.textContent = `${totalPower} 算力`;
+              computingPowerDetail.textContent = `单个 ${singlePower} 算力 × ${count} 个 = ${totalPower} 算力`;
+            }
+          }
+        }
+      });
+    }
+    
+    // 更新所有分镜节点的视频算力显示
+    function updateAllShotFrameNodesPower(){
+      if(!state || !state.nodes) return;
+      
+      state.nodes.forEach(node => {
+        if(node.type === 'shot_frame'){
+          const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+          if(el){
+            const computingPowerValue = el.querySelector('.shot-frame-computing-power-value');
+            const computingPowerDetail = el.querySelector('.shot-frame-computing-power-detail');
+            if(computingPowerValue && computingPowerDetail){
+              const videoModel = node.data.videoModel || 'sora2';
+              const duration = node.data.videoDuration || 10;
+              const singlePower = calculateVideoGenerationPower(videoModel, duration);
+              const count = node.data.videoDrawCount || 1;
               const totalPower = singlePower * count;
               computingPowerValue.textContent = `${totalPower} 算力`;
               computingPowerDetail.textContent = `单个 ${singlePower} 算力 × ${count} 个 = ${totalPower} 算力`;
@@ -681,6 +723,8 @@
         createTextToSpeechNodeWithData(nodeData);
       } else if(nodeData.type === 'dialogue_group'){
         createDialogueGroupNodeWithData(nodeData);
+      } else if(nodeData.type === 'text'){
+        createTextNodeWithData(nodeData);
       }
     }
 
@@ -820,12 +864,20 @@
     
     // ============ 画风管理功能结束 ============
 
-    async function generateEditedImage(file, prompt, ratio, model, count){
+    async function generateEditedImage(fileOrUrl, prompt, ratio, model, count){
       const userId = localStorage.getItem('user_id');
       const authToken = getAuthToken();
       const form = new FormData();
 
-      form.append('image', file);
+      // 判断是 File 对象还是 URL 字符串
+      if(typeof fileOrUrl === 'string'){
+        // 如果是 URL，使用 ref_image_urls 参数
+        form.append('ref_image_urls', fileOrUrl);
+      } else {
+        // 如果是 File 对象，使用 image 参数
+        form.append('image', fileOrUrl);
+      }
+      
       form.append('prompt', prompt || '');
       form.append('ratio', ratio || '9:16');
       form.append('count', count || 1);
@@ -842,13 +894,21 @@
         body: form
       });
       const data = await res.json();
+      
+      if(!res.ok) {
+        const errorMsg = typeof data.detail === 'string' ? data.detail : 
+                         typeof data.message === 'string' ? data.message :
+                         JSON.stringify(data.detail || data.message || '提交任务失败');
+        throw new Error(errorMsg);
+      }
+      
       if(data.project_ids && data.project_ids.length > 0){
         return {
           projectIds: data.project_ids,
           status: data.status
         };
       }
-      throw new Error(data.detail || data.message || '提交任务失败');
+      throw new Error('提交任务失败：未返回项目ID');
     }
 
     async function fetchFileFromUrl(url){
@@ -1070,6 +1130,7 @@
           const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
           if(el){
             const previewField = el.querySelector('.video-preview-field');
+            const previewActionsField = el.querySelector('.video-preview-actions-field');
             const thumbVideo = el.querySelector('.video-thumb');
             const nameEl = el.querySelector('.video-name');
             if(previewField && thumbVideo && nameEl){
@@ -1080,6 +1141,9 @@
               nameEl.textContent = displayName;
               nameEl.title = node.data.name;
               previewField.style.display = 'block';
+              if(previewActionsField){
+                previewActionsField.style.display = 'block';
+              }
               
               // 如果没有时长，尝试从视频获取
               if(!node.data.duration){
@@ -1106,14 +1170,16 @@
       
       const node = state.nodes.find(n => n.id === nodeData.id);
       if(node && nodeData.data){
-        node.data.url = nodeData.data.url || '';
-        node.data.name = nodeData.data.name || '';
-        node.data.preview = nodeData.data.preview || nodeData.data.url || '';
-        node.data.prompt = nodeData.data.prompt || '';
-        node.data.ratio = nodeData.data.ratio || '9:16';
-        node.data.model = nodeData.data.model || 'gemini-2.5-pro-image-preview';
-        node.data.drawCount = nodeData.data.drawCount || 1;
-        node.data.project_id = nodeData.data.project_id !== undefined ? nodeData.data.project_id : null;
+        // 直接使用保存的所有属性，确保包括 gridIndex、gridSize、isSplit 等分镜图相关属性都能被恢复
+        Object.assign(node.data, nodeData.data);
+        
+        // 规范化图片 URL
+        if(node.data.url){
+          node.data.url = normalizeImageUrl(node.data.url);
+        }
+        if(node.data.preview){
+          node.data.preview = normalizeImageUrl(node.data.preview);
+        }
         
         // 恢复节点标题
         if(nodeData.title){
@@ -1250,7 +1316,6 @@
               
               if(node && node.data){
                 if(updatedNode.status === 2 && updatedNode.url){
-                  // 成功状态:更新URL和预览
                   node.data.url = updatedNode.url;
                   updateNodePreview(node, updatedNode.url);
                 } else if(updatedNode.status === -1){
@@ -1340,6 +1405,65 @@
           previewField.style.display = 'block';
         }
       } else if(node.type === 'image'){
+        // 检查是否为宫格分镜图节点（有gridIndex但未拆分）
+        if(node.data.gridIndex && node.data.gridSize && !node.data.isSplit){
+          // 需要调用拆分接口获取单张图片
+          const aiToolsId = node.data.aiToolsId || node.data.project_id;
+          const gridIndex = node.data.gridIndex;
+          
+          if(aiToolsId){
+            (async () => {
+              try {
+                console.log(`[轮询] 调用拆分接口: aiToolsId=${aiToolsId}, gridIndex=${gridIndex}`);
+                const splitResponse = await fetch(
+                  `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}`,
+                  {
+                    headers: {
+                      'Authorization': getAuthToken(),
+                      'X-User-Id': getUserId()
+                    }
+                  }
+                );
+                
+                if(splitResponse.ok){
+                  const splitData = await splitResponse.json();
+                  if(splitData.code === 0 && splitData.data && splitData.data.image_url){
+                    const normalizedUrl = normalizeImageUrl(splitData.data.image_url);
+                    node.data.url = normalizedUrl;
+                    node.data.preview = normalizedUrl;
+                    node.data.isSplit = true;
+                    node.data.status = 'completed';
+                    
+                    console.log(`[轮询] 拆分成功: ${node.id} -> ${splitData.data.image_url}`);
+                    
+                    const previewImg = nodeEl.querySelector('.image-preview');
+                    const previewRow = nodeEl.querySelector('.image-preview-row');
+                    
+                    if(previewImg && previewRow){
+                      previewImg.src = proxyImageUrl(splitData.data.image_url);
+                      previewRow.style.display = 'flex';
+                    }
+                    
+                    // 触发连接的分镜节点更新视频首帧预览
+                    if(node.data.shotFrameNodeId) {
+                      const shotFrameNode = state.nodes.find(n => n.id === node.data.shotFrameNodeId);
+                      if(shotFrameNode && shotFrameNode.updatePreview) {
+                        shotFrameNode.updatePreview();
+                        console.log(`[轮询] 分镜节点 ${shotFrameNode.id} 更新后 previewImageUrl:`, shotFrameNode.data.previewImageUrl);
+                      }
+                    }
+
+                    try { await autoSaveWorkflow(); } catch(e){}
+                  }
+                }
+              } catch(e){
+                console.error('[轮询] 拆分宫格图片失败:', e);
+              }
+            })();
+            return;
+          }
+        }
+        
         // 更新图片节点预览
         node.data.preview = url;
         const previewImg = nodeEl.querySelector('.image-preview');
@@ -1426,6 +1550,13 @@
       const node = state.nodes.find(n => n.id === nodeData.id);
       if(node && nodeData.data){
         node.data = { ...node.data, ...nodeData.data };
+        // 转换图片URL为完整HTTP地址
+        if(node.data.imageUrl){
+          node.data.imageUrl = normalizeImageUrl(node.data.imageUrl);
+        }
+        if(node.data.previewImageUrl){
+          node.data.previewImageUrl = normalizeImageUrl(node.data.previewImageUrl);
+        }
         node.title = nodeData.title || node.title;
         
         const nodeEl = document.querySelector(`.node[data-node-id="${nodeData.id}"]`);
@@ -1529,3 +1660,55 @@
       
       state.nextNodeId = Math.max(savedNextNodeId, nodeData.id + 1);
     }
+
+    // ============ Debug 模式功能 ============
+    
+    // 从 URL 参数中检查是否需要启用 Debug 模式
+    function initDebugMode(){
+      const urlParams = new URLSearchParams(window.location.search);
+      const debugParam = urlParams.get('debug');
+      
+      if(debugParam === '1' && !state.debugMode){
+        // 开启 Debug 模式需要密码
+        const password = prompt('请输入 Debug 模式密码:');
+        if(!password){
+          return;
+        }
+        
+        // 验证密码
+        fetch('/api/config/debug-password')
+          .then(res => res.json())
+          .then(data => {
+            if(data.success && data.password === password){
+              state.debugMode = true;
+              updateDebugModeUI();
+              showToast('Debug 模式已开启', 'success');
+            } else {
+              showToast('密码错误', 'error');
+            }
+          })
+          .catch(err => {
+            console.error('验证密码失败:', err);
+            showToast('验证失败', 'error');
+          });
+      }
+    }
+    
+    // 更新 Debug 模式 UI
+    function updateDebugModeUI(){
+      // 更新所有节点的调试按钮显示状态
+      state.nodes.forEach(node => {
+        const nodeEl = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
+        if(nodeEl){
+          const debugBtn = nodeEl.querySelector('.node-debug-btn');
+          if(debugBtn){
+            debugBtn.style.display = state.debugMode ? 'block' : 'none';
+          }
+        }
+      });
+    }
+    
+    // 初始化 Debug 模式
+    initDebugMode();
+    
+    // ============ Debug 模式功能结束 ============

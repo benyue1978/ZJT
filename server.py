@@ -37,6 +37,7 @@ from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
 from config.constant import TASK_COMPUTING_POWER, TASK_TYPE_GENERATE_VIDEO, TASK_TYPE_GENERATE_AUDIO, RECHARGE_PACKAGES, AUTHENTICATION_ID, VIDEO_MODEL_DURATION_OPTIONS
 from utils.wechat_pay_util import WechatPayUtil
+from utils.image_grid_splitter import ImageGridSplitter
 
 def _get_user_id_from_header(user_id: Optional[int]) -> int:
     if user_id is None:
@@ -345,6 +346,18 @@ async def get_upload_config():
         "data": {
             "max_image_size_mb": MAX_IMAGE_SIZE_MB
         }
+    })
+
+
+@app.get("/api/config/debug-password")
+async def get_debug_password():
+    """
+    获取前端 Debug 模式密码
+    """
+    debug_password = config.get('frontend', {}).get('debug_password', 'debug123')
+    return JSONResponse({
+        "success": True,
+        "password": debug_password
     })
 
 
@@ -922,18 +935,23 @@ def _concatenate_images(upload_files: List[UploadFile]) -> str:
 
 @app.post("/api/image-edit")
 async def image_edit(
-    image: List[UploadFile] = File(...),
+    image: List[UploadFile] = File(default=None),
     prompt: str = Form(...),
     ratio: str = Form("9:16", description="Model type: 9:16, 16:9, 1:1 ,3:4, 4:3"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token"),
     model: str = Form("gemini-2.5-pro-image-preview", description="Model type: gemini-2.5-pro-image-preview, gemini-3-pro-image-preview"),
-    image_size: str = Form("1K", description="Image resolution: 1K, 2K, 4K")
+    image_size: str = Form("1K", description="Image resolution: 1K, 2K, 4K"),
+    ref_image_urls: str = Form(None, description="Reference image URLs, comma separated")
 ):
     """
     Submit image editing task to RunningHub nanobanana service
     Supports multiple images - will concatenate them horizontally if more than one
+    
+    Can accept images via:
+    1. File upload (image parameter)
+    2. URL list (ref_image_urls parameter, comma separated)
     """
     try:
         if CHECK_AUTH_TOKEN and auth_token is None:
@@ -978,9 +996,25 @@ async def image_edit(
                     detail="用户ID不匹配"
                 )
 
-        # Handle multiple images - limit to maximum 5 images
-        images_to_process = image[:5] if len(image) > 5 else image
-        image_urls = [_save_uploaded_image(img) for img in images_to_process]
+        # Handle multiple images - limit to maximum 10 images (for enhanced model)
+        # Support both file upload and URL list
+        image_urls = []
+        
+        # 1. Process uploaded files
+        if image:
+            images_to_process = image[:10] if len(image) > 10 else image
+            for img in images_to_process:
+                if img.filename:  # Check if it's a real file
+                    image_urls.append(_save_uploaded_image(img))
+        
+        # 2. Process URL list (if provided)
+        if ref_image_urls:
+            urls = [url.strip() for url in ref_image_urls.split(',') if url.strip()]
+            image_urls.extend(urls[:10 - len(image_urls)])  # Limit total to 10
+        
+        if not image_urls:
+            raise HTTPException(status_code=400, detail="At least one image is required (via file upload or URL)")
+        
         logger.info(f"[image_edit] Input image URLs: {image_urls}")
         
         # Submit tasks according to generation count
@@ -1249,34 +1283,45 @@ async def runninghub_status(
         raise HTTPException(status_code=500, detail=f"Failed to check runninghub status: {str(e)}")
 
 
-@app.get("/api/get-status/{project_id}")
+@app.get("/api/get-status/{ai_tool_id}")
 async def get_status(
-    project_id: str,
+    ai_tool_id: str,
     auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
 ):
     """
     Check the status of one or more AI tasks.
-    - For a single project_id: returns the original shape {status, results, reason?}
-    - For multiple project_ids (comma-separated): returns {tasks: [{project_id, status, results, reason}]}
+    - For a single ai_tool_id: returns the original shape {status, results, reason?}
+    - For multiple ai_tool_ids (comma-separated): returns {tasks: [{ai_tool_id, status, results, reason}]}
     If task fails, will refund computing power.
     """
     try:
-        project_ids = [pid.strip() for pid in project_id.split(",") if pid.strip()]
-        if not project_ids:
-            raise HTTPException(status_code=400, detail="project_id is required")
+        ai_tool_ids = [pid.strip() for pid in ai_tool_id.split(",") if pid.strip()]
+        if not ai_tool_ids:
+            raise HTTPException(status_code=400, detail="ai_tool_id is required")
 
         tasks_response = []
 
-        for pid in project_ids:
+        for ai_tool_id in ai_tool_ids:
             # Query database to get task type
-            task_record = AIToolsModel.get_by_id(pid)
+            task_record = AIToolsModel.get_by_id(ai_tool_id)
             
-            if task_record and task_record.create_time:
+            if not task_record:
+                tasks_response.append({
+                    "project_id": ai_tool_id,
+                    "status": "NOT_FOUND",
+                    "results": [],
+                    "reason": "任务记录不存在"
+                })
+                continue
+            
+            task_cost_time = 0
+            if task_record.create_time:
                 # Calculate time difference in seconds
                 from datetime import datetime
                 current_time = datetime.now()
                 time_diff = current_time - task_record.create_time
                 task_cost_time = int(time_diff.total_seconds())
+            
             status = task_record.status
             reason = task_record.message
             status_str = "RUNNING"
@@ -1298,7 +1343,7 @@ async def get_status(
                 reason_payload = reason
 
             tasks_response.append({
-                "project_id": pid,
+                "project_id": ai_tool_id,
                 "status": status_str,
                 "results": results_payload,
                 "reason": reason_payload
@@ -4101,15 +4146,16 @@ async def poll_workflow_node_status(
                 "data": {"updated_nodes": []}
             })
         
-        # 查找有 project_id 但 url 为空的节点
+        # 查找有 project_id 但结果为空的节点
         nodes = workflow_data.get('nodes', [])
         updated_nodes = []
         
         for node in nodes:
             node_data = node.get('data', {})
+            node_type = node.get('type', '')
             project_id = node_data.get('project_id')
             url = node_data.get('url', '')
-            
+
             # 只处理有 project_id 但 url 为空的节点
             if project_id and not url:
                 # 查询 ai_tools 表获取状态
@@ -4120,7 +4166,7 @@ async def poll_workflow_node_status(
                         if ai_tool.status == 2 and ai_tool.result_url:
                             updated_nodes.append({
                                 'node_id': node.get('id'),
-                                'node_type': node.get('type'),
+                                'node_type': node_type,
                                 'project_id': project_id,
                                 'url': ai_tool.result_url,
                                 'status': ai_tool.status,
@@ -4130,7 +4176,7 @@ async def poll_workflow_node_status(
                         elif ai_tool.status == -1:
                             updated_nodes.append({
                                 'node_id': node.get('id'),
-                                'node_type': node.get('type'),
+                                'node_type': node_type,
                                 'project_id': project_id,
                                 'url': None,
                                 'status': ai_tool.status,
@@ -4195,6 +4241,179 @@ async def upload_workflow_asset(
         return JSONResponse(
             status_code=500,
             content={"code": -1, "message": f"上传失败: {str(e)}"}
+        )
+
+
+@app.get('/api/ai-tools/{ai_tools_id}/grid-split')
+async def get_grid_split_image(
+    ai_tools_id: int,
+    grid_index: int = Query(..., ge=1, le=9, description="宫格位置，1-4或1-9"),
+    user_id: int = Query(...),
+    auth_token: Optional[str] = Query(None)
+):
+    """
+    获取宫格图片的指定位置拆分图
+    
+    1. 验证ai_tools_id属于该用户
+    2. 验证ai_tools.type in [1, 7]（图片编辑类型）
+    3. 验证ai_tools.status == 2（已完成）
+    4. 根据type判断是4宫格还是9宫格
+    5. 调用ImageGridSplitter拆分图片
+    6. 返回拆分后的图片URL
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+        
+        # 1. 获取ai_tools记录
+        ai_tool = AIToolsModel.get_by_id(ai_tools_id)
+        if not ai_tool:
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "AI工具记录不存在"}
+            )
+        
+        # 2. 验证用户权限
+        if ai_tool.user_id != user_id:
+            return JSONResponse(
+                status_code=403,
+                content={"code": -1, "message": "无权访问该AI工具记录"}
+            )
+        
+        # 3. 验证类型（1=标准版图片编辑，7=加强版图片编辑）
+        if ai_tool.type not in [1, 7]:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "该AI工具不是图片编辑类型"}
+            )
+        
+        # 4. 验证状态（2=已完成）
+        if ai_tool.status != 2:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": f"AI工具未完成，当前状态: {ai_tool.status}"}
+            )
+        
+        # 5. 确定宫格大小
+        # type=1: 标准版，4宫格；type=7: 加强版，9宫格
+        grid_size = 4 if ai_tool.type == 1 else 9
+        
+        if grid_index < 1 or grid_index > grid_size:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": f"宫格位置超出范围，有效范围: 1-{grid_size}"}
+            )
+        
+        # 6. 获取原图路径
+        if not ai_tool.result_url:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "AI工具未生成结果图片"}
+            )
+        
+        # 准备缓存目录
+        cache_dir = os.path.join(os.getcwd(), "upload", "workflow", str(user_id), "grid_cache", str(ai_tools_id))
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        result_url = ai_tool.result_url
+        grid_image_path = None
+        
+        # 判断是远程URL还是本地路径
+        if result_url.startswith('http://') or result_url.startswith('https://'):
+            # 远程URL：下载到本地缓存
+            cached_image_path = os.path.join(cache_dir, "original.png")
+            
+            if not os.path.exists(cached_image_path):
+                logger.info(f"Downloading grid image from: {result_url}")
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.get(result_url)
+                        if response.status_code == 200:
+                            with open(cached_image_path, 'wb') as f:
+                                f.write(response.content)
+                            logger.info(f"Grid image downloaded to: {cached_image_path}")
+                        else:
+                            logger.error(f"Failed to download grid image, status: {response.status_code}")
+                            return JSONResponse(
+                                status_code=500,
+                                content={"code": -1, "message": f"下载原图失败，状态码: {response.status_code}"}
+                            )
+                except Exception as e:
+                    logger.error(f"Failed to download grid image: {str(e)}")
+                    return JSONResponse(
+                        status_code=500,
+                        content={"code": -1, "message": f"下载原图失败: {str(e)}"}
+                    )
+            
+            grid_image_path = cached_image_path
+        else:
+            # 本地路径
+            result_path = result_url.lstrip('/')
+            grid_image_path = os.path.join(os.getcwd(), result_path)
+        
+        if not os.path.exists(grid_image_path):
+            logger.error(f"Grid image not found: {grid_image_path}")
+            return JSONResponse(
+                status_code=404,
+                content={"code": -1, "message": "原图文件不存在"}
+            )
+        
+        # 7. 准备拆分输出目录
+        output_dir = os.path.join(os.getcwd(), "upload", "workflow", str(user_id), "grid_split", str(ai_tools_id))
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 8. 检查缓存
+        split_image_name = f"{grid_index}.png"
+        split_image_path = os.path.join(output_dir, split_image_name)
+        
+        if not os.path.exists(split_image_path):
+            # 需要拆分
+            logger.info(f"Splitting grid image {ai_tools_id} (grid_size={grid_size})")
+            splitter = ImageGridSplitter()
+            
+            try:
+                if grid_size == 4:
+                    output_paths = splitter.split_2x2_grid(
+                        grid_image_path=grid_image_path,
+                        output_dir=output_dir,
+                        output_names=[str(i) for i in range(1, 5)],
+                        output_format="png"
+                    )
+                else:  # grid_size == 9
+                    output_paths = splitter.split_3x3_grid(
+                        grid_image_path=grid_image_path,
+                        output_dir=output_dir,
+                        output_names=[str(i) for i in range(1, 10)],
+                        output_format="png"
+                    )
+                logger.info(f"Grid split completed: {len(output_paths)} images")
+            except Exception as e:
+                logger.error(f"Failed to split grid image: {str(e)}")
+                logger.error(traceback.format_exc())
+                return JSONResponse(
+                    status_code=500,
+                    content={"code": -1, "message": f"图片拆分失败: {str(e)}"}
+                )
+        
+        # 9. 返回拆分后的图片URL
+        split_image_url = f"/upload/workflow/{user_id}/grid_split/{ai_tools_id}/{split_image_name}"
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "获取成功",
+            "data": {
+                "image_url": split_image_url,
+                "grid_index": grid_index,
+                "grid_size": grid_size
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get grid split image: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"获取拆分图片失败: {str(e)}"}
         )
 
 

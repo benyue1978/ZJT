@@ -1,6 +1,79 @@
     const addBtn = document.getElementById('addBtn');
     const addMenu = document.getElementById('addMenu');
 
+    function applyFeedbackBtnState(isMinimized) {
+        const wrapper = document.getElementById('feedbackBtnWrapper');
+        const feedbackBtn = document.getElementById('feedbackBtn');
+        const minimizeBtn = document.getElementById('feedbackMinimizeBtn');
+        if (!wrapper || !feedbackBtn) return;
+
+        wrapper.classList.toggle('minimized', !!isMinimized);
+        if (minimizeBtn) {
+            minimizeBtn.style.display = isMinimized ? 'none' : '';
+        }
+
+        feedbackBtn.textContent = isMinimized ? '?' : '意见反馈';
+        feedbackBtn.setAttribute('aria-label', isMinimized ? '意见反馈（已最小化）' : '意见反馈');
+        feedbackBtn.title = isMinimized ? '意见反馈' : '意见反馈';
+    }
+
+    // 最小化意见反馈按钮：变成一个很小的“?”
+    function minimizeFeedbackBtn() {
+        try {
+            localStorage.setItem('feedbackBtnMinimized', 'true');
+            localStorage.removeItem('feedbackBtnDeleted');
+        } catch (e) {}
+        applyFeedbackBtnState(true);
+    }
+
+    function restoreFeedbackBtn() {
+        try {
+            localStorage.setItem('feedbackBtnMinimized', 'false');
+            localStorage.removeItem('feedbackBtnDeleted');
+        } catch (e) {}
+        applyFeedbackBtnState(false);
+    }
+
+    function handleFeedbackBtnClick(e) {
+        if (e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+        const minimized = (function () {
+            try {
+                return localStorage.getItem('feedbackBtnMinimized') === 'true';
+            } catch (err) {
+                return false;
+            }
+        })();
+        if (minimized) {
+            restoreFeedbackBtn();
+        }
+        const modal = document.getElementById('feedbackModal');
+        if (modal) modal.classList.add('active');
+    }
+
+    function initFeedbackBtn() {
+        let minimized = false;
+        try {
+            const legacyDeleted = localStorage.getItem('feedbackBtnDeleted') === 'true';
+            const minimizedFlag = localStorage.getItem('feedbackBtnMinimized');
+            minimized = legacyDeleted || minimizedFlag === 'true';
+            if (legacyDeleted) {
+                localStorage.setItem('feedbackBtnMinimized', 'true');
+                localStorage.removeItem('feedbackBtnDeleted');
+            }
+        } catch (e) {}
+        applyFeedbackBtnState(minimized);
+    }
+
+    // 页面加载完成后初始化
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initFeedbackBtn);
+    } else {
+        initFeedbackBtn();
+    }
+
     // 上传配置
     let uploadConfig = {
       max_image_size_mb: 10 // 默认值
@@ -124,6 +197,12 @@
 
     document.getElementById('menuAddDialogueGroup').addEventListener('click', () => {
       createDialogueGroupNode();
+      renderMinimap();
+      addMenu.classList.remove('show');
+    });
+
+    document.getElementById('menuAddText').addEventListener('click', () => {
+      createTextNode();
       renderMinimap();
       addMenu.classList.remove('show');
     });
@@ -1327,7 +1406,7 @@
       const character = nodeData.data;
       el.innerHTML = `
         <div class="node-header">
-          <div class="node-title">角色: ${escapeHtml(character.name)}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="8" r="3"/><path d="M6 21C6 17.6863 8.68629 15 12 15C15.3137 15 18 17.6863 18 21" stroke-linecap="round"/></svg>角色: ${escapeHtml(character.name)}</div>
           <button class="icon-btn" data-action="delete" title="删除">×</button>
         </div>
         <div class="node-body">
@@ -1358,6 +1437,9 @@
         <div class="port output" data-port="output" title="输出"></div>
       `;
       
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
+      
       canvasEl.appendChild(el);
       
       // 绑定事件
@@ -1373,6 +1455,15 @@
         e.stopPropagation();
         removeNode(id);
       });
+      
+      // 图片点击放大事件
+      const characterImg = el.querySelector('.character-preview-img');
+      if (characterImg) {
+        characterImg.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(character.reference_image, `角色: ${character.name}`);
+        });
+      }
       
       // 下载图片按钮事件
       const downloadImgBtn = el.querySelector('.character-download-btn');
@@ -1472,29 +1563,29 @@
       
       el.innerHTML = `
         <div class="node-header">
-          <div class="node-title">角色: ${escapeHtml(character.name)}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="8" r="3"/><path d="M6 21C6 17.6863 8.68629 15 12 15C15.3137 15 18 17.6863 18 21" stroke-linecap="round"/></svg>角色: ${escapeHtml(character.name)}</div>
           <button class="icon-btn" data-action="delete" title="删除">×</button>
         </div>
         <div class="node-body">
           ${character.reference_image ? `
-            <div class="field">
+            <div class="field field-always-visible">
               <div class="label">参考图</div>
               <img src="${character.reference_image}" class="preview character-preview-img" style="width: 100%; height: auto; border-radius: 8px; cursor: zoom-in;" />
-              <div style="display: flex; gap: 8px; margin-top: 8px;">
-                <button class="mini-btn character-download-btn" type="button" data-img-url="${character.reference_image}">下载图片</button>
-              </div>
             </div>
           ` : ''}
-          ${character.age ? `<div class="field"><div class="label">年龄</div><div>${escapeHtml(character.age)}</div></div>` : ''}
-          ${character.identity ? `<div class="field"><div class="label">身份/职业</div><div>${escapeHtml(character.identity)}</div></div>` : ''}
-          ${character.personality ? `<div class="field"><div class="label">性格</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.personality.slice(0, 100))}${character.personality.length > 100 ? '...' : ''}</div></div>` : ''}
-          ${character.behavior ? `<div class="field"><div class="label">行为习惯</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.behavior.slice(0, 100))}${character.behavior.length > 100 ? '...' : ''}</div></div>` : ''}
-          ${character.other_info ? `<div class="field"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
-          <div class="field btn-row">
+          ${character.age ? `<div class="field field-always-visible"><div class="label">年龄</div><div>${escapeHtml(character.age)}</div></div>` : ''}
+          ${character.identity ? `<div class="field field-always-visible"><div class="label">身份/职业</div><div>${escapeHtml(character.identity)}</div></div>` : ''}
+          ${character.personality ? `<div class="field field-always-visible"><div class="label">性格</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.personality.slice(0, 100))}${character.personality.length > 100 ? '...' : ''}</div></div>` : ''}
+          ${character.behavior ? `<div class="field field-always-visible"><div class="label">行为习惯</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.behavior.slice(0, 100))}${character.behavior.length > 100 ? '...' : ''}</div></div>` : ''}
+          ${character.other_info ? `<div class="field field-always-visible"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
+          <div class="field field-collapsible">
+            <button class="mini-btn character-download-btn" type="button" data-img-url="${character.reference_image}" style="width: 100%;">下载图片</button>
+          </div>
+          <div class="field field-collapsible btn-row">
             <button class="mini-btn character-edit-btn" type="button">编辑</button>
             <button class="mini-btn character-sora-video-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #8b5cf6; color: white;'}">${character.sora_character ? '重新生成sora角色视频' : '生成sora角色视频'}</button>
           </div>
-          <div class="field btn-row" style="display: flex; align-items: center; gap: 8px;">
+          <div class="field field-collapsible btn-row" style="display: flex; align-items: center; gap: 8px;">
             <button class="mini-btn character-create-card-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #10b981; color: white;'} opacity: 0.5; cursor: not-allowed;" data-can-click="false">${character.sora_character ? '重新生成sora角色卡' : '创建sora角色卡'}</button>
             <span class="character-card-help-icon" style="display: none; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; color: white; font-size: 12px; line-height: 16px; text-align: center; cursor: help; flex-shrink: 0;" title="如果角色持续创建失败，请尝试更改角色图片 并 重新生成角色视频">?</span>
           </div>
@@ -1502,6 +1593,9 @@
         </div>
         <div class="port output" data-port="output" title="输出"></div>
       `;
+      
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
       
       canvasEl.appendChild(el);
       
@@ -1518,6 +1612,15 @@
         e.stopPropagation();
         removeNode(id);
       });
+      
+      // 图片点击放大事件
+      const characterImg = el.querySelector('.character-preview-img');
+      if (characterImg) {
+        characterImg.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(character.reference_image, `角色: ${character.name}`);
+        });
+      }
       
       // 下载图片按钮事件
       const downloadImgBtn = el.querySelector('.character-download-btn');
@@ -1619,7 +1722,7 @@
       const location = nodeData.data;
       el.innerHTML = `
         <div class="node-header">
-          <div class="node-title">场景: ${escapeHtml(location.name)}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z"/><circle cx="12" cy="9" r="2.5"/></svg>场景: ${escapeHtml(location.name)}</div>
           <div style="display: flex; gap: 4px;">
             <button class="icon-btn" data-action="edit" title="编辑" style="background: #3b82f6; color: white;">✎</button>
             <button class="icon-btn" data-action="delete" title="删除">×</button>
@@ -1640,6 +1743,9 @@
         <div class="port output" data-port="output" title="输出"></div>
       `;
       
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
+      
       canvasEl.appendChild(el);
       
       // 绑定事件
@@ -1652,6 +1758,15 @@
         e.stopPropagation();
         openEditLocationModal(location.id);
       });
+      
+      // 图片点击放大事件
+      const locationImg = el.querySelector('.location-preview-img');
+      if (locationImg) {
+        locationImg.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(location.reference_image, `场景: ${location.name}`);
+        });
+      }
       
       // 下载图片按钮事件
       const downloadImgBtn = el.querySelector('.location-download-btn');
@@ -1724,7 +1839,7 @@
       
       el.innerHTML = `
         <div class="node-header">
-          <div class="node-title">场景: ${escapeHtml(location.name)}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z"/><circle cx="12" cy="9" r="2.5"/></svg>场景: ${escapeHtml(location.name)}</div>
           <div style="display: flex; gap: 4px;">
             <button class="icon-btn" data-action="edit" title="编辑" style="background: #3b82f6; color: white;">✎</button>
             <button class="icon-btn" data-action="delete" title="删除">×</button>
@@ -1745,6 +1860,9 @@
         <div class="port output" data-port="output" title="输出"></div>
       `;
       
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
+      
       canvasEl.appendChild(el);
       
       // 绑定事件
@@ -1757,6 +1875,15 @@
         e.stopPropagation();
         openEditLocationModal(location.id);
       });
+      
+      // 图片点击放大事件
+      const locationImg = el.querySelector('.location-preview-img');
+      if (locationImg) {
+        locationImg.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(location.reference_image, `场景: ${location.name}`);
+        });
+      }
       
       // 下载图片按钮事件
       const downloadImgBtn = el.querySelector('.location-download-btn');
@@ -1847,7 +1974,7 @@
       
       el.innerHTML = `
         <div class="node-header">
-          <div class="node-title">道具: ${escapeHtml(props.name)}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9L15 15M15 9L9 15" stroke-linecap="round"/></svg>道具: ${escapeHtml(props.name)}</div>
           <div style="display: flex; gap: 4px;">
             <button class="icon-btn" data-action="edit" title="编辑" style="background: #3b82f6; color: white;">✎</button>
             <button class="icon-btn" data-action="delete" title="删除">×</button>
@@ -1858,6 +1985,9 @@
         </div>
         <div class="port output" data-port="output" title="输出"></div>
       `;
+      
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
       
       canvasEl.appendChild(el);
       
@@ -1871,6 +2001,15 @@
         editBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           openEditPropsModal(id, props);
+        });
+      }
+
+      // 图片点击放大事件
+      const propsImg = el.querySelector('.props-preview-img');
+      if (propsImg) {
+        propsImg.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(props.reference_image, `道具: ${props.name}`);
         });
       }
 
@@ -1946,7 +2085,7 @@
       const props = nodeData.data;
       el.innerHTML = `
         <div class="node-header">
-          <div class="node-title">道具: ${escapeHtml(props.name)}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9L15 15M15 9L9 15" stroke-linecap="round"/></svg>道具: ${escapeHtml(props.name)}</div>
           <div style="display: flex; gap: 4px;">
             <button class="icon-btn" data-action="edit" title="编辑" style="background: #3b82f6; color: white;">✎</button>
             <button class="icon-btn" data-action="delete" title="删除">×</button>
@@ -1972,6 +2111,15 @@
         editBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           openEditPropsModal(id, props);
+        });
+      }
+
+      // 图片点击放大事件
+      const propsImg = el.querySelector('.props-preview-img');
+      if (propsImg) {
+        propsImg.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(props.reference_image, `道具: ${props.name}`);
         });
       }
 
@@ -3192,21 +3340,24 @@
               // 重新生成节点内容
               nodeBody.innerHTML = `
                 ${character.reference_image ? `
-                  <div class="field">
+                  <div class="field field-always-visible">
                     <div class="label">参考图</div>
                     <img src="${character.reference_image}" class="preview" style="width: 100%; height: auto; border-radius: 8px; cursor: zoom-in;" />
                   </div>
                 ` : ''}
-                ${character.age ? `<div class="field"><div class="label">年龄</div><div>${escapeHtml(character.age)}</div></div>` : ''}
-                ${character.identity ? `<div class="field"><div class="label">身份/职业</div><div>${escapeHtml(character.identity)}</div></div>` : ''}
-                ${character.personality ? `<div class="field"><div class="label">性格</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.personality.slice(0, 100))}${character.personality.length > 100 ? '...' : ''}</div></div>` : ''}
-                ${character.behavior ? `<div class="field"><div class="label">行为习惯</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.behavior.slice(0, 100))}${character.behavior.length > 100 ? '...' : ''}</div></div>` : ''}
-                ${character.other_info ? `<div class="field"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
-                <div class="field btn-row">
+                ${character.age ? `<div class="field field-always-visible"><div class="label">年龄</div><div>${escapeHtml(character.age)}</div></div>` : ''}
+                ${character.identity ? `<div class="field field-always-visible"><div class="label">身份/职业</div><div>${escapeHtml(character.identity)}</div></div>` : ''}
+                ${character.personality ? `<div class="field field-always-visible"><div class="label">性格</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.personality.slice(0, 100))}${character.personality.length > 100 ? '...' : ''}</div></div>` : ''}
+                ${character.behavior ? `<div class="field field-always-visible"><div class="label">行为习惯</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.behavior.slice(0, 100))}${character.behavior.length > 100 ? '...' : ''}</div></div>` : ''}
+                ${character.other_info ? `<div class="field field-always-visible"><div class="label">其他信息</div><div style="font-size: 12px; line-height: 1.4;">${escapeHtml(character.other_info.slice(0, 100))}${character.other_info.length > 100 ? '...' : ''}</div></div>` : ''}
+                <div class="field field-collapsible">
+                  <button class="mini-btn character-download-btn" type="button" data-img-url="${character.reference_image}" style="width: 100%;">下载图片</button>
+                </div>
+                <div class="field field-collapsible btn-row">
                   <button class="mini-btn character-edit-btn" type="button">编辑</button>
                   <button class="mini-btn character-sora-video-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #8b5cf6; color: white;'}">${character.sora_character ? '重新生成sora角色视频' : '生成sora角色视频'}</button>
                 </div>
-                <div class="field btn-row" style="display: flex; align-items: center; gap: 8px;">
+                <div class="field field-collapsible btn-row" style="display: flex; align-items: center; gap: 8px;">
                   <button class="mini-btn character-create-card-btn" type="button" style="${character.sora_character ? 'background: white; color: #111827; border: 1px solid #d1d5db;' : 'background: #10b981; color: white;'} opacity: 0.5; cursor: not-allowed;" data-can-click="false">${character.sora_character ? '重新生成sora角色卡' : '创建sora角色卡'}</button>
                   <span class="character-card-help-icon" style="display: none; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; color: white; font-size: 12px; line-height: 16px; text-align: center; cursor: help; flex-shrink: 0;" title="如果角色持续创建失败，请尝试更改角色图片 并 重新生成角色视频">?</span>
                 </div>

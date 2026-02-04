@@ -33,7 +33,7 @@
       el.innerHTML = `
         <div class="port output" title="输出音频"></div>
         <div class="node-header">
-          <div class="node-title">${node.title}</div>
+          <div class="node-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><path d="M12 2C13.1046 2 14 2.89543 14 4V12C14 13.1046 13.1046 14 12 14C10.8954 14 10 13.1046 10 12V4C10 2.89543 10.8954 2 12 2Z"/><path d="M17 10V12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12V10" stroke-linecap="round"/><path d="M12 17V21M12 21H8M12 21H16" stroke-linecap="round"/></svg>${node.title}</div>
           <button class="icon-btn" title="删除">×</button>
         </div>
         <div class="node-body">
@@ -373,6 +373,9 @@
         showToast('开始下载', 'success');
       });
 
+      // 添加调试按钮
+      addDebugButtonToNode(el, node);
+      
       canvasEl.appendChild(el);
       setSelected(id);
       return id;
