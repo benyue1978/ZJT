@@ -1234,6 +1234,8 @@
         node.data.parsedData = nodeData.data.parsedData || null;
         node.data.forceMediumShot = nodeData.data.forceMediumShot !== undefined ? nodeData.data.forceMediumShot : true;
         node.data.noBgMusic = nodeData.data.noBgMusic !== undefined ? nodeData.data.noBgMusic : true;
+        node.data.splitMultiDialogue = nodeData.data.splitMultiDialogue !== undefined ? nodeData.data.splitMultiDialogue : false;
+        node.data.narrationAsDialogue = nodeData.data.narrationAsDialogue !== undefined ? nodeData.data.narrationAsDialogue : false;
         
         const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
         if(el){
@@ -1241,6 +1243,8 @@
           const durationSelectEl = el.querySelector('.script-duration-select');
           const forceMediumShotEl = el.querySelector('.script-force-medium-shot');
           const noBgMusicEl = el.querySelector('.script-no-bg-music');
+          const splitMultiDialogueEl = el.querySelector('.script-split-multi-dialogue');
+          const narrationAsDialogueEl = el.querySelector('.script-narration-as-dialogue');
           const splitBtn = el.querySelector('.script-split-btn');
           const infoField = el.querySelector('.script-info-field');
           const nameEl = el.querySelector('.script-name');
@@ -1251,6 +1255,8 @@
           if(durationSelectEl) durationSelectEl.value = String(node.data.maxGroupDuration);
           if(forceMediumShotEl) forceMediumShotEl.checked = node.data.forceMediumShot;
           if(noBgMusicEl) noBgMusicEl.checked = node.data.noBgMusic;
+          if(splitMultiDialogueEl) splitMultiDialogueEl.checked = node.data.splitMultiDialogue;
+          if(narrationAsDialogueEl) narrationAsDialogueEl.checked = node.data.narrationAsDialogue;
           
           if(node.data.scriptContent && node.data.scriptContent.trim().length > 0){
             if(splitBtn) splitBtn.disabled = false;

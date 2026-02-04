@@ -3884,6 +3884,13 @@
             </label>
             <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">将多人对话镜头拆分为单人对话镜头，并注意画面不越轴</div>
           </div>
+          <div class="field field-collapsible">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+              <input type="checkbox" class="script-narration-as-dialogue" style="cursor: pointer;" />
+              <span>旁白视为对话</span>
+            </label>
+            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">将剧本中的旁白内容视为角色"旁白"的对话</div>
+          </div>
           <div class="field field-always-visible script-warning-field" style="display:none;">
             <div class="gen-meta" style="color: #f59e0b;">文件内容超过30000字符，已自动截取前30000字符。建议将剧本分段处理。</div>
           </div>
@@ -3917,6 +3924,7 @@
       const forceMediumShotEl = el.querySelector('.script-force-medium-shot');
       const noBgMusicEl = el.querySelector('.script-no-bg-music');
       const splitMultiDialogueEl = el.querySelector('.script-split-multi-dialogue');
+      const narrationAsDialogueEl = el.querySelector('.script-narration-as-dialogue');
       const infoField = el.querySelector('.script-info-field');
       const nameEl = el.querySelector('.script-name');
       const lengthEl = el.querySelector('.script-length');
@@ -3933,6 +3941,7 @@
       node.data.forceMediumShot = true;
       node.data.noBgMusic = true;
       node.data.splitMultiDialogue = false;
+      node.data.narrationAsDialogue = false;
       node.data.gridModel = 'gemini-2.5-pro-image-preview';
 
       // 更新字符计数器
@@ -4009,6 +4018,11 @@
       // 拆分多人对话选项监听
       splitMultiDialogueEl.addEventListener('change', () => {
         node.data.splitMultiDialogue = splitMultiDialogueEl.checked;
+      });
+
+      // 旁白视为对话选项监听
+      narrationAsDialogueEl.addEventListener('change', () => {
+        node.data.narrationAsDialogue = narrationAsDialogueEl.checked;
       });
 
       // 宫格模型选择监听
@@ -4115,7 +4129,8 @@
               world_id: state.defaultWorldId,
               force_medium_shot: node.data.forceMediumShot || false,
               no_bg_music: node.data.noBgMusic || false,
-              split_multi_dialogue: node.data.splitMultiDialogue || false
+              split_multi_dialogue: node.data.splitMultiDialogue || false,
+              narration_as_dialogue: node.data.narrationAsDialogue || false
             })
           });
 
@@ -4638,7 +4653,8 @@
               world_id: state.defaultWorldId,
               force_medium_shot: node.data.forceMediumShot || false,
               no_bg_music: node.data.noBgMusic || false,
-              split_multi_dialogue: node.data.splitMultiDialogue || false
+              split_multi_dialogue: node.data.splitMultiDialogue || false,
+              narration_as_dialogue: node.data.narrationAsDialogue || false
             })
           });
 
