@@ -1006,7 +1006,7 @@ svg.connections path.reference-line.selected{
 
 .field-collapsible{
   max-height: 0;
-  overflow: hidden;
+  overflow: visible;
   opacity: 0;
   margin: 0 !important;
   padding: 0 !important;
@@ -1096,6 +1096,7 @@ body.tour-add-to-timeline-locked .node:has(.video-add-timeline) .field-collapsib
   position: relative;
   display: inline-flex;
   align-items: stretch;
+  z-index: 1;
 }
 .gen-btn{
   border: 1px solid var(--primary);
@@ -1195,7 +1196,7 @@ body.tour-add-to-timeline-locked .node:has(.video-add-timeline) .field-collapsib
   box-shadow: 0 6px 18px rgba(0,0,0,0.14);
   overflow: hidden;
   display: none;
-  z-index: 60;
+  z-index: 100;
 }
 .gen-menu.show{ display: block; }
 .gen-item{
