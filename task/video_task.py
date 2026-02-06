@@ -531,22 +531,21 @@ def _submit_new_task(ai_tool):
             # 处理需要重试的情况（通常是网络异常）
             if result.get("retry"):
                 logger.warning(f"Task {task_id} will retry later due to network error")
-                # 延迟60秒后重试，不增加重试计数
-                next_trigger = datetime.now() + timedelta(seconds=60)
-                TasksModel.update_by_task_id(task_id, next_trigger=next_trigger)
-                return True  # 返回 True 避免增加重试计数
+                # 返回 False，让 process_task_with_retry 增加重试计数并设置延迟
+                return False
             
-            # 根据错误类型处理
+            # 根据错误类型处理（不需要重试的错误）
             if error_type == "USER":
                 # 用户错误，直接返回给用户，标记任务失败
                 AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message=error)
                 TasksModel.update_by_task_id(task_id, status=TASK_STATUS_FAILED)
             else:
                 # 系统错误，已通过 Sentry 报警，标记任务失败
-                AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message=error)
+                AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message="服务异常，请联系技术支持")
                 TasksModel.update_by_task_id(task_id, status=TASK_STATUS_FAILED)
             
-            return False
+            # 返回 True 表示任务已处理完成（虽然失败了），不需要重试
+            return True
         
         # 4. 提交成功，更新数据库
         project_id = result.get("project_id")
@@ -555,7 +554,8 @@ def _submit_new_task(ai_tool):
             logger.error(f"Task {task_id} submitted but no project_id returned")
             AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message="服务异常，未返回任务ID")
             TasksModel.update_by_task_id(task_id, status=TASK_STATUS_FAILED)
-            return False
+            # 返回 True 表示任务已处理完成（失败），不需要重试
+            return True
         
         # 更新 AITools 和 Tasks 表状态
         AIToolsModel.update(task_id, project_id=project_id, status=AI_TOOL_STATUS_PROCESSING)
