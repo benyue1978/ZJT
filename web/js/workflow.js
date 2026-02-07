@@ -535,6 +535,9 @@
             }
           }
           
+          // 在恢复节点之前，先获取世界数据（角色、道具、场景），避免节点创建时数据为空
+          await pollWorkflowNodeStatus();
+          
           // 如果有workflow_data，恢复状态
           if(workflow.workflow_data){
             console.log('[加载工作流] workflow_data.defaultWorldId:', workflow.workflow_data.defaultWorldId);
@@ -1363,8 +1366,19 @@
         
         const result = await response.json();
         
-        if(result.code === 0 && result.data && result.data.updated_nodes){
-          const updatedNodes = result.data.updated_nodes;
+        if(result.code === 0 && result.data){
+          // 保存世界数据到全局变量
+          if(Array.isArray(result.data.characters)){
+            state.worldCharacters = result.data.characters;
+          }
+          if(Array.isArray(result.data.props)){
+            state.worldProps = result.data.props;
+          }
+          if(Array.isArray(result.data.locations)){
+            state.worldLocations = result.data.locations;
+          }
+          
+          const updatedNodes = result.data.updated_nodes || [];
           
           if(updatedNodes.length > 0){
             updatedNodes.forEach(updatedNode => {
@@ -1556,15 +1570,12 @@
       }
     }
     
-    // 启动轮询定时器
+    // 启动轮询定时器（loadWorkflow 中已 await 调用过一次，这里只启动定时器）
     function startPolling(){
       // 清除旧的定时器
       if(pollStatusTimer){
         clearInterval(pollStatusTimer);
       }
-      
-      // 立即执行一次
-      pollWorkflowNodeStatus();
       
       // 每分钟执行一次 (60000 毫秒)
       pollStatusTimer = setInterval(pollWorkflowNodeStatus, 60000);
@@ -1710,6 +1721,11 @@
             if(nodeData.data.videoDuration){
               videoDurationEl.value = nodeData.data.videoDuration;
             }
+          }
+          
+          // 恢复引用显示（场景、道具、角色）
+          if(node.updateReferences) {
+            node.updateReferences();
           }
         }
       }

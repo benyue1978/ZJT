@@ -3684,6 +3684,8 @@
                   thumbVideo.src = proxyImageUrl(videoUrl);
                   previewField.style.display = 'block';
                 }
+                const previewActionsField = newNodeEl.querySelector('.video-preview-actions-field');
+                if(previewActionsField) previewActionsField.style.display = 'block';
               }
               
               state.connections.push({

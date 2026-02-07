@@ -465,6 +465,33 @@ function autoMigratePillars() {
 
 此时会提示："该视频节点未关联到剧本分镜，请先解析剧本"
 
+## 时间轴点击跳转
+
+### 1. 点击视频片段跳转到视频节点
+
+点击时间轴中的视频片段时，画布会自动平移并居中到该片段对应的视频节点，同时选中并高亮该节点。
+
+**实现方式**：
+- 时间轴片段的 `click` 事件中调用 `focusOnNode(clip.nodeId)`
+- `focusOnNode` 函数定义在 `canvas.js` 中，负责计算视口位置并平移画布
+- 节点会显示蓝色光晕闪烁动画（持续约0.8秒），帮助用户快速定位
+
+### 2. 点击空柱子跳转到分镜节点
+
+当某个镜头还没有视频片段时，点击该柱子的空白区域，画布会跳转到对应的分镜节点。
+
+**实现方式**：
+- 柱子背景 `.timeline-pillar-bg` 上绑定 `click` 事件
+- 通过 `data-script-id` 和 `data-shot-number` 属性定位柱子对应的剧本和分镜编号
+- 调用 `getShotFrameNodeForPillar(scriptId, shotNumber)` 查找分镜节点
+- 找到后调用 `focusOnNode(shotFrameNode.id)` 跳转
+
+**相关函数**：
+- `focusOnNode(nodeId)` — 将画布视口居中到指定节点，选中并高亮
+- `getShotFrameNodeForPillar(scriptId, shotNumber)` — 根据柱子的剧本ID和分镜编号查找对应的分镜节点
+- `bindPillarClickEvents()` — 绑定柱子背景的点击事件
+- `bindTimelineClipEvents()` — 绑定视频片段的点击事件
+
 ## 注意事项
 
 1. **柱子标识唯一性**：同一个剧本的同一个分镜只有一个柱子

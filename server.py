@@ -4210,12 +4210,40 @@ async def poll_workflow_node_status(
                     logger.error(f"Failed to query ai_tool for project_id {project_id}: {e}")
                     continue
         
+        # 查询当前世界的 characters、props、locations 列表
+        world_id = getattr(workflow, 'default_world_id', None)
+        characters = []
+        props_list = []
+        locations = []
+        
+        if world_id:
+            try:
+                char_result = CharacterModel.list_by_world(world_id=world_id, page=1, page_size=200)
+                characters = char_result.get('data', [])
+            except Exception as e:
+                logger.error(f"Failed to query characters for world {world_id}: {e}")
+            
+            try:
+                props_result = PropsModel.list_by_world(world_id=world_id, page=1, page_size=200)
+                props_list = props_result.get('data', [])
+            except Exception as e:
+                logger.error(f"Failed to query props for world {world_id}: {e}")
+            
+            try:
+                loc_result = LocationModel.list_by_world(world_id=world_id, page=1, page_size=200)
+                locations = loc_result.get('data', [])
+            except Exception as e:
+                logger.error(f"Failed to query locations for world {world_id}: {e}")
+        
         return JSONResponse({
             "code": 0,
             "message": "success",
             "data": {
                 "updated_nodes": updated_nodes,
-                "total": len(updated_nodes)
+                "total": len(updated_nodes),
+                "characters": characters,
+                "props": props_list,
+                "locations": locations
             }
         })
         
