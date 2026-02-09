@@ -41,6 +41,9 @@
         referenceImageUrl: ''
       },
       defaultWorldId: null,
+      worldCharacters: [],
+      worldProps: [],
+      worldLocations: [],
       selectionMode: false,
       selecting: null,
       selectedNodeIds: [],

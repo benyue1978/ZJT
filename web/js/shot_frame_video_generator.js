@@ -254,6 +254,8 @@ async function generateShotFrameVideo(nodeId, node){
                 };
                 try{ thumbVideo.load(); } catch(e){}
                 previewField.style.display = 'block';
+                const previewActionsField = videoNodeEl.querySelector('.video-preview-actions-field');
+                if(previewActionsField) previewActionsField.style.display = 'block';
               }
             }
             

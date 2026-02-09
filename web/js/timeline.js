@@ -477,6 +477,7 @@
       
       bindTimelineClipEvents();
       bindAudioClipEvents();
+      bindPillarClickEvents();
     }
     
     // 经典渲染模式（向后兼容）
@@ -581,6 +582,8 @@
         videoTrackHTML += `
           <div class="timeline-pillar-bg" 
                data-pillar-id="${pillar.id}"
+               data-script-id="${pillar.scriptId}"
+               data-shot-number="${pillar.shotNumber}"
                style="position: absolute; 
                       left: ${pos.startTime * 10}px; 
                       width: ${pos.duration * 10}px; 
@@ -588,7 +591,7 @@
                       background: ${bgColor};
                       border-left: 2px solid ${borderColor};
                       border-right: 2px solid ${borderColor};
-                      pointer-events: none;
+                      cursor: pointer;
                       z-index: 0;">
             <div style="position: absolute; top: 2px; left: 4px; font-size: 10px; color: rgba(100,100,100,0.6); pointer-events: none;">
               镜头${pillar.shotNumber} (${pos.duration.toFixed(1)}s)
@@ -828,6 +831,42 @@
       try{ autoSaveWorkflow(); } catch(e){}
     }
     
+    // 根据柱子信息查找对应的分镜节点
+    function getShotFrameNodeForPillar(scriptId, shotNumber) {
+      // 查找分镜节点：type === 'shot_frame'，shotNumber 匹配，且父链指向对应的 scriptId
+      return state.nodes.find(n => {
+        if (n.type !== 'shot_frame') return false;
+        const shotInfo = n.data.shotData || n.data.shotJson;
+        if (!shotInfo || shotInfo.shot_number !== shotNumber) return false;
+        // 向上查找父分镜组 -> 祖父剧本节点，验证 scriptId
+        const parentConn = state.connections.find(c => c.to === n.id);
+        if (!parentConn) return false;
+        const shotGroupNode = state.nodes.find(x => x.id === parentConn.from && x.type === 'shot_group');
+        if (!shotGroupNode) return false;
+        const grandParentConn = state.connections.find(c => c.to === shotGroupNode.id);
+        if (!grandParentConn) return false;
+        const scriptNode = state.nodes.find(x => x.id === grandParentConn.from && x.type === 'script');
+        return scriptNode && scriptNode.id === scriptId;
+      });
+    }
+
+    // 绑定柱子背景点击事件（点击空柱子跳转到分镜节点）
+    function bindPillarClickEvents() {
+      const track = document.getElementById('videoTrack');
+      if (!track) return;
+      track.querySelectorAll('.timeline-pillar-bg').forEach(pillarEl => {
+        pillarEl.addEventListener('click', (e) => {
+          const scriptId = Number(pillarEl.dataset.scriptId);
+          const shotNumber = Number(pillarEl.dataset.shotNumber);
+          if (!scriptId || !shotNumber) return;
+          const shotFrameNode = getShotFrameNodeForPillar(scriptId, shotNumber);
+          if (shotFrameNode && typeof focusOnNode === 'function') {
+            focusOnNode(shotFrameNode.id);
+          }
+        });
+      });
+    }
+
     // 绑定时间轴片段事件
     function bindTimelineClipEvents() {
       const track = document.getElementById('videoTrack');
@@ -850,6 +889,11 @@
           if(e.target.classList.contains('clip-remove-btn')) return;
           if(e.target.classList.contains('clip-trim-btn')) return;
           state.timeline.selectedClipId = clipId;
+          // 跳转到对应的画布节点
+          const clip = state.timeline.clips.find(c => c.id === clipId);
+          if(clip && clip.nodeId && typeof focusOnNode === 'function'){
+            focusOnNode(clip.nodeId);
+          }
           renderTimeline();
         });
         

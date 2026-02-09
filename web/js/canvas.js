@@ -128,6 +128,37 @@
       nodeEl.style.zIndex = state.topZIndex;
     }
 
+    function focusOnNode(nodeId){
+      const node = state.nodes.find(n => n.id === nodeId);
+      if(!node) return;
+      const el = canvasEl.querySelector(`.node[data-node-id="${nodeId}"]`);
+      const nodeW = el ? el.offsetWidth : 300;
+      const nodeH = el ? el.offsetHeight : 200;
+      const containerRect = canvasContainer.getBoundingClientRect();
+      const centerX = node.x + nodeW / 2;
+      const centerY = node.y + nodeH / 2;
+      state.panX = containerRect.width / 2 - centerX * state.zoom;
+      state.panY = containerRect.height / 2 - centerY * state.zoom;
+      applyTransform();
+      setSelected(nodeId);
+      bringNodeToFront(nodeId);
+      renderConnections();
+      renderImageConnections();
+      renderFirstFrameConnections();
+      renderVideoConnections();
+      renderReferenceConnections();
+      renderMinimap();
+      // 添加闪烁动画提示
+      if(el){
+        el.style.transition = 'box-shadow 0.3s';
+        el.style.boxShadow = '0 0 20px 6px rgba(59,130,246,0.7)';
+        setTimeout(() => {
+          el.style.boxShadow = '';
+          setTimeout(() => { el.style.transition = ''; }, 300);
+        }, 800);
+      }
+    }
+
     function clearSelection(){
       setSelected(null);
       state.selectedNodeIds = [];
@@ -301,6 +332,7 @@
       
       // 清除该节点相关的参考连接
       const affectedNodes = new Set();
+      state.referenceConnections.filter(c => c.from === id).forEach(c => affectedNodes.add(c.to));
       state.referenceConnections.filter(c => c.to === id).forEach(c => affectedNodes.add(c.to));
       state.referenceConnections = state.referenceConnections.filter(c => c.from !== id && c.to !== id);
       

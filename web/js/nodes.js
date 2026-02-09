@@ -203,8 +203,6 @@
           <div class="field field-collapsible">
             <div class="label">视频</div>
             <input class="video-file" type="file" accept="video/*" />
-            <div class="gen-meta" style="margin-top: 4px;">或</div>
-            <button class="mini-btn video-from-asset" type="button">从素材库选择</button>
           </div>
           <div class="field field-always-visible video-preview-field" style="display:none;">
             <div class="label">预览</div>
@@ -235,7 +233,6 @@
       const headerEl = el.querySelector('.node-header');
       const deleteBtn = el.querySelector('.icon-btn');
       const fileEl = el.querySelector('.video-file');
-      const fromAssetBtn = el.querySelector('.video-from-asset');
       const inputPort = el.querySelector('.port.input');
       const outputPort = el.querySelector('.port.output');
       const previewField = el.querySelector('.video-preview-field');
@@ -361,11 +358,6 @@
           console.error('视频上传失败:', error);
           showToast('视频上传失败，刷新页面后将丢失', 'error');
         }
-      });
-
-      fromAssetBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        alert('素材库 - 空实现');
       });
 
       playBtn.addEventListener('click', (e) => {
@@ -3025,6 +3017,8 @@
                       nameEl.textContent = displayName;
                       nameEl.title = videoNode.data.name;
                       previewField.style.display = 'block';
+                      const previewActionsField2 = videoEl.querySelector('.video-preview-actions-field');
+                      if(previewActionsField2) previewActionsField2.style.display = 'block';
                     }
                     
                     if(statusField && statusEl){
@@ -3532,12 +3526,24 @@
         
         refConns.forEach(conn => {
           const sourceNode = state.nodes.find(n => n.id === conn.from);
-          if(sourceNode && sourceNode.type === 'image' && (sourceNode.data.url || sourceNode.data.preview)){
-            const imgUrl = sourceNode.data.url || sourceNode.data.preview;
+          if(!sourceNode) return;
+          
+          // 根据节点类型获取图片URL
+          let imgUrl = null;
+          let imgLabel = '参考图';
+          if(sourceNode.type === 'image' && (sourceNode.data.url || sourceNode.data.preview)){
+            imgUrl = sourceNode.data.url || sourceNode.data.preview;
+          } else if((sourceNode.type === 'character' || sourceNode.type === 'location' || sourceNode.type === 'props') && sourceNode.data.reference_image){
+            imgUrl = sourceNode.data.reference_image;
+            const typeLabels = { character: '角色', location: '场景', props: '道具' };
+            imgLabel = `${typeLabels[sourceNode.type]}: ${sourceNode.data.name || ''}`;
+          }
+          
+          if(imgUrl){
             const item = document.createElement('div');
             item.className = 'reference-image-item';
             item.innerHTML = `
-              <img src="${imgUrl}" alt="参考图" />
+              <img src="${imgUrl}" alt="${imgLabel}" title="${imgLabel}" />
               <button class="reference-image-remove" data-conn-id="${conn.id}">×</button>
             `;
             
@@ -3586,27 +3592,32 @@
       referencePort.addEventListener('mouseup', (e) => {
         if(state.connecting && state.connecting.fromId !== id){
           const fromNode = state.nodes.find(n => n.id === state.connecting.fromId);
-          if(fromNode && fromNode.type === 'image'){
+          const allowedTypes = ['image', 'character', 'location', 'props'];
+          if(fromNode && allowedTypes.includes(fromNode.type)){
             // 检查是否已存在连接
             const exists = state.referenceConnections.some(c => c.from === state.connecting.fromId && c.to === id);
             if(!exists){
-              // 检查循环引用
-              function hasCircularReference(fromId, toId){
-                const visited = new Set();
-                function dfs(currentId){
-                  if(currentId === fromId) return true;
-                  if(visited.has(currentId)) return false;
-                  visited.add(currentId);
-                  const outgoing = state.referenceConnections.filter(c => c.from === currentId);
-                  for(const conn of outgoing){
-                    if(dfs(conn.to)) return true;
+              // 检查循环引用（仅对图片节点需要检查）
+              let isCircular = false;
+              if(fromNode.type === 'image'){
+                function hasCircularReference(fromId, toId){
+                  const visited = new Set();
+                  function dfs(currentId){
+                    if(currentId === fromId) return true;
+                    if(visited.has(currentId)) return false;
+                    visited.add(currentId);
+                    const outgoing = state.referenceConnections.filter(c => c.from === currentId);
+                    for(const conn of outgoing){
+                      if(dfs(conn.to)) return true;
+                    }
+                    return false;
                   }
-                  return false;
+                  return dfs(toId);
                 }
-                return dfs(toId);
+                isCircular = hasCircularReference(state.connecting.fromId, id);
               }
               
-              if(hasCircularReference(state.connecting.fromId, id)){
+              if(isCircular){
                 showToast('不能创建循环参考', 'error');
               } else {
                 // 检查参考图数量限制
@@ -3929,14 +3940,36 @@
             finalPrompt = `${finalPrompt}\n\n图片风格：${state.style.name}`;
           }
 
-          // 收集参考图URL
+          // 收集参考图URL和描述后缀
+          // 注意：原图占据图1，参考图从图2开始编号
           const referenceImageUrls = [];
+          const promptSuffix = [];
+          let refImageIndex = 2;
           const referenceConns = state.referenceConnections.filter(c => c.to === node.id);
           for(const conn of referenceConns){
             const refNode = state.nodes.find(n => n.id === conn.from);
-            if(refNode && refNode.data && refNode.data.url){
+            if(!refNode || !refNode.data) continue;
+            if(refNode.type === 'image' && refNode.data.url){
               referenceImageUrls.push(refNode.data.url);
+              refImageIndex++;
+            } else if(refNode.type === 'character' && refNode.data.reference_image){
+              referenceImageUrls.push(refNode.data.reference_image);
+              promptSuffix.push(`图${refImageIndex}是${refNode.data.name || '角色'}`);
+              refImageIndex++;
+            } else if(refNode.type === 'location' && refNode.data.reference_image){
+              referenceImageUrls.push(refNode.data.reference_image);
+              promptSuffix.push(`图${refImageIndex}是${refNode.data.name || '场景'}`);
+              refImageIndex++;
+            } else if(refNode.type === 'props' && refNode.data.reference_image){
+              referenceImageUrls.push(refNode.data.reference_image);
+              promptSuffix.push(`图${refImageIndex}是${refNode.data.name || '道具'}`);
+              refImageIndex++;
             }
+          }
+
+          // 将参考图描述追加到提示词末尾
+          if(promptSuffix.length > 0){
+            finalPrompt = `${finalPrompt}\n\n${promptSuffix.join('，')}。`;
           }
 
           const desiredCount = Math.max(1, Number(node.data.drawCount) || 1);
@@ -4364,9 +4397,9 @@
           <div class="field field-collapsible">
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
               <input type="checkbox" class="script-narration-as-dialogue" style="cursor: pointer;" />
-              <span>旁白视为对话</span>
+              <span>解说剧（仅旁白说话）</span>
             </label>
-            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">将剧本中的旁白内容视为角色"旁白"的对话</div>
+            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">将有角色对话的剧本转换为仅旁白解说的剧本格式</div>
           </div>
           <div class="field field-always-visible script-warning-field" style="display:none;">
             <div class="gen-meta" style="color: #f59e0b;">文件内容超过30000字符，已自动截取前30000字符。建议将剧本分段处理。</div>
@@ -4380,6 +4413,7 @@
             <select class="script-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
               <option value="auto" selected>智能模式 (根据分镜数自动选择)</option>
               <option value="gemini-2.5-pro-image-preview">标准版 (4宫格, 2算力/张)</option>
+              <option value="gemini-3-pro-4grid">加强版 (4宫格, 6算力/张)</option>
               <option value="gemini-3-pro-image-preview">加强版 (9宫格, 6算力/张)</option>
             </select>
           </div>
@@ -4497,7 +4531,7 @@
         node.data.splitMultiDialogue = splitMultiDialogueEl.checked;
       });
 
-      // 旁白视为对话选项监听
+      // 解说剧（仅旁白说话）选项监听
       narrationAsDialogueEl.addEventListener('change', () => {
         node.data.narrationAsDialogue = narrationAsDialogueEl.checked;
       });
@@ -4590,7 +4624,7 @@
         splitBtn.disabled = true;
         statusEl.style.display = 'block';
         statusEl.style.color = '#666';
-        statusEl.textContent = '正在调用LLM解析剧本...';
+        statusEl.textContent = node.data.narrationAsDialogue ? '正在将剧本转换为解说剧格式，再解析分镜...' : '正在调用LLM解析剧本...';
 
         try {
           const response = await fetch('/api/parse-script', {
@@ -4637,15 +4671,17 @@
               });
               
               const createdShotGroupNodes = [];
+              let cumulativeY = 0;
               result.data.shot_groups.forEach((shotGroup, index) => {
                 const offsetX = 400;
-                const offsetY = index * 465;
+                const shotCount = (shotGroup.shots && shotGroup.shots.length) || 1;
                 const shotGroupNodeId = createShotGroupNode({
                   x: node.x + offsetX,
-                  y: node.y + offsetY,
+                  y: node.y + cumulativeY,
                   shotGroupData: shotGroup,
                   scriptData: result.data
                 });
+                cumulativeY += shotCount * 700;
                 
                 // 创建从剧本节点到分镜组节点的连线
                 if(shotGroupNodeId) {
@@ -4804,8 +4840,13 @@
                 gridSize = 4;
                 gridLayout = '2x2';
                 finalModel = gridModel;
+              } else if(gridModel === 'gemini-3-pro-4grid') {
+                // 加强版4宫格：4宫格但使用加强版模型
+                gridSize = 4;
+                gridLayout = '2x2';
+                finalModel = 'gemini-3-pro-image-preview';
               } else {
-                // 加强版：固定9宫格，或因参考图数量强制升级
+                // 加强版9宫格，或因参考图数量强制升级
                 gridSize = 9;
                 gridLayout = '3x3';
                 finalModel = 'gemini-3-pro-image-preview';
@@ -4898,7 +4939,7 @@
                 form.append('auth_token', getAuthToken());
                 
                 if(finalModel === 'gemini-3-pro-image-preview') {
-                  form.append('image_size', '3840x2160');
+                  form.append('image_size', '4K');
                 }
                 
                 let apiUrl, res;
@@ -5016,7 +5057,7 @@
                           
                           try {
                             const splitResponse = await fetch(
-                              `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}`,
+                              `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${gridSize}`,
                               {
                                 headers: {
                                   'Authorization': getAuthToken(),
@@ -5115,7 +5156,7 @@
 
         gridStatusEl.style.display = 'block';
         gridStatusEl.style.color = '#666';
-        gridStatusEl.textContent = '正在调用LLM解析剧本...';
+        gridStatusEl.textContent = node.data.narrationAsDialogue ? '正在将剧本转换为解说剧格式，再解析分镜...' : '正在调用LLM解析剧本...';
 
         try {
           // 第一步：解析剧本
@@ -5168,15 +5209,17 @@
 
           // 创建分镜组节点
           const createdShotGroupNodes = [];
+          let cumulativeY = 0;
           result.data.shot_groups.forEach((shotGroup, index) => {
             const offsetX = 400;
-            const offsetY = index * 465;
+            const shotCount = (shotGroup.shots && shotGroup.shots.length) || 1;
             const shotGroupNodeId = createShotGroupNode({
               x: node.x + offsetX,
-              y: node.y + offsetY,
+              y: node.y + cumulativeY,
               shotGroupData: shotGroup,
               scriptData: result.data
             });
+            cumulativeY += shotCount * 700;
             
             if(shotGroupNodeId) {
               state.connections.push({
@@ -5263,8 +5306,13 @@
             gridSize = 4;
             gridLayout = '2x2';
             finalModel = gridModel;
+          } else if(gridModel === 'gemini-3-pro-4grid') {
+            // 加强版4宫格：4宫格但使用加强版模型
+            gridSize = 4;
+            gridLayout = '2x2';
+            finalModel = 'gemini-3-pro-image-preview';
           } else {
-            // 加强版：固定9宫格，或因参考图数量强制升级
+            // 加强版9宫格，或因参考图数量强制升级
             gridSize = 9;
             gridLayout = '3x3';
             finalModel = 'gemini-3-pro-image-preview';
@@ -5360,7 +5408,7 @@
             
             // 加强版模型需要传入4K图片大小
             if(finalModel === 'gemini-3-pro-image-preview') {
-              form.append('image_size', '3840x2160');
+              form.append('image_size', '4K');
             }
             
             let apiUrl, res;
@@ -5487,7 +5535,7 @@
                       try {
                         // 调用拆分接口
                         const splitResponse = await fetch(
-                          `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}`,
+                          `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${gridSize}`,
                           {
                             headers: {
                               'Authorization': getAuthToken(),
@@ -5664,6 +5712,7 @@
             <select class="shot-group-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
               <option value="auto">智能模式 (自动选择)</option>
               <option value="gemini-2.5-pro-image-preview">标准版 (4宫格, 2算力/张)</option>
+              <option value="gemini-3-pro-4grid">加强版 (4宫格, 6算力/张)</option>
               <option value="gemini-3-pro-image-preview">加强版 (9宫格, 6算力/张)</option>
             </select>
           </div>
@@ -6057,8 +6106,13 @@
           gridSize = 4;
           gridLayout = '2x2';
           finalModel = gridModel;
+        } else if(gridModel === 'gemini-3-pro-4grid') {
+          // 加强版4宫格：4宫格但使用加强版模型
+          gridSize = 4;
+          gridLayout = '2x2';
+          finalModel = 'gemini-3-pro-image-preview';
         } else {
-          // 加强版：固定9宫格，或因参考图数量强制升级
+          // 加强版9宫格，或因参考图数量强制升级
           gridSize = 9;
           gridLayout = '3x3';
           finalModel = 'gemini-3-pro-image-preview';
@@ -6151,7 +6205,7 @@
           form.append('auth_token', getAuthToken());
           
           if(finalModel === 'gemini-3-pro-image-preview') {
-            form.append('image_size', '3840x2160');
+            form.append('image_size', '4K');
           }
           
           let apiUrl, res;
@@ -6363,6 +6417,9 @@
         return [];
       }
 
+      // 按 shot_number 排序，确保分镜按顺序创建
+      shots.sort((a, b) => (a.shot_number || 0) - (b.shot_number || 0));
+
       // 获取已存在的分镜节点（通过连接关系查找）
       // 注意：只查找真实存在的节点，忽略已删除节点的连接
       const existingConnections = state.connections.filter(c => c.from === shotGroupNodeId);
@@ -6572,29 +6629,48 @@
             <div class="gen-meta">${escapeHtml(node.data.description)}</div>
             <div class="gen-meta" style="margin-top: 4px;">时长: ${node.data.duration}秒 | ${escapeHtml(node.data.shotType)} | ${escapeHtml(node.data.cameraMovement)}</div>
           </div>
-          <div class="field field-always-visible shot-frame-image-field" style="display:${node.data.imageUrl ? 'block' : 'none'};">
-            <img class="shot-frame-image" src="${node.data.imageUrl}" style="width: 100%; border-radius: 6px; cursor: pointer;" />
-          </div>
           <div class="field field-always-visible shot-frame-preview-field" style="position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div class="label" style="margin: 0;">视频首帧</div>
+              <div class="gen-container shot-frame-image-selector-container" style="display: none;">
+                <button class="mini-btn shot-frame-image-selector-btn" type="button" style="font-size: 11px; padding: 4px 8px; background: white; color: #333; border: 1px solid #ddd;">选择图片</button>
+                <button class="gen-btn-caret" type="button" aria-label="选择图片" style="font-size: 11px; padding: 4px 6px;">▾</button>
+                <div class="gen-menu shot-frame-image-menu"></div>
+              </div>
+            </div>
             <div class="port first-frame-port" title="连接图片节点（视频首帧）"></div>
             <img class="shot-frame-preview-image" src="${node.data.previewImageUrl || ''}" style="width: 100%; border-radius: 6px; cursor: pointer; display: ${node.data.previewImageUrl ? 'block' : 'none'};" />
           </div>
+          <div class="field field-always-visible shot-frame-image-field" style="display:${node.data.imageUrl ? 'block' : 'none'};">
+            <img class="shot-frame-image" src="${node.data.imageUrl}" style="width: 100%; border-radius: 6px; cursor: pointer;" />
+          </div>
           <div class="field field-collapsible">
+            <div class="shot-ref-section" style="position: relative;">
+              <div class="shot-ref-row">
+                <span class="shot-ref-label">场景</span>
+                <div class="shot-ref-tags shot-ref-scene-tags"></div>
+              </div>
+              <div class="shot-ref-row">
+                <span class="shot-ref-label">道具</span>
+                <div class="shot-ref-tags shot-ref-prop-tags"></div>
+              </div>
+              <div class="shot-ref-row">
+                <span class="shot-ref-label">角色</span>
+                <div class="shot-ref-tags shot-ref-char-tags"></div>
+              </div>
+            </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <div class="label" style="margin: 0;">图片提示词</div>
-              <button class="mini-btn shot-frame-image-expand-btn" type="button" style="font-size: 11px; padding: 4px 8px;" title="放大编辑">⤢</button>
+              <span style="font-size: 10px; color: #9ca3af;">点击编辑 | 按 / 选择角色</span>
             </div>
-            <textarea class="shot-frame-image-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.imagePrompt)}</textarea>
+            <textarea class="shot-frame-image-prompt" rows="3" readonly style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: none; cursor: pointer; background: #fafafa;">${escapeHtml(node.data.imagePrompt)}</textarea>
           </div>
           <div class="field field-collapsible">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <div class="label" style="margin: 0;">视频提示词</div>
-              <div style="display: flex; gap: 8px;">
-                <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">视频生成失败，请点此次按钮</button>
-                <button class="mini-btn shot-frame-video-expand-btn" type="button" style="font-size: 11px; padding: 4px 8px;" title="放大编辑">⤢</button>
-              </div>
+              <button class="mini-btn secondary reduce-violation-btn" type="button" style="font-size: 11px; padding: 4px 8px;">视频生成失败，请点此次按钮</button>
             </div>
-            <textarea class="shot-frame-video-prompt" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: vertical;">${escapeHtml(node.data.videoPromptText || node.data.videoPrompt)}</textarea>
+            <textarea class="shot-frame-video-prompt" rows="3" readonly style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; resize: none; cursor: pointer; background: #fafafa;">${escapeHtml(node.data.videoPromptText || node.data.videoPrompt)}</textarea>
           </div>
           <div class="field field-collapsible">
             <div class="label">分镜模型</div>
@@ -6618,17 +6694,6 @@
               <button class="gen-btn shot-frame-generate-dialogue-btn" type="button" style="background: #22c55e; color: white;" disabled>生成对话音频</button>
             </div>
             <div class="gen-meta shot-frame-draw-count-label"></div>
-          </div>
-          <div class="field field-collapsible">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <div class="label" style="margin: 0;">视频首帧</div>
-              <div class="gen-container shot-frame-image-selector-container" style="display: none;">
-                <button class="mini-btn shot-frame-image-selector-btn" type="button" style="font-size: 11px; padding: 4px 8px; background: white; color: #333; border: 1px solid #ddd;">选择图片</button>
-                <button class="gen-btn-caret" type="button" aria-label="选择图片" style="font-size: 11px; padding: 4px 6px;">▾</button>
-                <div class="gen-menu shot-frame-image-menu">
-                </div>
-              </div>
-            </div>
           </div>
           <div class="field field-collapsible">
             <div class="label">视频模型</div>
@@ -6680,8 +6745,6 @@
       const deleteBtn = el.querySelector('.icon-btn');
       const imagePromptEl = el.querySelector('.shot-frame-image-prompt');
       const videoPromptEl = el.querySelector('.shot-frame-video-prompt');
-      const imageExpandBtn = el.querySelector('.shot-frame-image-expand-btn');
-      const videoExpandBtn = el.querySelector('.shot-frame-video-expand-btn');
       const generateBtn = el.querySelector('.shot-frame-generate-btn');
       const generateDialogueBtn = el.querySelector('.shot-frame-generate-dialogue-btn');
       const imageEl = el.querySelector('.shot-frame-image');
@@ -6707,6 +6770,277 @@
       const videoModelEl = el.querySelector('.shot-frame-video-model');
       const computingPowerValue = el.querySelector('.shot-frame-computing-power-value');
       const computingPowerDetail = el.querySelector('.shot-frame-computing-power-detail');
+      const refSectionEl = el.querySelector('.shot-ref-section');
+      const sceneTagsEl = el.querySelector('.shot-ref-scene-tags');
+      const propTagsEl = el.querySelector('.shot-ref-prop-tags');
+      const charTagsEl = el.querySelector('.shot-ref-tags.shot-ref-char-tags');
+
+      // ============ 引用匹配与显示逻辑 ============
+
+      // 初始化引用数据（如果没有从保存数据恢复的话）
+      if(!node.data.refScene) {
+        // 从 shotJson.allLocationInfo 匹配场景
+        const locInfo = shotData.allLocationInfo;
+        if(Array.isArray(locInfo) && locInfo.length > 0) {
+          node.data.refScene = { id: locInfo[0].id, name: locInfo[0].name, pic: locInfo[0].pic };
+        } else if(locInfo && typeof locInfo === 'object' && !Array.isArray(locInfo) && locInfo.name) {
+          node.data.refScene = { id: locInfo.id, name: locInfo.name, pic: locInfo.pic };
+        } else {
+          node.data.refScene = null;
+        }
+      }
+
+      if(!node.data.refProps) {
+        // 从 shotJson.props_present + shotJson.scriptData.props 匹配脚本道具
+        const propsPresent = shotData.props_present || [];
+        const scriptProps = (shotData.scriptData && shotData.scriptData.props) ? shotData.scriptData.props : [];
+        node.data.refProps = [];
+        propsPresent.forEach(propId => {
+          const prop = scriptProps.find(p => p.id === propId);
+          if(prop) {
+            node.data.refProps.push({ id: prop.id, name: prop.name, props_db_id: prop.props_db_id || null });
+          }
+        });
+        // 合并用户在分镜组中手动添加的道具 (shot.props)
+        const userProps = shotData.props || [];
+        userProps.forEach(up => {
+          const alreadyExists = node.data.refProps.some(p => p.props_db_id === up.id || p.name === up.name);
+          if(!alreadyExists) {
+            node.data.refProps.push({ id: up.id, name: up.name, props_db_id: up.id || null });
+          }
+        });
+      }
+
+      if(!node.data.refCharacters) {
+        node.data.refCharacters = [];
+      }
+
+      // 从图片提示词中提取角色名
+      function extractCharacterNames(prompt) {
+        const pattern = /【【([^】]+)】】/g;
+        const names = [];
+        let m;
+        while((m = pattern.exec(prompt)) !== null) {
+          const name = m[1].trim();
+          if(name && !names.includes(name)) names.push(name);
+        }
+        return names;
+      }
+
+      // 初始匹配角色
+      node.data.refCharacters = extractCharacterNames(node.data.imagePrompt || '');
+
+      // 获取所有可用场景列表（从 state.worldLocations 获取）
+      function getAvailableLocations() {
+        return state.worldLocations || [];
+      }
+
+      // 获取所有可用道具列表（从 state.worldProps 获取）
+      function getAvailableProps() {
+        return state.worldProps || [];
+      }
+
+      // 关闭所有引用下拉菜单
+      function closeRefDropdowns() {
+        const dropdowns = refSectionEl.querySelectorAll('.shot-ref-dropdown');
+        dropdowns.forEach(d => d.remove());
+      }
+
+      // 渲染场景标签
+      function renderSceneTags() {
+        sceneTagsEl.innerHTML = '';
+        if(node.data.refScene && node.data.refScene.name) {
+          const tag = document.createElement('span');
+          tag.className = 'shot-ref-tag scene';
+          tag.title = node.data.refScene.name;
+          tag.innerHTML = `${escapeHtml(node.data.refScene.name)}<span class="ref-tag-remove" title="移除">×</span>`;
+          tag.querySelector('.ref-tag-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            node.data.refScene = null;
+            renderSceneTags();
+            try{ autoSaveWorkflow(); } catch(e){}
+          });
+          tag.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showSceneDropdown();
+          });
+          sceneTagsEl.appendChild(tag);
+        } else {
+          const addBtn = document.createElement('button');
+          addBtn.className = 'shot-ref-add-btn';
+          addBtn.title = '选择场景';
+          addBtn.textContent = '+';
+          addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showSceneDropdown();
+          });
+          sceneTagsEl.appendChild(addBtn);
+        }
+      }
+
+      // 显示场景选择下拉
+      function showSceneDropdown() {
+        closeRefDropdowns();
+        const locations = getAvailableLocations();
+        if(locations.length === 0) {
+          showToast('没有可用的场景数据', 'info');
+          return;
+        }
+        const dropdown = document.createElement('div');
+        dropdown.className = 'shot-ref-dropdown';
+        locations.forEach(loc => {
+          const item = document.createElement('div');
+          item.className = 'shot-ref-dropdown-item';
+          if(node.data.refScene && node.data.refScene.name === loc.name) {
+            item.classList.add('selected');
+          }
+          item.textContent = loc.name;
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            node.data.refScene = { id: loc.id, name: loc.name, pic: loc.reference_image || '' };
+            renderSceneTags();
+            closeRefDropdowns();
+            try{ autoSaveWorkflow(); } catch(e){}
+          });
+          dropdown.appendChild(item);
+        });
+        refSectionEl.appendChild(dropdown);
+
+        // 点击外部关闭
+        const closeHandler = (e) => {
+          if(!dropdown.contains(e.target)) {
+            dropdown.remove();
+            document.removeEventListener('click', closeHandler, true);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
+      }
+
+      // 渲染道具标签
+      function renderPropTags() {
+        propTagsEl.innerHTML = '';
+        // 过滤掉 state.worldProps 中不存在的道具
+        const worldProps = state.worldProps || [];
+        if(worldProps.length > 0) {
+          node.data.refProps = (node.data.refProps || []).filter(p => {
+            const dbId = p.props_db_id || p.id;
+            return worldProps.some(wp => wp.id === dbId || wp.name === p.name);
+          });
+        }
+        (node.data.refProps || []).forEach((prop, idx) => {
+          const tag = document.createElement('span');
+          tag.className = 'shot-ref-tag prop';
+          tag.title = prop.name;
+          tag.innerHTML = `${escapeHtml(prop.name)}<span class="ref-tag-remove" title="移除">×</span>`;
+          tag.querySelector('.ref-tag-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            node.data.refProps.splice(idx, 1);
+            renderPropTags();
+            try{ autoSaveWorkflow(); } catch(e){}
+          });
+          propTagsEl.appendChild(tag);
+        });
+        // 添加按钮
+        const addBtn = document.createElement('button');
+        addBtn.className = 'shot-ref-add-btn';
+        addBtn.title = '添加道具';
+        addBtn.textContent = '+';
+        addBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showPropDropdown();
+        });
+        propTagsEl.appendChild(addBtn);
+      }
+
+      // 显示道具选择下拉（多选）
+      function showPropDropdown() {
+        closeRefDropdowns();
+        const allProps = getAvailableProps();
+        if(allProps.length === 0) {
+          showToast('没有可用的道具数据', 'info');
+          return;
+        }
+        const selectedIds = (node.data.refProps || []).map(p => p.id);
+        const dropdown = document.createElement('div');
+        dropdown.className = 'shot-ref-dropdown';
+        allProps.forEach(prop => {
+          const isSelected = selectedIds.includes(prop.id);
+          const item = document.createElement('div');
+          item.className = 'shot-ref-dropdown-item' + (isSelected ? ' selected' : '');
+          item.textContent = (isSelected ? '✓ ' : '') + prop.name;
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if(isSelected) {
+              // 移除
+              node.data.refProps = node.data.refProps.filter(p => p.id !== prop.id);
+            } else {
+              // 添加
+              node.data.refProps.push({ id: prop.id, name: prop.name, props_db_id: prop.id, reference_image: prop.reference_image || '' });
+            }
+            renderPropTags();
+            closeRefDropdowns();
+            try{ autoSaveWorkflow(); } catch(e){}
+          });
+          dropdown.appendChild(item);
+        });
+        refSectionEl.appendChild(dropdown);
+
+        const closeHandler = (e) => {
+          if(!dropdown.contains(e.target)) {
+            dropdown.remove();
+            document.removeEventListener('click', closeHandler, true);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler, true), 0);
+      }
+
+      // 渲染角色标签（只读，自动从提示词匹配，仅显示 state.worldCharacters 中存在的角色）
+      function renderCharTags() {
+        charTagsEl.innerHTML = '';
+        const chars = node.data.refCharacters || [];
+        // 过滤：只保留在 state.worldCharacters 中真正存在的角色
+        const worldChars = state.worldCharacters || [];
+        const validChars = chars.filter(name => worldChars.some(wc => wc.name === name));
+        if(validChars.length === 0) {
+          const empty = document.createElement('span');
+          empty.className = 'shot-ref-tag empty';
+          empty.textContent = '无（在提示词中用【【角色名】】引用）';
+          charTagsEl.appendChild(empty);
+        } else {
+          validChars.forEach(name => {
+            const wc = worldChars.find(c => c.name === name);
+            const hasImage = wc && wc.reference_image;
+            const tag = document.createElement('span');
+            tag.className = 'shot-ref-tag character';
+            if(!hasImage) {
+              tag.style.cssText = 'border-color: #ef4444; color: #ef4444; background: #fef2f2;';
+              tag.title = `${name}（该角色没有参考图片）`;
+              tag.textContent = name + ' ⚠';
+            } else {
+              tag.title = name;
+              tag.textContent = name;
+            }
+            charTagsEl.appendChild(tag);
+          });
+        }
+      }
+
+      // 触发全部引用匹配并渲染
+      function updateShotReferences() {
+        // 重新匹配角色
+        node.data.refCharacters = extractCharacterNames(node.data.imagePrompt || '');
+        renderSceneTags();
+        renderPropTags();
+        renderCharTags();
+      }
+
+      // 暴露更新引用的方法供外部调用
+      node.updateReferences = updateShotReferences;
+
+      // 初始渲染
+      updateShotReferences();
+
+      // ============ 引用匹配与显示逻辑结束 ============
 
       // 设置模型选择器的初始值
       if(modelEl) modelEl.value = node.data.model;
@@ -6852,51 +7186,94 @@
       // 初始化算力显示
       updateVideoComputingPowerDisplay();
 
-      // 获取所有连接的图片节点（包括输出端口连接的和首帧连接的）
+      // 获取所有连接的图片节点（包括子图片和嵌套子图片，递归查找）
       function getConnectedImageNodes(){
-        // 从分镜节点的输出端口连接的图片节点（分镜节点 -> 图片节点）
-        const outputConnectedImages = state.connections
-          .filter(c => c.from === id)
-          .map(c => state.nodes.find(n => n.id === c.to))
-          .filter(n => n && n.type === 'image' && n.data.url);
+        const visited = new Set();
+        const result = [];
         
-        // 连接到分镜节点输出端口的图片节点（图片节点 -> 分镜节点右侧）
-        const inputConnectedImages = state.connections
-          .filter(c => c.to === id)
-          .map(c => state.nodes.find(n => n.id === c.from))
-          .filter(n => n && n.type === 'image' && n.data.url);
+        // 从指定节点出发，查找所有相连的图片节点
+        function collectImageNodes(nodeId) {
+          if(visited.has(nodeId)) return;
+          visited.add(nodeId);
+          
+          // 正向连接（from -> to）
+          const outNodes = state.connections
+            .filter(c => c.from === nodeId)
+            .map(c => state.nodes.find(n => n.id === c.to))
+            .filter(Boolean);
+          
+          // 反向连接（to <- from）
+          const inNodes = state.connections
+            .filter(c => c.to === nodeId)
+            .map(c => state.nodes.find(n => n.id === c.from))
+            .filter(Boolean);
+          
+          // 首帧连接
+          const ffNodes = state.firstFrameConnections
+            .filter(c => c.to === nodeId)
+            .map(c => state.nodes.find(n => n.id === c.from))
+            .filter(Boolean);
+          
+          const allConnected = [...outNodes, ...inNodes, ...ffNodes];
+          
+          for(const n of allConnected) {
+            if(n.type === 'image' && n.data.url && !visited.has(n.id)) {
+              result.push(n);
+              // 递归查找该图片节点的子图片
+              collectImageNodes(n.id);
+            }
+          }
+        }
         
-        // 通过首帧连接的图片节点
-        const firstFrameConnectedImages = state.firstFrameConnections
-          .filter(c => c.to === id)
-          .map(c => state.nodes.find(n => n.id === c.from))
-          .filter(n => n && n.type === 'image' && n.data.url);
-        
-        // 合并并去重
-        const allImages = [...outputConnectedImages, ...inputConnectedImages, ...firstFrameConnectedImages];
-        const uniqueImages = allImages.filter((img, index, self) => 
-          index === self.findIndex(i => i.id === img.id)
-        );
-        
-        return uniqueImages;
+        collectImageNodes(id);
+        return result;
       }
 
       // 更新图片选择菜单
       function updateImageSelectionMenu(){
         const connectedImageNodes = getConnectedImageNodes();
         
-        if(connectedImageNodes.length > 1 && imageMenu){
-          // 有多个图片节点，显示选择按钮
+        if(connectedImageNodes.length > 0 && imageMenu){
+          // 有图片节点时显示选择按钮
           imageSelectorContainer.style.display = 'flex';
           
           // 清空并重新填充菜单
           imageMenu.innerHTML = '';
+          
+          // 创建悬浮缩略图容器（共用一个）
+          let thumbTooltip = imageMenu.parentElement.querySelector('.image-thumb-tooltip');
+          if(!thumbTooltip){
+            thumbTooltip = document.createElement('div');
+            thumbTooltip.className = 'image-thumb-tooltip';
+            thumbTooltip.style.cssText = 'position: absolute; left: calc(100% + 8px); top: 0; width: 120px; height: 120px; border-radius: 6px; border: 1px solid #ddd; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden; display: none; z-index: 10001; pointer-events: none;';
+            const thumbImg = document.createElement('img');
+            thumbImg.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+            thumbTooltip.appendChild(thumbImg);
+            imageMenu.parentElement.style.position = 'relative';
+            imageMenu.parentElement.appendChild(thumbTooltip);
+          }
+          const thumbImg = thumbTooltip.querySelector('img');
+          
           connectedImageNodes.forEach((imgNode, index) => {
             const menuItem = document.createElement('div');
             menuItem.className = 'gen-item';
+            menuItem.style.cssText = 'position: relative; cursor: pointer;';
             menuItem.textContent = imgNode.title || imgNode.data.name || `图片${index + 1}`;
             menuItem.dataset.nodeId = imgNode.id;
             imageMenu.appendChild(menuItem);
+            
+            // hover 时显示缩略图
+            menuItem.addEventListener('mouseenter', () => {
+              thumbImg.src = proxyImageUrl(imgNode.data.url);
+              thumbTooltip.style.display = 'block';
+              // 计算 tooltip 位置跟随菜单项
+              const itemRect = menuItem.getBoundingClientRect();
+              const parentRect = imageMenu.parentElement.getBoundingClientRect();
+              thumbTooltip.style.top = (itemRect.top - parentRect.top) + 'px';
+            });
+            menuItem.addEventListener('mouseleave', () => {
+              thumbTooltip.style.display = 'none';
+            });
             
             menuItem.addEventListener('click', (e) => {
               e.stopPropagation();
@@ -6904,6 +7281,7 @@
               previewImageEl.src = proxyImageUrl(imgNode.data.url);
               previewImageEl.style.display = 'block';
               imageMenu.classList.remove('show');
+              thumbTooltip.style.display = 'none';
               
               // 更新首帧连接：删除旧连接，创建新连接
               state.firstFrameConnections = state.firstFrameConnections.filter(c => c.to !== id);
@@ -6918,7 +7296,7 @@
             });
           });
         } else {
-          // 只有一个或没有图片节点，隐藏选择按钮
+          // 没有图片节点，隐藏选择按钮
           imageSelectorContainer.style.display = 'none';
         }
       }
@@ -6928,16 +7306,14 @@
         const connectedImageNodes = getConnectedImageNodes();
 
         if(connectedImageNodes.length > 0){
-          // 如果已有预览图URL且该图片仍然存在，保持不变
-          const existingImage = connectedImageNodes.find(n => n.data.url === node.data.previewImageUrl);
-          
-          if(!existingImage){
-            // 否则选择第一个或随机一个
+          // 如果分镜节点已有预览图，不自动替换
+          if(!node.data.previewImageUrl){
+            // 没有预览图时，自动选择一个
             const imageNode = connectedImageNodes.length === 1 
               ? connectedImageNodes[0]
               : connectedImageNodes[Math.floor(Math.random() * connectedImageNodes.length)];
             
-            console.log(`[分镜节点 ${id}] 选择图片节点 ${imageNode.id}，URL:`, imageNode.data.url);
+            console.log(`[分镜节点 ${id}] 自动选择图片节点 ${imageNode.id}，URL:`, imageNode.data.url);
             node.data.previewImageUrl = imageNode.data.url;
           }
           
@@ -7096,24 +7472,17 @@
         initNodeDrag(id, e.clientX, e.clientY);
       });
 
-      imagePromptEl.addEventListener('input', () => {
-        node.data.imagePrompt = imagePromptEl.value;
-      });
-
-      videoPromptEl.addEventListener('input', () => {
-        node.data.videoPromptText = videoPromptEl.value;
-      });
-
-      // 图片提示词放大按钮
-      imageExpandBtn.addEventListener('click', (e) => {
+      // 点击图片提示词textarea直接打开放大编辑窗口
+      imagePromptEl.addEventListener('click', (e) => {
         e.stopPropagation();
         showPromptExpandModal(imagePromptEl, '图片提示词', (newValue) => {
           node.data.imagePrompt = newValue;
-        });
+          updateShotReferences();
+        }, { enableCharacterDropdown: true, nodeId: id });
       });
 
-      // 视频提示词放大按钮
-      videoExpandBtn.addEventListener('click', (e) => {
+      // 点击视频提示词textarea直接打开放大编辑窗口
+      videoPromptEl.addEventListener('click', (e) => {
         e.stopPropagation();
         showPromptExpandModal(videoPromptEl, '视频提示词', (newValue) => {
           node.data.videoPromptText = newValue;
@@ -7548,7 +7917,7 @@
       expandTextarea.setSelectionRange(expandTextarea.value.length, expandTextarea.value.length);
     }
 
-    function showPromptExpandModal(textareaEl, title, onUpdate) {
+    function showPromptExpandModal(textareaEl, title, onUpdate, opts) {
       const modal = document.createElement('div');
       modal.className = 'modal-overlay';
       modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
@@ -7564,6 +7933,7 @@
           <button class="modal-close-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
         </div>
         <textarea class="expand-textarea" placeholder="在此输入${escapeHtml(title)}" style="flex: 1; width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; resize: none; min-height: 400px;">${escapeHtml(currentContent)}</textarea>
+        ${opts && opts.enableCharacterDropdown ? '<div style="margin-top: 8px; font-size: 12px; color: #9ca3af;">💡 按 <kbd style="background: #f3f4f6; padding: 1px 6px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 11px;">/</kbd> 可选择角色插入到提示词中</div>' : ''}
         <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;">
           <button class="modal-cancel-btn" style="padding: 8px 20px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; font-size: 14px;">取消</button>
           <button class="modal-confirm-btn" style="padding: 8px 20px; border: none; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer; font-size: 14px;">确定</button>
@@ -7605,6 +7975,22 @@
         closeModal();
         showToast(`${title}已更新`, 'success');
       });
+
+      // 支持 / 键触发角色列表（仅分镜节点图片提示词放大窗口）
+      if(opts && opts.enableCharacterDropdown && opts.nodeId != null){
+        expandTextarea.addEventListener('keydown', (e) => {
+          if(e.key === '/') {
+            e.preventDefault();
+            showCharacterDropdownForImagePrompt(opts.nodeId, expandTextarea, expandTextarea.selectionStart);
+          }
+        });
+        expandTextarea.addEventListener('input', () => {
+          hideCharacterDropdownForImagePrompt(opts.nodeId);
+        });
+        expandTextarea.addEventListener('blur', () => {
+          setTimeout(() => hideCharacterDropdownForImagePrompt(opts.nodeId), 200);
+        });
+      }
 
       // 自动聚焦到文本框末尾
       expandTextarea.focus();
@@ -7801,11 +8187,21 @@
                 const canvasEl = document.getElementById('canvas');
                 const videoNodeEl = canvasEl ? canvasEl.querySelector(`.node[data-node-id="${videoNodeId}"]`) : null;
                 if(videoNodeEl){
-                  const videoEl = videoNodeEl.querySelector('.video-preview');
-                  if(videoEl){
-                    videoEl.src = proxyVideoUrl(videoUrls[index]);
-                    videoEl.style.display = 'block';
+                  const previewField = videoNodeEl.querySelector('.video-preview-field');
+                  const thumbVideo = videoNodeEl.querySelector('.video-thumb');
+                  const nameEl = videoNodeEl.querySelector('.video-name');
+                  if(previewField && thumbVideo){
+                    thumbVideo.src = proxyDownloadUrl(videoUrls[index]);
+                    thumbVideo.muted = true;
+                    thumbVideo.loop = true;
+                    if(nameEl){
+                      const displayName = (videoNode.data.name || '').length > 10 ? videoNode.data.name.substring(0, 10) + '...' : (videoNode.data.name || '');
+                      nameEl.textContent = displayName;
+                    }
+                    previewField.style.display = 'block';
                   }
+                  const previewActionsField = videoNodeEl.querySelector('.video-preview-actions-field');
+                  if(previewActionsField) previewActionsField.style.display = 'block';
                 }
                 
                 console.log(`[分镜组视频] 视频节点 ${videoNodeId} 更新URL:`, videoUrls[index]);
@@ -7836,4 +8232,99 @@
           generateBtn.disabled = false;
         }
       }
+    }
+
+    // 显示角色选择下拉框（用于图片提示词，使用 state.worldCharacters）
+    function showCharacterDropdownForImagePrompt(nodeId, textarea, cursorPos) {
+      const dropdownId = `character-dropdown-imageprompt-${nodeId}`;
+      let dropdown = document.getElementById(dropdownId);
+      
+      // 如果下拉框不存在，创建一个
+      if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.id = dropdownId;
+        dropdown.className = 'character-dropdown';
+        dropdown.style.cssText = 'display: none; position: absolute; background: white; border: 1px solid #e5e7eb; border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%;';
+        textarea.parentNode.style.position = 'relative';
+        textarea.parentNode.appendChild(dropdown);
+      }
+      
+      const worldId = state.defaultWorldId;
+      if (!worldId) {
+        dropdown.innerHTML = '<div style="padding: 8px; color: #6b7280; font-size: 12px;">请先选择世界</div>';
+        dropdown.style.display = 'block';
+        return;
+      }
+      
+      const characters = state.worldCharacters || [];
+      if (characters.length > 0) {
+        dropdown.innerHTML = characters.map(char => {
+          const hasImage = !!char.reference_image;
+          const warningStyle = hasImage ? '' : 'background: #fef2f2; border-left: 3px solid #ef4444;';
+          const nameStyle = hasImage ? 'color: #374151;' : 'color: #ef4444;';
+          const warningText = hasImage ? '' : '<span style="font-size: 10px; color: #ef4444; margin-left: 4px;">无参考图</span>';
+          return `
+            <div class="character-dropdown-item" data-character-name="${escapeHtml(char.name)}" style="padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #f3f4f6; ${warningStyle}">
+              ${hasImage ? `<img src="${char.reference_image}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px;" />` : '<div style="width: 24px; height: 24px; background: #fee2e2; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #ef4444;">!</div>'}
+              <span style="font-size: 12px; ${nameStyle}">${escapeHtml(char.name)}${warningText}</span>
+            </div>
+          `;
+        }).join('');
+        
+        // 绑定点击事件
+        dropdown.querySelectorAll('.character-dropdown-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const charName = item.dataset.characterName;
+            insertCharacterAtCursorForImagePrompt(textarea, charName);
+            hideCharacterDropdownForImagePrompt(nodeId);
+          });
+          
+          item.addEventListener('mouseenter', () => {
+            item.style.background = item.style.borderLeft ? '#fef2f2' : '#f8fafc';
+          });
+          item.addEventListener('mouseleave', () => {
+            item.style.background = item.style.borderLeft ? '#fef2f2' : '';
+          });
+        });
+        
+        // 定位下拉框在textarea下方
+        dropdown.style.top = (textarea.offsetHeight) + 'px';
+        dropdown.style.left = '0';
+        dropdown.style.right = '0';
+        dropdown.style.display = 'block';
+      } else {
+        dropdown.innerHTML = '<div style="padding: 8px; color: #6b7280; font-size: 12px;">暂无角色</div>';
+        dropdown.style.display = 'block';
+      }
+    }
+
+    // 隐藏角色选择下拉框（图片提示词用）
+    function hideCharacterDropdownForImagePrompt(nodeId) {
+      const dropdown = document.getElementById(`character-dropdown-imageprompt-${nodeId}`);
+      if (dropdown) {
+        dropdown.style.display = 'none';
+      }
+    }
+
+    // 在光标位置插入角色名（包裹在【【】】中）
+    function insertCharacterAtCursorForImagePrompt(textarea, charName) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+      
+      // / 已被 keydown 拦截不会出现在文本中，直接在光标位置插入
+      const before = value.substring(0, start);
+      const after = value.substring(end);
+      const insertText = '【【' + charName + '】】';
+      const newValue = before + insertText + after;
+      
+      textarea.value = newValue;
+      
+      // 设置光标位置到插入的角色名之后
+      const newCursorPos = start + insertText.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      textarea.focus();
+      
+      // 手动触发 input 事件，以更新 node.data 和引用标签
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }

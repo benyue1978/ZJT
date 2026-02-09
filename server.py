@@ -332,6 +332,12 @@ async def _check_history_for_images(server: str, prompt_id: str) -> List[str]:
         return []
 
 
+def _sync_write_file(path: str, data: bytes):
+    """同步写入文件，供 asyncio.to_thread 调用"""
+    with open(path, "wb") as f:
+        f.write(data)
+
+
 @app.post("/api/qwen-image-edit")
 async def qwen_image_edit(
     image: UploadFile = File(...),
@@ -2693,7 +2699,8 @@ async def video_enhance(
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             # Check if computing power is sufficient
-            success, message, response_data = make_perseids_request(
+            success, message, response_data = await asyncio.to_thread(
+                make_perseids_request,
                 endpoint='user/check_computing_power',
                 method='GET',
                 headers=headers
@@ -2729,8 +2736,7 @@ async def video_enhance(
             os.makedirs(UPLOAD_DIR, exist_ok=True)
             video_filename = f"{uuid.uuid4()}_{video.filename}"
             local_video_path = os.path.join(UPLOAD_DIR, video_filename)
-            with open(local_video_path, "wb") as f:
-                f.write(file_bytes)
+            await asyncio.to_thread(_sync_write_file, local_video_path, file_bytes)
             
             # Create accessible URL for frontend
             final_video_url = f"{SERVER_HOST}/upload/{video_filename}"
@@ -2752,7 +2758,8 @@ async def video_enhance(
                 "description": "video"
             }]
 
-            result = run_ai_app_task(
+            result = await asyncio.to_thread(
+                run_ai_app_task,
                 "1989206149524238338",  # webappId for video enhancement
                 "9549532f3c3d435ebe5e1ca78dcac1e8",  # apiKey
                 node_info_list,
@@ -2779,7 +2786,8 @@ async def video_enhance(
         
         # Deduct computing power
         if CHECK_AUTH_TOKEN:
-            success, message, response_data = make_perseids_request(
+            success, message, response_data = await asyncio.to_thread(
+                make_perseids_request,
                 endpoint='user/calculate_computing_power',
                 method='POST',
                 headers=headers,
@@ -2796,7 +2804,8 @@ async def video_enhance(
         # Create database record
         if user_id:
             try:
-                AIToolsModel.create(
+                await asyncio.to_thread(
+                    AIToolsModel.create,
                     prompt="视频高清修复",
                     user_id=user_id,
                     type=enhance_type,  # Use provided enhance_type
@@ -4210,12 +4219,40 @@ async def poll_workflow_node_status(
                     logger.error(f"Failed to query ai_tool for project_id {project_id}: {e}")
                     continue
         
+        # 查询当前世界的 characters、props、locations 列表
+        world_id = getattr(workflow, 'default_world_id', None)
+        characters = []
+        props_list = []
+        locations = []
+        
+        if world_id:
+            try:
+                char_result = CharacterModel.list_by_world(world_id=world_id, page=1, page_size=200)
+                characters = char_result.get('data', [])
+            except Exception as e:
+                logger.error(f"Failed to query characters for world {world_id}: {e}")
+            
+            try:
+                props_result = PropsModel.list_by_world(world_id=world_id, page=1, page_size=200)
+                props_list = props_result.get('data', [])
+            except Exception as e:
+                logger.error(f"Failed to query props for world {world_id}: {e}")
+            
+            try:
+                loc_result = LocationModel.list_by_world(world_id=world_id, page=1, page_size=200)
+                locations = loc_result.get('data', [])
+            except Exception as e:
+                logger.error(f"Failed to query locations for world {world_id}: {e}")
+        
         return JSONResponse({
             "code": 0,
             "message": "success",
             "data": {
                 "updated_nodes": updated_nodes,
-                "total": len(updated_nodes)
+                "total": len(updated_nodes),
+                "characters": characters,
+                "props": props_list,
+                "locations": locations
             }
         })
         
@@ -4273,7 +4310,8 @@ async def get_grid_split_image(
     ai_tools_id: int,
     grid_index: int = Query(..., ge=1, le=9, description="宫格位置，1-4或1-9"),
     user_id: int = Query(...),
-    auth_token: Optional[str] = Query(None)
+    auth_token: Optional[str] = Query(None),
+    grid_size: Optional[int] = Query(None, description="宫格大小，4或9。未传时根据type推断")
 ):
     """
     获取宫格图片的指定位置拆分图
@@ -4318,8 +4356,10 @@ async def get_grid_split_image(
             )
         
         # 5. 确定宫格大小
-        # type=1: 标准版，4宫格；type=7: 加强版，9宫格
-        grid_size = 4 if ai_tool.type == 1 else 9
+        # 优先使用前端传入的grid_size（因为type=7可能是4宫格或9宫格）
+        # 未传时降级为按type推断：type=1→4宫格，type=7→9宫格
+        if grid_size not in (4, 9):
+            grid_size = 4 if ai_tool.type == 1 else 9
         
         if grid_index < 1 or grid_index > grid_size:
             return JSONResponse(
@@ -6591,6 +6631,65 @@ async def get_mp_verify_file():
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Verification file not found")
     return FileResponse(file_path, media_type="text/plain")
+
+
+@app.get("/robots.txt")
+async def get_robots_txt():
+    """
+    Serve robots.txt for search engine crawlers.
+    Allows all crawlers to access all parts of the site.
+    """
+    content = """User-agent: *
+Allow: /
+
+Sitemap: /sitemap.xml
+"""
+    return StreamingResponse(
+        BytesIO(content.encode('utf-8')),
+        media_type="text/plain",
+        headers={"Content-Type": "text/plain; charset=utf-8"}
+    )
+
+
+@app.get("/sitemap.xml")
+async def get_sitemap_xml():
+    """
+    Serve sitemap.xml for search engine crawlers.
+    Lists all main pages of the application.
+    """
+    base_url = SERVER_HOST.rstrip('/')
+    base_url = base_url + '/'  # 确保末尾有一个斜杠
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    urls = [
+        ("", "1.0"),
+        ("video-workflow-list", "0.9"),
+        ("video-workflow", "0.9"),
+        ("image-style-guide", "0.8"),
+        ("character_card.html", "0.8"),
+    ]
+    
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+"""
+    
+    for path, priority in urls:
+        full_url = f"{base_url}{path}" if path else base_url.rstrip('/')
+        xml_content += f"""    <url>
+        <loc>{full_url}</loc>
+        <lastmod>{today}</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>{priority}</priority>
+    </url>
+"""
+    
+    xml_content += "</urlset>"
+    
+    return StreamingResponse(
+        BytesIO(xml_content.encode('utf-8')),
+        media_type="application/xml",
+        headers={"Content-Type": "application/xml; charset=utf-8"}
+    )
 
 # Serve frontend static files
 static_dir = os.path.join(APP_DIR, "web")

@@ -173,101 +173,38 @@ async function generateShotFrameImage(nodeId, node){
       }
     }
     
-    // 3. 添加场景参考图
-    const shotData = node.data.shotJson || {};
+    // 3. 添加场景参考图（从 node.data.refScene + state.worldLocations 获取）
+    if(node.data.refScene && node.data.refScene.id){
+      const loc = (state.worldLocations || []).find(l => l.id === node.data.refScene.id);
+      const refImage = (loc && loc.reference_image) || node.data.refScene.pic || '';
+      if(refImage){
+        referenceImageUrls.push(refImage);
+        const locationName = (loc && loc.name) || node.data.refScene.name || '场景';
+        promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
+        imageIndex++;
+        console.log(`[场景匹配] 成功添加场景参考图: ${locationName}`);
+      } else {
+        console.warn(`[场景匹配] 场景“${node.data.refScene.name}”无参考图`);
+      }
+    }
     
-    if(shotData.db_location_id){
-      try {
-        const userId = localStorage.getItem('user_id') || '1';
-        const authToken = localStorage.getItem('auth_token') || '';
-        
-        console.log(`[场景匹配] 开始调用API获取场景 (ID: ${shotData.db_location_id})`);
-        const response = await fetch(`/api/location/${shotData.db_location_id}`, {
-          headers: {
-            'Authorization': authToken,
-            'X-User-Id': userId
-          }
-        });
-        
-        console.log(`[场景匹配] API响应状态: ${response.status}, ok: ${response.ok}`);
-        if(response.ok){
-          const result = await response.json();
-          console.log(`[场景匹配] 场景查询结果:`, result);
-          if(result.code === 0 && result.data && result.data.reference_image){
-            console.log(`[场景匹配] 场景有参考图: ${result.data.reference_image}`);
-            // 直接收集场景参考图 URL
-            referenceImageUrls.push(result.data.reference_image);
-            const locationName = result.data.name || shotData.location_name || '场景';
-            promptSuffix.push(`图${imageIndex}是${locationName}所在地点`);
-            imageIndex++;
-            console.log(`[场景匹配] 成功添加场景参考图: ${locationName}`);
-          } else {
-            console.warn(`[场景匹配] 数据结构不符合预期或无参考图`);
-          }
+    // 4. 添加道具参考图（从 node.data.refProps + state.worldProps 获取）
+    const refProps = node.data.refProps || [];
+    if(refProps.length > 0){
+      console.log('[生成分镜图] 检测到引用道具:', refProps.map(p => p.name));
+      for(const refProp of refProps){
+        const propDbId = refProp.props_db_id || refProp.id;
+        // 优先从 state.worldProps 获取最新数据（包含最新的 reference_image）
+        const worldProp = (state.worldProps || []).find(p => p.id === propDbId);
+        const refImage = (worldProp && worldProp.reference_image) || refProp.reference_image || '';
+        if(refImage){
+          referenceImageUrls.push(refImage);
+          const propName = (worldProp && worldProp.name) || refProp.name;
+          promptSuffix.push(`图${imageIndex}是${propName}`);
+          imageIndex++;
+          console.log(`[道具匹配] 成功添加道具参考图: ${propName}`);
         } else {
-          console.error(`[场景匹配] API调用失败: ${response.status}`);
-        }
-      } catch(error){
-        console.error('添加场景参考图失败:', error);
-      }
-    }
-    
-    // 4. 添加道具参考图
-    const propsPresent = shotData.props_present || [];
-    if(propsPresent.length > 0){
-      console.log('[生成分镜图] 检测到道具列表:', propsPresent);
-      console.log('[生成分镜图] shotData.scriptData 存在:', !!shotData.scriptData);
-      console.log('[生成分镜图] shotData.scriptData.props:', shotData.scriptData?.props);
-      
-      if(!shotData.scriptData || !shotData.scriptData.props){
-        console.warn('[生成分镜图] 警告: shotData.scriptData 或 scriptData.props 不存在，无法获取道具信息');
-      }
-    }
-    
-    if(propsPresent.length > 0 && shotData.scriptData && shotData.scriptData.props){
-      console.log('[生成分镜图] 进入道具处理逻辑');
-      const scriptProps = shotData.scriptData.props;
-      console.log('[生成分镜图] scriptProps:', scriptProps);
-      
-      for(const propId of propsPresent){
-        console.log(`[生成分镜图] 处理道具ID: ${propId}`);
-        const prop = scriptProps.find(p => p.id === propId);
-        console.log(`[生成分镜图] 找到的道具:`, prop);
-        if(prop && prop.props_db_id){
-          console.log(`[生成分镜图] 道具有 props_db_id: ${prop.props_db_id}`);
-          // 从数据库获取道具的参考图
-          try {
-            const userId = localStorage.getItem('user_id') || '1';
-            const authToken = localStorage.getItem('auth_token') || '';
-            
-            console.log(`[道具匹配] 开始调用API获取道具 ${prop.name} (ID: ${prop.props_db_id})`);
-            const response = await fetch(`/api/props/${prop.props_db_id}`, {
-              headers: {
-                'Authorization': authToken,
-                'X-User-Id': userId
-              }
-            });
-            
-            console.log(`[道具匹配] API响应状态: ${response.status}, ok: ${response.ok}`);
-            if(response.ok){
-              const result = await response.json();
-              console.log(`[道具匹配] 道具"${prop.name}"查询结果:`, result);
-              if(result.code === 0 && result.data && result.data.reference_image){
-                console.log(`[道具匹配] 道具有参考图: ${result.data.reference_image}`);
-                // 直接收集道具参考图 URL
-                referenceImageUrls.push(result.data.reference_image);
-                promptSuffix.push(`图${imageIndex}是${prop.name}`);
-                imageIndex++;
-                console.log(`[道具匹配] 成功添加道具参考图: ${prop.name}`);
-              } else {
-                console.warn(`[道具匹配] 数据结构不符合预期或无参考图`);
-              }
-            } else {
-              console.error(`[道具匹配] API调用失败: ${response.status}`);
-            }
-          } catch(error){
-            console.error(`[道具匹配] 添加道具 ${prop.name} 参考图失败:`, error);
-          }
+          console.warn(`[道具匹配] 道具“${refProp.name}”无参考图`);
         }
       }
     }
