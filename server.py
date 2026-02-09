@@ -4310,7 +4310,8 @@ async def get_grid_split_image(
     ai_tools_id: int,
     grid_index: int = Query(..., ge=1, le=9, description="宫格位置，1-4或1-9"),
     user_id: int = Query(...),
-    auth_token: Optional[str] = Query(None)
+    auth_token: Optional[str] = Query(None),
+    grid_size: Optional[int] = Query(None, description="宫格大小，4或9。未传时根据type推断")
 ):
     """
     获取宫格图片的指定位置拆分图
@@ -4355,8 +4356,10 @@ async def get_grid_split_image(
             )
         
         # 5. 确定宫格大小
-        # type=1: 标准版，4宫格；type=7: 加强版，9宫格
-        grid_size = 4 if ai_tool.type == 1 else 9
+        # 优先使用前端传入的grid_size（因为type=7可能是4宫格或9宫格）
+        # 未传时降级为按type推断：type=1→4宫格，type=7→9宫格
+        if grid_size not in (4, 9):
+            grid_size = 4 if ai_tool.type == 1 else 9
         
         if grid_index < 1 or grid_index > grid_size:
             return JSONResponse(

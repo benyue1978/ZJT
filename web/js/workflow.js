@@ -1486,7 +1486,7 @@
               try {
                 console.log(`[轮询] 调用拆分接口: aiToolsId=${aiToolsId}, gridIndex=${gridIndex}`);
                 const splitResponse = await fetch(
-                  `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}`,
+                  `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${node.data.gridSize}`,
                   {
                     headers: {
                       'Authorization': getAuthToken(),

@@ -4374,6 +4374,7 @@
             <select class="script-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
               <option value="auto" selected>智能模式 (根据分镜数自动选择)</option>
               <option value="gemini-2.5-pro-image-preview">标准版 (4宫格, 2算力/张)</option>
+              <option value="gemini-3-pro-4grid">加强版 (4宫格, 6算力/张)</option>
               <option value="gemini-3-pro-image-preview">加强版 (9宫格, 6算力/张)</option>
             </select>
           </div>
@@ -4800,8 +4801,13 @@
                 gridSize = 4;
                 gridLayout = '2x2';
                 finalModel = gridModel;
+              } else if(gridModel === 'gemini-3-pro-4grid') {
+                // 加强版4宫格：4宫格但使用加强版模型
+                gridSize = 4;
+                gridLayout = '2x2';
+                finalModel = 'gemini-3-pro-image-preview';
               } else {
-                // 加强版：固定9宫格，或因参考图数量强制升级
+                // 加强版9宫格，或因参考图数量强制升级
                 gridSize = 9;
                 gridLayout = '3x3';
                 finalModel = 'gemini-3-pro-image-preview';
@@ -4894,7 +4900,7 @@
                 form.append('auth_token', getAuthToken());
                 
                 if(finalModel === 'gemini-3-pro-image-preview') {
-                  form.append('image_size', '3840x2160');
+                  form.append('image_size', '4K');
                 }
                 
                 let apiUrl, res;
@@ -5012,7 +5018,7 @@
                           
                           try {
                             const splitResponse = await fetch(
-                              `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}`,
+                              `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${gridSize}`,
                               {
                                 headers: {
                                   'Authorization': getAuthToken(),
@@ -5261,8 +5267,13 @@
             gridSize = 4;
             gridLayout = '2x2';
             finalModel = gridModel;
+          } else if(gridModel === 'gemini-3-pro-4grid') {
+            // 加强版4宫格：4宫格但使用加强版模型
+            gridSize = 4;
+            gridLayout = '2x2';
+            finalModel = 'gemini-3-pro-image-preview';
           } else {
-            // 加强版：固定9宫格，或因参考图数量强制升级
+            // 加强版9宫格，或因参考图数量强制升级
             gridSize = 9;
             gridLayout = '3x3';
             finalModel = 'gemini-3-pro-image-preview';
@@ -5358,7 +5369,7 @@
             
             // 加强版模型需要传入4K图片大小
             if(finalModel === 'gemini-3-pro-image-preview') {
-              form.append('image_size', '3840x2160');
+              form.append('image_size', '4K');
             }
             
             let apiUrl, res;
@@ -5485,7 +5496,7 @@
                       try {
                         // 调用拆分接口
                         const splitResponse = await fetch(
-                          `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}`,
+                          `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${gridSize}`,
                           {
                             headers: {
                               'Authorization': getAuthToken(),
@@ -5662,6 +5673,7 @@
             <select class="shot-group-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
               <option value="auto">智能模式 (自动选择)</option>
               <option value="gemini-2.5-pro-image-preview">标准版 (4宫格, 2算力/张)</option>
+              <option value="gemini-3-pro-4grid">加强版 (4宫格, 6算力/张)</option>
               <option value="gemini-3-pro-image-preview">加强版 (9宫格, 6算力/张)</option>
             </select>
           </div>
@@ -6055,8 +6067,13 @@
           gridSize = 4;
           gridLayout = '2x2';
           finalModel = gridModel;
+        } else if(gridModel === 'gemini-3-pro-4grid') {
+          // 加强版4宫格：4宫格但使用加强版模型
+          gridSize = 4;
+          gridLayout = '2x2';
+          finalModel = 'gemini-3-pro-image-preview';
         } else {
-          // 加强版：固定9宫格，或因参考图数量强制升级
+          // 加强版9宫格，或因参考图数量强制升级
           gridSize = 9;
           gridLayout = '3x3';
           finalModel = 'gemini-3-pro-image-preview';
@@ -6149,7 +6166,7 @@
           form.append('auth_token', getAuthToken());
           
           if(finalModel === 'gemini-3-pro-image-preview') {
-            form.append('image_size', '3840x2160');
+            form.append('image_size', '4K');
           }
           
           let apiUrl, res;
