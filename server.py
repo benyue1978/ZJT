@@ -56,6 +56,7 @@ from config.constant import (
 )
 from utils.wechat_pay_util import WechatPayUtil
 from utils.image_grid_splitter import ImageGridSplitter
+from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
 
 def _get_user_id_from_header(user_id: Optional[int]) -> int:
@@ -4510,6 +4511,57 @@ async def get_grid_split_image(
         return JSONResponse(
             status_code=500,
             content={"code": -1, "message": f"获取拆分图片失败: {str(e)}"}
+        )
+
+
+class MergeGridRequest(BaseModel):
+    image_urls: List[str]
+    black_indices: List[int] = []
+    grid_size: int
+
+
+@app.post('/api/images/merge-grid')
+async def merge_grid_images(
+    request: MergeGridRequest,
+    x_user_id: Optional[int] = Header(None, alias="X-User-Id"),
+    authorization: Optional[str] = Header(None)
+):
+    """
+    将多张图片合并为 n×n 宫格图片。
+
+    - grid_size 必须是 4、9、16、25 中的一个
+    - image_urls 长度必须等于 grid_size
+    - black_indices 中的位置将保持全黑
+    - 所有非黑色位置的图片尺寸必须相同
+    """
+    try:
+        user_id = _get_user_id_from_header(x_user_id)
+
+        merger = ImageGridMerger(upload_dir=UPLOAD_DIR, server_host=SERVER_HOST)
+        result = await merger.merge_images(
+            image_urls=request.image_urls,
+            grid_size=request.grid_size,
+            black_indices=request.black_indices,
+        )
+
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": result
+        })
+
+    except ValueError as e:
+        logger.warning(f"merge-grid 参数错误: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"code": -1, "message": str(e)}
+        )
+    except Exception as e:
+        logger.error(f"merge-grid 失败: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"合并图片失败: {str(e)}"}
         )
 
 
