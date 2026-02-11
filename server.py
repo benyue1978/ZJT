@@ -1851,6 +1851,46 @@ async def get_computing_power_logs(
         )
         
         if success:
+            # 处理返回数据
+            if 'logs' in response_data and isinstance(response_data['logs'], list):
+                processed_logs = []
+                for log in response_data['logs']:
+                    # 删除敏感字段
+                    processed_log = {
+                        'id': log.get('id'),
+                        'behavior': log.get('behavior'),
+                        'message': log.get('message'),
+                        'note': log.get('note'),
+                        'computing_power': log.get('computing_power'),
+                        'from': log.get('from'),
+                        'to': log.get('to'),
+                        'created_at': log.get('created_at')
+                    }
+                    
+                    # 格式化时间为年月日时分秒
+                    if processed_log['created_at']:
+                        try:
+                            from datetime import datetime
+                            import re
+                            # 解析ISO格式时间
+                            dt = datetime.fromisoformat(processed_log['created_at'].replace('Z', '+00:00'))
+                            processed_log['created_at'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+                        except Exception as e:
+                            logger.warning(f'时间格式化失败: {e}')
+                    
+                    # 清理note中的邀请人ID信息
+                    if processed_log['note']:
+                        import re
+                        # 移除 "，被邀请人ID: 数字" 或 ",被邀请人ID: 数字" 模式
+                        processed_log['note'] = re.sub(r'[，,]\s*被邀请人ID:\s*\d+', '', processed_log['note'])
+                        # 如果整个note就是 "被邀请人ID: 数字"，则清空
+                        if re.match(r'^\s*被邀请人ID:\s*\d+\s*$', processed_log['note']):
+                            processed_log['note'] = None
+                    
+                    processed_logs.append(processed_log)
+                
+                response_data['logs'] = processed_logs
+            
             return JSONResponse(
                 content={
                     'success': True,

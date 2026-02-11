@@ -37,7 +37,7 @@
             <div class="user-info-wrapper">
               <span class="user-phone clickable" @click="openInviteModal" title="点击查看邀请码">{{ maskedPhone }}</span>
               <div class="computing-power-display">
-                <span>
+                <span class="clickable" @click="openComputingPowerLogs" title="点击查看算力日志">
                   算力: <span class="computing-power-value">{{ computingPower !== null ? computingPower : '加载中...' }}</span>
                 </span>
                 <button class="refresh-btn" @click="fetchComputingPower" title="刷新算力">
@@ -242,6 +242,20 @@
           <div style="margin-top: 20px;">
             <button class="btn" style="width: 100%;" @click="copyInviteCode">复制邀请码</button>
           </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Computing Power Logs Modal -->
+    <div class="modal-overlay" v-if="showComputingPowerLogsModal" @click.self="showComputingPowerLogsModal = false">
+      <div class="modal" style="position: relative; max-width: 700px; height: 85vh; overflow: hidden; display: flex; flex-direction: column;">
+        <button class="modal-close" @click="showComputingPowerLogsModal = false">×</button>
+        <div class="modal-title">算力日志</div>
+        <div style="flex: 1; overflow: hidden; min-height: 0;">
+          <iframe 
+            :src="`/computing_power_logs.html?auth_token=${authToken}`" 
+            style="width: 100%; height: 100%; border: none; border-radius: 0 0 12px 12px;">
+          </iframe>
         </div>
       </div>
     </div>
@@ -5331,6 +5345,7 @@
       invitationStats: null,
       showLoginModal: false,
       showInviteModal: false,
+      showComputingPowerLogsModal: false,
       showRechargePowerModal: false,
       showFeedbackModal: false,
       authMode: 'login', // 'login' or 'register'
@@ -6043,6 +6058,16 @@
       openInviteModal() {
         this.showInviteModal = true;
         this.fetchInvitationInfo();
+      },
+      
+      openComputingPowerLogs() {
+        if (!this.authToken) {
+          alert('请先登录');
+          return;
+        }
+        
+        // 打开算力日志模态框
+        this.showComputingPowerLogsModal = true;
       },
       
       copyInviteCode() {
