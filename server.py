@@ -30,7 +30,6 @@ from model.character import CharacterModel
 from model.location import LocationModel
 from model.script import ScriptModel
 from model.props import PropsModel
-from model.public_voice import VoiceModel
 import uuid
 from duomi_api_requset import create_video_remix, create_character as create_character_task, get_character_task_result
 from PIL import Image
