@@ -88,6 +88,9 @@ IMAGE_TO_VIDEO_TYPES = [3, 10, 11, 12, 14, 15]
 # 图片编辑任务类型列表
 IMAGE_EDIT_TYPES = [1, 7]
 
+# RunningHub 平台任务类型列表
+RUNNINGHUB_TASK_TYPES = [10, 11, 13]
+
 # 任务类型名称映射
 TASK_TYPE_NAME_MAP = {
     1: '图片编辑',
