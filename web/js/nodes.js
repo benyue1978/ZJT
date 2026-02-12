@@ -4900,12 +4900,17 @@
                 
                 const shots = [];
                 for(let idx = 0; idx < gridSize; idx++){
-                  // 如果分镜数量不足填满宫格，用最后一个分镜的提示词填充
-                  const nodeIndex = idx < batchNodes.length ? idx : batchNodes.length - 1;
-                  const shotNode = batchNodes[nodeIndex];
+                  // 如果分镜数量不足填满宫格，用全黑占位符填充
+                  let promptText;
+                  if(idx < batchNodes.length) {
+                    promptText = batchNodes[idx].data.imagePrompt || '';
+                  } else {
+                    promptText = "Solid black empty placeholder. Completely dark void. No content, no light, no text.";
+                  }
+
                   shots.push({
                     shot_number: `Shot ${startIdx + idx + 1}`,
-                    prompt_text: shotNode.data.imagePrompt || ''
+                    prompt_text: promptText
                   });
                 }
                 
@@ -4913,7 +4918,7 @@
                   grid_layout: gridLayout,
                   grid_aspect_ratio: state.ratio || '16:9',
                   global_watermark: '',
-                  style_guidance: "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+                  style_guidance: "High-quality storyboard grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.",
                   shots: shots
                 });
                 
@@ -5367,12 +5372,17 @@
             // 构建宫格JSON提示词
             const shots = [];
             for(let idx = 0; idx < gridSize; idx++){
-              // 如果分镜数量不足填满宫格，用最后一个分镜的提示词填充
-              const nodeIndex = idx < batchNodes.length ? idx : batchNodes.length - 1;
-              const shotNode = batchNodes[nodeIndex];
+              // 如果分镜数量不足填满宫格，用全黑占位符填充
+              let promptText;
+              if(idx < batchNodes.length) {
+                promptText = batchNodes[idx].data.imagePrompt || '';
+              } else {
+                promptText = "Solid black empty placeholder. Completely dark void. No content, no light, no text.";
+              }
+
               shots.push({
                 shot_number: `Shot ${startIdx + idx + 1}`,
-                prompt_text: shotNode.data.imagePrompt || ''
+                prompt_text: promptText
               });
             }
             
@@ -5380,7 +5390,7 @@
               grid_layout: gridLayout,
               grid_aspect_ratio: state.ratio || '16:9',
               global_watermark: '',
-              style_guidance: "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+              style_guidance: "High-quality storyboard grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.",
               shots: shots
             });
             
@@ -6249,12 +6259,17 @@
           
           const shots = [];
           for(let idx = 0; idx < gridSize; idx++){
-            // 如果分镜数量不足填满宫格，用最后一个分镜的提示词填充
-            const nodeIndex = idx < batchNodes.length ? idx : batchNodes.length - 1;
-            const shotNode = batchNodes[nodeIndex];
+            // 如果分镜数量不足填满宫格，用全黑占位符填充
+            let promptText;
+            if(idx < batchNodes.length) {
+              promptText = batchNodes[idx].data.imagePrompt || '';
+            } else {
+              promptText = "Solid black empty placeholder. Completely dark void. No content, no light, no text.";
+            }
+
             shots.push({
               shot_number: `Shot ${startIdx + idx + 1}`,
-              prompt_text: shotNode.data.imagePrompt || ''
+              prompt_text: promptText
             });
           }
           
@@ -6262,7 +6277,7 @@
             grid_layout: gridLayout,
             grid_aspect_ratio: state.ratio || '16:9',
             global_watermark: '',
-            style_guidance: "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+            style_guidance: "High-quality storyboard grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.",
             shots: shots
           });
           

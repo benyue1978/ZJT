@@ -135,7 +135,7 @@
   "grid_layout": "2x2",
   "grid_aspect_ratio": "16:9",
   "global_watermark": "",
-  "style_guidance": "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+  "style_guidance": "High-quality storyboard grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.",
   "shots": [
     {"shot_number": "Shot 1", "prompt_text": "清晨的城市街道，阳光洒在建筑物上"},
     {"shot_number": "Shot 2", "prompt_text": "咖啡店内部，温暖的灯光"},
@@ -151,7 +151,7 @@
   "grid_layout": "3x3",
   "grid_aspect_ratio": "16:9",
   "global_watermark": "",
-  "style_guidance": "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+  "style_guidance": "High-quality storyboard grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.",
   "shots": [
     {"shot_number": "Shot 1", "prompt_text": "..."},
     {"shot_number": "Shot 2", "prompt_text": "..."},
@@ -163,16 +163,21 @@
 
 ### 图片填充逻辑
 
-**重要**：当分镜数量不足填满宫格时（例如5个分镜使用4宫格，第二张图只有1个分镜），系统会**自动用最后一个分镜的提示词填充剩余格子**。
+**重要**：当分镜数量不足填满宫格时（例如5个分镜使用4宫格，第二张图只有1个分镜），系统会**自动用全黑占位符填充剩余格子**。
 
 **示例**：5个分镜使用4宫格
 - 第1张图：Shot 1, 2, 3, 4（正常）
-- 第2张图：Shot 5, 5, 5, 5（用Shot 5填充）
+- 第2张图：Shot 5, Black, Black, Black（用全黑占位符填充）
+
+**全黑占位符提示词**：
+```text
+"Solid black empty placeholder. Completely dark void. No content, no light, no text."
+```
 
 这样可以确保：
-- AI生成的宫格图片每个格子都有内容
-- 拆分后的图片尺寸正确
-- 避免出现空白格子导致的尺寸问题
+1. **减少模型干扰**：全黑画面让模型集中注意力在有效分镜上，避免重复生成相似内容造成的困惑
+2. **避免重复**：不再复制最后一个分镜，防止出现重复的镜头画面
+3. **尺寸正确**：保持宫格结构完整，确保拆分后的图片尺寸正确
 
 ## 节点类型
 

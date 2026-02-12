@@ -833,8 +833,8 @@ async def image_edit(
         
         if not image_urls:
             raise HTTPException(status_code=400, detail="At least one image is required (via file upload or URL)")
-        
-        logger.info(f"[image_edit] Input image URLs: {image_urls}")
+
+        logger.info(f"[image_edit] 提示词: {prompt} 参考图片列表 ({len(image_urls)}张): {image_urls}")
         
         # Submit tasks according to generation count
         project_ids = []
