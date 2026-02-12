@@ -155,7 +155,7 @@ class GeminiProDuomiV1Driver(BaseVideoDriver):
             # 调用外部 API，使用 nano-banana-pro 模型
             try:
                 result = create_ai_image(
-                    model="nano-banana-pro",
+                    model="gemini-3-pro-image-preview",
                     prompt=ai_tool.prompt,
                     ratio=ai_tool.ratio,
                     image_urls=image_urls,
