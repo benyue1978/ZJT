@@ -4626,7 +4626,7 @@
         }
 
         if(!state.defaultWorldId){
-          const confirmed = window.confirm('尚未在左上角选择世界，无法自动匹配场景和角色。确认继续拆分分镜图吗？');
+          const confirmed = await showConfirmModal('尚未在左上角选择世界，无法自动匹配场景和角色。确认继续拆分分镜图吗？', { title: '提示' });
           if(!confirmed){
             return;
           }
@@ -4884,7 +4884,7 @@
                 `预计消耗算力：${totalPower}\n\n` +
                 `确认生成吗？`;
               
-              if(!window.confirm(confirmMsg)) {
+              if(!await showConfirmModal(confirmMsg, { title: '宫格生图确认', confirmText: '开始生成' })) {
                 gridStatusEl.style.color = '#666';
                 gridStatusEl.textContent = '已取消';
                 return;
@@ -5131,7 +5131,7 @@
         }
 
         if(!state.defaultWorldId){
-          const confirmed = window.confirm('尚未在左上角选择世界，无法自动匹配场景和角色。确认继续拆分分镜图吗？');
+          const confirmed = await showConfirmModal('尚未在左上角选择世界，无法自动匹配场景和角色。确认继续拆分分镜图吗？', { title: '提示' });
           if(!confirmed){
             return;
           }
@@ -5322,7 +5322,7 @@
             `预计消耗算力：${totalPower}\n\n` +
             `确认生成吗？`;
           
-          if(!window.confirm(confirmMsg)) {
+          if(!await showConfirmModal(confirmMsg, { title: '宫格生图确认', confirmText: '开始生成' })) {
             gridStatusEl.style.color = '#666';
             gridStatusEl.textContent = '已取消';
             return;
@@ -6176,7 +6176,7 @@
           `预计消耗算力：${totalPower}\n\n` +
           `确认生成吗？`;
         
-        if(!window.confirm(confirmMsg)) {
+        if(!await showConfirmModal(confirmMsg, { title: '宫格生图确认', confirmText: '开始生成' })) {
           gridStatusEl.style.color = '#666';
           gridStatusEl.textContent = '已取消';
           return;

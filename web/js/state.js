@@ -199,3 +199,57 @@
         toast.classList.remove('show');
       }, 3000);
     }
+
+    // 自定义确认弹窗（替代 window.confirm，切Tab不会被自动取消）
+    function showConfirmModal(message, opts = {}) {
+      const title = opts.title || '确认';
+      const confirmText = opts.confirmText || '确认';
+      const cancelText = opts.cancelText || '取消';
+      
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.65);display:flex;align-items:center;justify-content:center;z-index:10000;';
+        
+        const card = document.createElement('div');
+        card.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+        
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px;color:#111827;';
+        titleEl.textContent = title;
+        
+        const msgEl = document.createElement('div');
+        msgEl.style.cssText = 'font-size:14px;color:#374151;white-space:pre-wrap;line-height:1.6;margin-bottom:24px;';
+        msgEl.textContent = message;
+        
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;';
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.style.cssText = 'padding:8px 20px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;font-size:14px;color:#374151;';
+        cancelBtn.textContent = cancelText;
+        
+        const confirmBtn = document.createElement('button');
+        confirmBtn.style.cssText = 'padding:8px 20px;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer;font-size:14px;font-weight:500;';
+        confirmBtn.textContent = confirmText;
+        
+        function close(result) {
+          document.body.removeChild(overlay);
+          resolve(result);
+        }
+        
+        cancelBtn.addEventListener('click', () => close(false));
+        confirmBtn.addEventListener('click', () => close(true));
+        overlay.addEventListener('click', (e) => {
+          if(e.target === overlay) close(false);
+        });
+        
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(confirmBtn);
+        card.appendChild(titleEl);
+        card.appendChild(msgEl);
+        card.appendChild(btnRow);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        confirmBtn.focus();
+      });
+    }
