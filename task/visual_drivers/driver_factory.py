@@ -47,7 +47,7 @@ class VideoDriverFactory:
             raise ValueError(f"Driver class {driver_class} must inherit from BaseVideoDriver")
         
         cls._registered_drivers[driver_name] = driver_class
-        logger.info(f"Registered video driver: {driver_name} -> {driver_class.__name__}")
+        logger.debug(f"Registered video driver: {driver_name} -> {driver_class.__name__}")
     
     @classmethod
     def create_driver_by_type(cls, driver_type: int) -> Optional[BaseVideoDriver]:

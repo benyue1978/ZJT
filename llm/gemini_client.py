@@ -50,7 +50,7 @@ class GeminiClient:
         if not self.api_key or not self.base_url:
             logger.warning("Gemini API Key 或 Base URL 未配置")
         else:
-            logger.info(f"GeminiClient initialized: base_url={self.base_url}")
+            logger.debug(f"GeminiClient initialized: base_url={self.base_url}")
 
     def _convert_to_gemini_format(self, messages, tools=None):
         """将OpenAI格式的消息转换为Gemini原生格式"""
@@ -227,39 +227,39 @@ class GeminiClient:
         model_name = model.replace("gemini/", "", 1) if "/" in model else model
         
         url = f"{base_url}/gemini/v1/models/{model_name}:generateContent"
-        logger.info(f"Gemini API URL: {url}")
-        logger.info(f"Gemini API model: {model}")
-        logger.info(f"Gemini API temperature: {temperature}")
-        logger.info(f"Gemini API max_tokens: {max_tokens}")
+        logger.debug(f"Gemini API URL: {url}")
+        logger.debug(f"Gemini API model: {model}")
+        logger.debug(f"Gemini API temperature: {temperature}")
+        logger.debug(f"Gemini API max_tokens: {max_tokens}")
         
         # 记录请求 payload
-        logger.info(f"Gemini API contents count: {len(gemini_payload.get('contents', []))}")
-        logger.info("="*80)
+        logger.debug(f"Gemini API contents count: {len(gemini_payload.get('contents', []))}")
+        logger.debug("="*80)
         for i, content in enumerate(gemini_payload.get('contents', [])):
             role = content.get('role', 'unknown')
             parts_count = len(content.get('parts', []))
-            logger.info(f"Content[{i}]: role={role}, parts={parts_count}")
+            logger.debug(f"Content[{i}]: role={role}, parts={parts_count}")
             
             # 完整记录每个 part 的内容
             for j, part in enumerate(content.get('parts', [])):
                 if 'text' in part:
-                    logger.info(f"  Part[{j}] (text, {len(part['text'])} chars):")
-                    logger.info(f"{part['text']}")
+                    logger.debug(f"  Part[{j}] (text, {len(part['text'])} chars):")
+                    logger.debug(f"{part['text']}")
                 elif 'functionCall' in part:
-                    logger.info(f"  Part[{j}] (functionCall): {part['functionCall'].get('name', 'unknown')}")
+                    logger.debug(f"  Part[{j}] (functionCall): {part['functionCall'].get('name', 'unknown')}")
                 elif 'functionResponse' in part:
-                    logger.info(f"  Part[{j}] (functionResponse): {part['functionResponse'].get('name', 'unknown')}")
-            logger.info("-"*80)
+                    logger.debug(f"  Part[{j}] (functionResponse): {part['functionResponse'].get('name', 'unknown')}")
+            logger.debug("-"*80)
         
         # 记录工具定义
         if 'tools' in gemini_payload:
             tools_info = gemini_payload['tools']
             func_count = len(tools_info[0].get('functionDeclarations', [])) if tools_info else 0
-            logger.info(f"Gemini API tools: {func_count} functions")
+            logger.debug(f"Gemini API tools: {func_count} functions")
             for i, func in enumerate(tools_info[0].get('functionDeclarations', [])):
-                logger.info(f"Gemini API tool[{i}]: {func.get('name', 'unknown')}")
+                logger.debug(f"Gemini API tool[{i}]: {func.get('name', 'unknown')}")
         else:
-            logger.info(f"Gemini API tools: None")
+            logger.debug(f"Gemini API tools: None")
         
         # 记录完整 payload（截断）
         payload_str = json.dumps(gemini_payload, ensure_ascii=False, indent=2)
@@ -273,7 +273,7 @@ class GeminiClient:
                 timeout=360
             )
             
-            logger.info(f"Gemini API response status: {response.status_code}")
+            logger.debug(f"Gemini API response status: {response.status_code}")
             
             if response.status_code != 200:
                 logger.error(f"Gemini API error: {response.status_code}")
@@ -289,32 +289,32 @@ class GeminiClient:
                 raise Exception("Gemini API returned empty response")
             
             # 完整记录响应结构
-            logger.info("="*80)
-            logger.info("GEMINI API RESPONSE:")
+            logger.debug("="*80)
+            logger.debug("GEMINI API RESPONSE:")
             
             if response_json and 'candidates' in response_json:
                 for i, candidate in enumerate(response_json['candidates']):
-                    logger.info(f"Candidate[{i}]:")
+                    logger.debug(f"Candidate[{i}]:")
                     content = candidate.get('content') or {}
                     parts = content.get('parts') or []
-                    logger.info(f"  Role: {content.get('role', 'unknown')}")
-                    logger.info(f"  Parts count: {len(parts)}")
+                    logger.debug(f"  Role: {content.get('role', 'unknown')}")
+                    logger.debug(f"  Parts count: {len(parts)}")
                     
                     for j, part in enumerate(parts):
                         if 'text' in part:
-                            logger.info(f"  Part[{j}] (text, {len(part['text'])} chars):")
-                            logger.info(f"{part['text']}")
+                            logger.debug(f"  Part[{j}] (text, {len(part['text'])} chars):")
+                            logger.debug(f"{part['text']}")
                         elif 'functionCall' in part:
                             func_call = part['functionCall']
-                            logger.info(f"  Part[{j}] (functionCall):")
-                            logger.info(f"    Name: {func_call.get('name', 'unknown')}")
-                            logger.info(f"    Args: {json.dumps(func_call.get('args', {}), ensure_ascii=False, indent=6)}")
+                            logger.debug(f"  Part[{j}] (functionCall):")
+                            logger.debug(f"    Name: {func_call.get('name', 'unknown')}")
+                            logger.debug(f"    Args: {json.dumps(func_call.get('args', {}), ensure_ascii=False, indent=6)}")
                     
                     # 记录 finishReason
                     if 'finishReason' in candidate:
-                        logger.info(f"  Finish reason: {candidate['finishReason']}")
+                        logger.debug(f"  Finish reason: {candidate['finishReason']}")
             
-            logger.info("-"*80)
+            logger.debug("-"*80)
             
             # 转换响应为标准格式
             converted_response = self._convert_gemini_response(
@@ -327,17 +327,17 @@ class GeminiClient:
             # 记录转换后的响应
             if converted_response.choices:
                 message = converted_response.choices[0].message
-                logger.info(f"Converted response:")
-                logger.info(f"  Content length: {len(message.content) if message.content else 0}")
+                logger.debug(f"Converted response:")
+                logger.debug(f"  Content length: {len(message.content) if message.content else 0}")
                 if message.content:
-                    logger.info(f"  Content: {message.content}")
-                logger.info(f"  Tool calls: {len(message.tool_calls) if message.tool_calls else 0}")
+                    logger.debug(f"  Content: {message.content}")
+                logger.debug(f"  Tool calls: {len(message.tool_calls) if message.tool_calls else 0}")
                 if message.tool_calls:
                     for i, tc in enumerate(message.tool_calls):
-                        logger.info(f"  Tool call[{i}]:")
-                        logger.info(f"    ID: {tc.id}")
-                        logger.info(f"    Name: {tc.function.name}")
-                        logger.info(f"    Arguments: {tc.function.arguments}")
+                        logger.debug(f"  Tool call[{i}]:")
+                        logger.debug(f"    ID: {tc.id}")
+                        logger.debug(f"    Name: {tc.function.name}")
+                        logger.debug(f"    Arguments: {tc.function.arguments}")
             
             return converted_response
             
@@ -382,7 +382,7 @@ class GeminiClient:
             "raw_completion_tokens": completion_tokens
         }
         
-        logger.info(f"Token usage analysis: input={input_tokens}, output={completion_tokens}, "
+        logger.debug(f"Token usage analysis: input={input_tokens}, output={completion_tokens}, "
                        f"cache_read={cached_tokens}, overhead={overhead_tokens}, total={total_tokens}")
         
         return result
@@ -456,8 +456,8 @@ class GeminiClient:
         cache_read_token = usage.get("cache_read_token", 0)
         total_token = usage.get("total_token", 0)
 
-        logger.info(f"Gemini usage: {usage}")
-        logger.info(f"Gemini metadata - auth_token={auth_token}, vendor_id={vendor_id}, model_id={model_id}")
+        logger.debug(f"Gemini usage: {usage}")
+        logger.debug(f"Gemini metadata - auth_token={auth_token}, vendor_id={vendor_id}, model_id={model_id}")
         headers = {'Authorization': f'Bearer {auth_token}'}
         # 发起请求，增加token日志
         success, log_message, response_data = make_perseids_request(
@@ -475,7 +475,7 @@ class GeminiClient:
         )
 
         if not success:
-            logger.info(f"增加token日志失败: {log_message}")
+            logger.debug(f"增加token日志失败: {log_message}")
         return Response([Choice(message)])
 
 

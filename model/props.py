@@ -146,8 +146,6 @@ class PropsModel:
         count_sql = f"SELECT COUNT(*) as total FROM props {where_clause}"
         
         try:
-            logger.info(f"Count SQL: {count_sql}")
-            logger.info(f"Count params: {tuple(params)}")
             count_result = execute_query(count_sql, tuple(params), fetch_one=True)
             total = count_result['total'] if count_result else 0
             
@@ -161,16 +159,8 @@ class PropsModel:
             """
             params.extend([page_size, offset])
             
-            logger.info(f"Data SQL: {data_sql}")
-            logger.info(f"Data params: {tuple(params)}")
             results = execute_query(data_sql, tuple(params), fetch_all=True)
-            logger.info(f"Query results count: {len(results) if results else 0}")
-            if results and len(results) > 0:
-                logger.info(f"First result: {results[0]}")
-            
             props_list = [Props(**row).to_dict() for row in results] if results else []
-            logger.info(f"Props list count after conversion: {len(props_list)}")
-            
             return {
                 'total': total,
                 'page': page,
@@ -234,7 +224,6 @@ class PropsModel:
         
         try:
             affected_rows = execute_update(sql, tuple(params))
-            logger.info(f"Updated props record {props_id}, affected rows: {affected_rows}")
             return affected_rows
         except Exception as e:
             logger.error(f"Failed to update props {props_id}: {e}")
@@ -255,7 +244,6 @@ class PropsModel:
         
         try:
             affected_rows = execute_update(sql, (props_id,))
-            logger.info(f"Deleted props record {props_id}, affected rows: {affected_rows}")
             return affected_rows
         except Exception as e:
             logger.error(f"Failed to delete props {props_id}: {e}")
