@@ -42,6 +42,25 @@ class TestVeo3DuomiWithDB(BaseVideoDriverTest):
         mock_api.return_value = {"id": "veo3_task_123"}
         result = self.driver.submit_task(tool)
         
+        # 验证调用参数
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证 prompt 是字符串
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 VEO3 提交成功')
+        
+        # 验证 ratio 是 9:16 或 16:9
+        self.assertIn(call_args.kwargs['ratio'], ['9:16', '16:9'])
+        self.assertEqual(call_args.kwargs['ratio'], '9:16')
+        
+        # 验证 img_url 是字符串
+        self.assertIsInstance(call_args.kwargs['img_url'], str)
+        self.assertEqual(call_args.kwargs['img_url'], 'https://example.com/test.jpg')
+        
+        # 验证 duration 固定为 8
+        self.assertEqual(call_args.kwargs['duration'], 8)
+        
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'veo3_task_123')
         

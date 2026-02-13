@@ -42,6 +42,22 @@ class TestLtx2RunninghubWithDB(BaseVideoDriverTest):
         mock_api.return_value = {"taskId": "ltx2_task_123", "status": "QUEUED"}
         result = self.driver.submit_task(tool)
         
+        # 验证调用参数
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证 image_url 是字符串
+        self.assertIsInstance(call_args.kwargs['image_url'], str)
+        self.assertEqual(call_args.kwargs['image_url'], 'https://example.com/test.jpg')
+        
+        # 验证 prompt 是字符串（可以为空）
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 LTX2 提交成功')
+        
+        # 验证 duration 是 5, 8, 10 之一
+        self.assertIn(call_args.kwargs['duration'], [5, 8, 10])
+        self.assertEqual(call_args.kwargs['duration'], 5)
+        
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'ltx2_task_123')
         

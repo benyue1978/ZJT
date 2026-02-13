@@ -44,6 +44,26 @@ class TestKlingDuomiWithDB(BaseVideoDriverTest):
         }
         result = self.driver.submit_task(tool)
         
+        # 验证调用参数
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证 image_url 是字符串
+        self.assertIsInstance(call_args.kwargs['image_url'], str)
+        self.assertEqual(call_args.kwargs['image_url'], 'https://example.com/test.jpg')
+        
+        # 验证 prompt 是字符串
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 Kling 提交成功')
+        
+        # 验证 duration 是 5 或 10
+        self.assertIn(call_args.kwargs['duration'], [5, 10])
+        self.assertEqual(call_args.kwargs['duration'], 5)
+        
+        # 验证 mode 根据 duration 确定：5秒="std", 10秒="pro"
+        self.assertIn(call_args.kwargs['mode'], ['std', 'pro'])
+        self.assertEqual(call_args.kwargs['mode'], 'std')  # duration=5 对应 std
+        
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'kling_task_123')
         

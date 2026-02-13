@@ -52,14 +52,24 @@ class TestGeminiDuomiWithDB(BaseVideoDriverTest):
         
         result = self.driver.submit_task(tool)
         
-        # 验证调用参数，确保使用正确的模型名称
-        mock_api.assert_called_once_with(
-            model="gemini-2.5-pro-image-preview",
-            prompt='测试 Gemini 提交成功',
-            ratio='9:16',
-            image_urls=['https://example.com/test.jpg'],
-            image_size='1K'
-        )
+        # 验证调用参数，确保使用正确的模型名称和参数类型
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证模型名称
+        self.assertEqual(call_args.kwargs['model'], "gemini-2.5-pro-image-preview")
+        
+        # 验证 prompt 是字符串
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 Gemini 提交成功')
+        
+        # 验证 ratio 是 9:16 或 16:9
+        self.assertIn(call_args.kwargs['ratio'], ['9:16', '16:9'])
+        self.assertEqual(call_args.kwargs['ratio'], '9:16')
+        
+        # 验证 image_urls 是数组
+        self.assertIsInstance(call_args.kwargs['image_urls'], list)
+        self.assertEqual(call_args.kwargs['image_urls'], ['https://example.com/test.jpg'])
         
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'gemini_task_123')

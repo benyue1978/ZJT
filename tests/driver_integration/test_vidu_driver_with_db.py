@@ -28,12 +28,13 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
         self.assertEqual(self.driver.driver_type, VIDU_IMAGE_TO_VIDEO_TYPE)
     
     @patch('task.visual_drivers.vidu_default_driver.create_vidu_image_to_video')
-    def test_submit_task_success(self, mock_api):
+    def test_submit_task_success_single_image(self, mock_api):
+        """测试提交任务 - 成功（单图模式）"""
         task_id = self.create_test_ai_tool(
             ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
-            prompt='测试 Vidu 提交成功',
+            prompt='测试 Vidu 单图提交成功',
             image_path='https://example.com/test.jpg',
-            duration=4,
+            duration=5,
             status=AI_TOOL_STATUS_PROCESSING
         )
         
@@ -49,6 +50,28 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
         
         result = self.driver.submit_task(tool)
         
+        # 验证调用参数
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证单图模式调用参数
+        # 验证 image_url 是字符串
+        self.assertIsInstance(call_args.kwargs['image_url'], str)
+        self.assertEqual(call_args.kwargs['image_url'], 'https://example.com/test.jpg')
+        
+        # 验证 prompt 是字符串
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 Vidu 单图提交成功')
+        
+        # 验证 duration 是 5 或 8
+        self.assertIn(call_args.kwargs['duration'], [5, 8])
+        
+        # 验证 resolution 固定为 "720p"
+        self.assertEqual(call_args.kwargs['resolution'], '720p')
+        
+        # 验证 movement_amplitude 默认为 "auto"
+        self.assertEqual(call_args.kwargs['movement_amplitude'], 'auto')
+        
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'vidu_task_123')
         
@@ -63,13 +86,76 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
         tool = self.get_ai_tool_from_db(task_id)
         self.assertEqual(tool.project_id, 'vidu_task_123')
     
+    @patch('task.visual_drivers.vidu_default_driver.create_vidu_start_end_to_video')
+    def test_submit_task_success_dual_image(self, mock_api):
+        """测试提交任务 - 成功（双图模式）"""
+        task_id = self.create_test_ai_tool(
+            ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
+            prompt='测试 Vidu 双图提交成功',
+            image_path='https://example.com/start.jpg,https://example.com/end.jpg',
+            duration=8,
+            status=AI_TOOL_STATUS_PROCESSING
+        )
+        
+        tool = self.get_ai_tool_from_db(task_id)
+        
+        # Vidu API返回格式
+        mock_api.return_value = {
+            "task_id": "vidu_task_dual_123",
+            "state": "created",
+            "model": "Vidu3.1-首尾图生视频-720p",
+            "credits": 8
+        }
+        
+        result = self.driver.submit_task(tool)
+        
+        # 验证双图模式调用参数
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证 start_image_url 是字符串
+        self.assertIsInstance(call_args.kwargs['start_image_url'], str)
+        self.assertEqual(call_args.kwargs['start_image_url'], 'https://example.com/start.jpg')
+        
+        # 验证 end_image_url 是字符串
+        self.assertIsInstance(call_args.kwargs['end_image_url'], str)
+        self.assertEqual(call_args.kwargs['end_image_url'], 'https://example.com/end.jpg')
+        
+        # 验证 prompt 是字符串
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 Vidu 双图提交成功')
+        
+        # 验证 duration 是 5 或 8
+        self.assertIn(call_args.kwargs['duration'], [5, 8])
+        self.assertEqual(call_args.kwargs['duration'], 8)
+        
+        # 验证 resolution 固定为 "720p"
+        self.assertEqual(call_args.kwargs['resolution'], '720p')
+        
+        # 验证 movement_amplitude 默认为 "auto"
+        self.assertEqual(call_args.kwargs['movement_amplitude'], 'auto')
+        
+        self.assertTrue(result['success'])
+        self.assertEqual(result['project_id'], 'vidu_task_dual_123')
+        
+        # 模拟业务层更新数据库
+        self.update_ai_tool_status(
+            task_id,
+            status=AI_TOOL_STATUS_PROCESSING,
+            project_id=result['project_id']
+        )
+        
+        # 验证数据库已更新 project_id
+        tool = self.get_ai_tool_from_db(task_id)
+        self.assertEqual(tool.project_id, 'vidu_task_dual_123')
+    
     @patch('task.visual_drivers.vidu_default_driver.create_vidu_image_to_video')
     def test_submit_task_invalid_response(self, mock_api):
         task_id = self.create_test_ai_tool(
             ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
             prompt='测试响应格式错误',
             image_path='https://example.com/test.jpg',
-            duration=4,
+            duration=5,
             status=AI_TOOL_STATUS_FAILED
         )
         
@@ -89,7 +175,7 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
             ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
             prompt='测试网络错误',
             image_path='https://example.com/test.jpg',
-            duration=4,
+            duration=5,
             status=AI_TOOL_STATUS_FAILED
         )
         
@@ -111,7 +197,7 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
             ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
             prompt='测试状态检查成功',
             image_path='https://example.com/test.jpg',
-            duration=4,
+            duration=5,
             status=AI_TOOL_STATUS_PROCESSING,
             project_id='vidu_task_456'
         )
@@ -152,7 +238,7 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
             ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
             prompt='测试状态检查失败',
             image_path='https://example.com/test.jpg',
-            duration=4,
+            duration=5,
             status=AI_TOOL_STATUS_PROCESSING,
             project_id='vidu_task_789'
         )
@@ -193,7 +279,7 @@ class TestViduDefaultWithDB(BaseVideoDriverTest):
             ai_tool_type=VIDU_IMAGE_TO_VIDEO_TYPE,
             prompt='测试状态检查处理中',
             image_path='https://example.com/test.jpg',
-            duration=4,
+            duration=5,
             status=AI_TOOL_STATUS_PROCESSING,
             project_id='vidu_task_999'
         )

@@ -43,6 +43,26 @@ class TestDigitalHumanRunninghubWithDB(BaseVideoDriverTest):
         mock_api.return_value = {"taskId": "digital_human_task_123", "status": "QUEUED"}
         result = self.driver.submit_task(tool)
         
+        # 验证调用参数
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证 image_url 是字符串
+        self.assertIsInstance(call_args.kwargs['image_url'], str)
+        self.assertEqual(call_args.kwargs['image_url'], 'https://example.com/test.jpg')
+        
+        # 验证 text 是字符串（讲话内容）
+        self.assertIsInstance(call_args.kwargs['text'], str)
+        self.assertEqual(call_args.kwargs['text'], '测试 Digital Human 提交成功')
+        
+        # 验证 audio_url 是字符串（可以为空）
+        self.assertIsInstance(call_args.kwargs['audio_url'], str)
+        self.assertEqual(call_args.kwargs['audio_url'], 'https://example.com/test_audio.mp3')
+        
+        # 验证 aspect_ratio 是有效值
+        self.assertIn(call_args.kwargs['aspect_ratio'], ['9:16', '16:9', '1:1', '3:2', '4:3', '2:3', '3:4'])
+        self.assertEqual(call_args.kwargs['aspect_ratio'], '9:16')
+        
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'digital_human_task_123')
         

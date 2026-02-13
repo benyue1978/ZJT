@@ -50,14 +50,28 @@ class TestGeminiProDuomiWithDB(BaseVideoDriverTest):
         
         result = self.driver.submit_task(tool)
         
-        # 验证调用参数，确保使用正确的模型名称
-        mock_api.assert_called_once_with(
-            model="gemini-3-pro-image-preview",
-            prompt='测试 Gemini Pro 提交成功',
-            ratio='16:9',
-            image_urls=['https://example.com/test.jpg'],
-            image_size='1K'
-        )
+        # 验证调用参数，确保使用正确的模型名称和参数类型
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        
+        # 验证模型名称
+        self.assertEqual(call_args.kwargs['model'], "gemini-3-pro-image-preview")
+        
+        # 验证 prompt 是字符串
+        self.assertIsInstance(call_args.kwargs['prompt'], str)
+        self.assertEqual(call_args.kwargs['prompt'], '测试 Gemini Pro 提交成功')
+        
+        # 验证 ratio 是 9:16 或 16:9
+        self.assertIn(call_args.kwargs['ratio'], ['9:16', '16:9'])
+        self.assertEqual(call_args.kwargs['ratio'], '16:9')
+        
+        # 验证 image_urls 是数组
+        self.assertIsInstance(call_args.kwargs['image_urls'], list)
+        self.assertEqual(call_args.kwargs['image_urls'], ['https://example.com/test.jpg'])
+        
+        # 验证 image_size 是 1K, 2K, 4K 之一
+        self.assertIn(call_args.kwargs['image_size'], ['1K', '2K', '4K'])
+        self.assertEqual(call_args.kwargs['image_size'], '1K')
         
         self.assertTrue(result['success'])
         self.assertEqual(result['project_id'], 'gemini_pro_task_123')
@@ -72,6 +86,36 @@ class TestGeminiProDuomiWithDB(BaseVideoDriverTest):
         # 验证数据库已更新 project_id
         tool = self.get_ai_tool_from_db(task_id)
         self.assertEqual(tool.project_id, 'gemini_pro_task_123')
+    
+    @patch('task.visual_drivers.gemini_pro_duomi_v1_driver.create_ai_image')
+    def test_submit_task_without_image_size(self, mock_api):
+        """测试提交任务 - image_size为空时使用默认值1K"""
+        task_id = self.create_test_ai_tool(
+            ai_tool_type=GEMINI_PRO_IMAGE_TO_VIDEO_TYPE,
+            prompt='测试无image_size',
+            image_path='https://example.com/test.jpg',
+            ratio='9:16',
+            status=AI_TOOL_STATUS_PROCESSING
+        )
+        
+        tool = self.get_ai_tool_from_db(task_id)
+        # 确保 image_size 为 None
+        tool.image_size = None
+        
+        mock_api.return_value = {
+            "code": 200,
+            "msg": "success",
+            "data": {"task_id": "gemini_pro_task_no_size"}
+        }
+        
+        result = self.driver.submit_task(tool)
+        
+        # 验证调用参数，image_size应该使用默认值1K
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        self.assertEqual(call_args.kwargs['image_size'], '1K')
+        
+        self.assertTrue(result['success'])
     
     @patch('task.visual_drivers.gemini_pro_duomi_v1_driver.create_ai_image')
     def test_submit_task_user_error(self, mock_api):
