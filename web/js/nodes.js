@@ -4402,7 +4402,7 @@
               <input type="checkbox" class="script-split-multi-dialogue" style="cursor: pointer;" />
               <span>拆分多人对话镜头</span>
             </label>
-            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">将多人对话镜头拆分为单人对话镜头，并注意画面不越轴</div>
+            <div class="gen-meta" style="margin-top: 4px; font-size: 11px; color: #666;">将多人对话镜头拆分为单人对话镜头</div>
           </div>
           <div class="field field-collapsible">
             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
@@ -4900,22 +4900,36 @@
                 
                 const shots = [];
                 for(let idx = 0; idx < gridSize; idx++){
-                  // 如果分镜数量不足填满宫格，用最后一个分镜的提示词填充
-                  const nodeIndex = idx < batchNodes.length ? idx : batchNodes.length - 1;
-                  const shotNode = batchNodes[nodeIndex];
+                  // 如果分镜数量不足填满宫格，用全黑占位符填充
+                  let promptText;
+                  if(idx < batchNodes.length) {
+                    promptText = batchNodes[idx].data.imagePrompt || '';
+                  } else {
+                    promptText = "Solid black empty placeholder. Completely dark void. No content, no light, no text.";
+                  }
+
                   shots.push({
                     shot_number: `Shot ${startIdx + idx + 1}`,
-                    prompt_text: shotNode.data.imagePrompt || ''
+                    prompt_text: promptText
                   });
                 }
                 
-                const gridPrompt = JSON.stringify({
+                const artStyleName = (state.style && state.style.name) ? state.style.name : '';
+                const baseGuidance = "High-quality image grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.";
+                const styleGuidance = artStyleName
+                  ? `${baseGuidance} IMPORTANT: You MUST strictly follow this art style for ALL shots: "${artStyleName}". Every shot must consistently use this exact art style throughout the entire grid.`
+                  : baseGuidance;
+                const gridPromptObj = {
                   grid_layout: gridLayout,
                   grid_aspect_ratio: state.ratio || '16:9',
                   global_watermark: '',
-                  style_guidance: "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+                  style_guidance: styleGuidance,
                   shots: shots
-                });
+                };
+                if(artStyleName){
+                  gridPromptObj.art_style = artStyleName;
+                }
+                const gridPrompt = JSON.stringify(gridPromptObj);
                 
                 gridTasks.push({
                   batchNodes,
@@ -5014,7 +5028,7 @@
                     gridImageNode.data.gridIndex = gridIndex;
                     gridImageNode.data.gridSize = gridSize;
                     gridImageNode.data.shotFrameNodeId = shotFrameNode.id;
-                    gridImageNode.data.isSplit = false;
+                    gridImageNode.data.isSplit = true;
                     gridImageNode.data.status = 'pending';
                     gridImageNode.title = gridImageNode.data.name;
                     
@@ -5060,62 +5074,17 @@
                       if(!taskData) continue;
                       
                       if(taskInfo.status === 'SUCCESS') {
-                        console.log(`[宫格生图] AI工具 ${aiToolsId} 生成成功，开始拆分图片`);
+                        console.log(`[宫格生图] AI工具 ${aiToolsId} 生成成功，标记节点等待拆分`);
                         
                         for(let idx = 0; idx < taskData.batchNodes.length; idx++) {
                           const gridIndex = idx + 1;
-                          
-                          try {
-                            const splitResponse = await fetch(
-                              `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${gridSize}`,
-                              {
-                                headers: {
-                                  'Authorization': getAuthToken(),
-                                  'X-User-Id': getUserId()
-                                }
-                              }
-                            );
-                            
-                            if(splitResponse.ok) {
-                              const splitData = await splitResponse.json();
-                              if(splitData.code === 0 && splitData.data && splitData.data.image_url) {
-                                const gridNode = state.nodes.find(n => 
-                                  n.type === 'image' && 
-                                  String(n.data.aiToolsId) === aiToolsId && 
-                                  n.data.gridIndex === gridIndex
-                                );
-                                
-                                if(gridNode) {
-                                  const normalizedUrl = normalizeImageUrl(splitData.data.image_url);
-                                  gridNode.data.url = normalizedUrl;
-                                  gridNode.data.preview = normalizedUrl;
-                                  gridNode.data.isSplit = true;
-                                  gridNode.data.status = 'completed';
-                                  
-                                  const nodeEl = document.querySelector(`.node[data-node-id="${gridNode.id}"]`);
-                                  if(nodeEl) {
-                                    const previewImg = nodeEl.querySelector('.image-preview');
-                                    const previewRow = nodeEl.querySelector('.image-preview-row');
-                                    if(previewImg && previewRow) {
-                                      previewImg.src = proxyImageUrl(splitData.data.image_url);
-                                      previewRow.style.display = 'flex';
-                                    }
-                                  }
-                                  
-                                  // 触发连接的分镜节点更新视频首帧预览
-                                  const connectedShotFrameNode = state.connections
-                                    .filter(c => c.from === gridNode.id)
-                                    .map(c => state.nodes.find(n => n.id === c.to && n.type === 'shot_frame'))
-                                    .find(Boolean);
-                                  
-                                  if(connectedShotFrameNode && connectedShotFrameNode.updatePreview) {
-                                    connectedShotFrameNode.updatePreview();
-                                  }
-                                }
-                              }
-                            }
-                          } catch(error) {
-                            console.error(`[宫格生图] 拆分图片失败 (${aiToolsId}, ${gridIndex}):`, error);
+                          const gridNode = state.nodes.find(n => 
+                            n.type === 'image' && 
+                            String(n.data.aiToolsId) === aiToolsId && 
+                            n.data.gridIndex === gridIndex
+                          );
+                          if(gridNode) {
+                            gridNode.data.status = 'splitting';
                           }
                         }
                       } else if(taskInfo.status === 'FAILED') {
@@ -5137,8 +5106,11 @@
                   }
                   
                   gridStatusEl.style.color = '#16a34a';
-                  gridStatusEl.textContent = '宫格图片生成完成';
-                  showToast('宫格图片生成完成', 'success');
+                  gridStatusEl.textContent = '宫格图片生成完成，正在拆分...';
+                  showToast('宫格图片生成完成，正在拆分', 'success');
+                  
+                  // 立即触发一次拆分（不等 60 秒轮询周期）
+                  pollWorkflowNodeStatus();
                 },
                 (errorMsg) => {
                   gridStatusEl.style.color = '#dc2626';
@@ -5367,22 +5339,36 @@
             // 构建宫格JSON提示词
             const shots = [];
             for(let idx = 0; idx < gridSize; idx++){
-              // 如果分镜数量不足填满宫格，用最后一个分镜的提示词填充
-              const nodeIndex = idx < batchNodes.length ? idx : batchNodes.length - 1;
-              const shotNode = batchNodes[nodeIndex];
+              // 如果分镜数量不足填满宫格，用全黑占位符填充
+              let promptText;
+              if(idx < batchNodes.length) {
+                promptText = batchNodes[idx].data.imagePrompt || '';
+              } else {
+                promptText = "Solid black empty placeholder. Completely dark void. No content, no light, no text.";
+              }
+
               shots.push({
                 shot_number: `Shot ${startIdx + idx + 1}`,
-                prompt_text: shotNode.data.imagePrompt || ''
+                prompt_text: promptText
               });
             }
             
-            const gridPrompt = JSON.stringify({
+            const artStyleName = (state.style && state.style.name) ? state.style.name : '';
+            const baseGuidance = "High-quality image grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.";
+            const styleGuidance = artStyleName
+              ? `${baseGuidance} IMPORTANT: You MUST strictly follow this art style for ALL shots: "${artStyleName}". Every shot must consistently use this exact art style throughout the entire grid.`
+              : baseGuidance;
+            const gridPromptObj = {
               grid_layout: gridLayout,
               grid_aspect_ratio: state.ratio || '16:9',
               global_watermark: '',
-              style_guidance: "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+              style_guidance: styleGuidance,
               shots: shots
-            });
+            };
+            if(artStyleName){
+              gridPromptObj.art_style = artStyleName;
+            }
+            const gridPrompt = JSON.stringify(gridPromptObj);
             
             gridTasks.push({
               batchNodes,
@@ -5486,7 +5472,7 @@
                 gridImageNode.data.gridIndex = gridIndex;
                 gridImageNode.data.gridSize = gridSize;
                 gridImageNode.data.shotFrameNodeId = shotFrameNode.id;
-                gridImageNode.data.isSplit = false;
+                gridImageNode.data.isSplit = true;
                 gridImageNode.data.status = 'pending';
                 gridImageNode.title = gridImageNode.data.name;
                 
@@ -5536,63 +5522,17 @@
                   if(!taskData) continue;
                   
                   if(taskInfo.status === 'SUCCESS') {
-                    // 成功：拆分图片并更新节点
-                    console.log(`[宫格生图] AI工具 ${aiToolsId} 生成成功，开始拆分图片`);
+                    console.log(`[宫格生图] AI工具 ${aiToolsId} 生成成功，标记节点等待拆分`);
                     
                     for(let idx = 0; idx < taskData.batchNodes.length; idx++) {
                       const gridIndex = idx + 1;
-                      
-                      try {
-                        // 调用拆分接口
-                        const splitResponse = await fetch(
-                          `/api/ai-tools/${aiToolsId}/grid-split?grid_index=${gridIndex}&user_id=${getUserId()}&grid_size=${gridSize}`,
-                          {
-                            headers: {
-                              'Authorization': getAuthToken(),
-                              'X-User-Id': getUserId()
-                            }
-                          }
-                        );
-                        
-                        if(splitResponse.ok) {
-                          const splitData = await splitResponse.json();
-                          if(splitData.code === 0 && splitData.data && splitData.data.image_url) {
-                            const gridNode = state.nodes.find(n => 
-                              n.type === 'image' && 
-                              String(n.data.aiToolsId) === aiToolsId && 
-                              n.data.gridIndex === gridIndex
-                            );
-                            
-                            if(gridNode) {
-                              const normalizedUrl = normalizeImageUrl(splitData.data.image_url);
-                              gridNode.data.url = normalizedUrl;
-                              gridNode.data.preview = normalizedUrl;
-                              gridNode.data.isSplit = true;
-                              gridNode.data.status = 'completed';
-                              
-                              const nodeEl = document.querySelector(`.node[data-node-id="${gridNode.id}"]`);
-                              if(nodeEl) {
-                                const previewImg = nodeEl.querySelector('.image-preview');
-                                const previewRow = nodeEl.querySelector('.image-preview-row');
-                                if(previewImg && previewRow) {
-                                  previewImg.src = proxyImageUrl(splitData.data.image_url);
-                                  previewRow.style.display = 'flex';
-                                }
-                              }
-                              
-                              // 触发连接的分镜节点更新视频首帧预览
-                              if(gridNode.data.shotFrameNodeId) {
-                                const shotFrameNode = state.nodes.find(n => n.id === gridNode.data.shotFrameNodeId);
-                                if(shotFrameNode && shotFrameNode.updatePreview) {
-                                  shotFrameNode.updatePreview();
-                                  console.log(`[宫格生图] 分镜节点 ${shotFrameNode.id} 更新后 previewImageUrl:`, shotFrameNode.data.previewImageUrl);
-                                }
-                              }
-                            }
-                          }
-                        }
-                      } catch(error) {
-                        console.error(`[宫格生图] 拆分图片失败 (${aiToolsId}, ${gridIndex}):`, error);
+                      const gridNode = state.nodes.find(n => 
+                        n.type === 'image' && 
+                        String(n.data.aiToolsId) === aiToolsId && 
+                        n.data.gridIndex === gridIndex
+                      );
+                      if(gridNode) {
+                        gridNode.data.status = 'splitting';
                       }
                     }
                   } else if(taskInfo.status === 'FAILED') {
@@ -5615,8 +5555,11 @@
               }
               
               gridStatusEl.style.color = '#16a34a';
-              gridStatusEl.textContent = '宫格图片生成完成';
-              showToast('宫格图片生成完成', 'success');
+              gridStatusEl.textContent = '宫格图片生成完成，正在拆分...';
+              showToast('宫格图片生成完成，正在拆分', 'success');
+              
+              // 立即触发一次拆分（不等 60 秒轮询周期）
+              pollWorkflowNodeStatus();
             },
             (errorMsg) => {
               gridStatusEl.style.color = '#dc2626';
@@ -6249,22 +6192,36 @@
           
           const shots = [];
           for(let idx = 0; idx < gridSize; idx++){
-            // 如果分镜数量不足填满宫格，用最后一个分镜的提示词填充
-            const nodeIndex = idx < batchNodes.length ? idx : batchNodes.length - 1;
-            const shotNode = batchNodes[nodeIndex];
+            // 如果分镜数量不足填满宫格，用全黑占位符填充
+            let promptText;
+            if(idx < batchNodes.length) {
+              promptText = batchNodes[idx].data.imagePrompt || '';
+            } else {
+              promptText = "Solid black empty placeholder. Completely dark void. No content, no light, no text.";
+            }
+
             shots.push({
               shot_number: `Shot ${startIdx + idx + 1}`,
-              prompt_text: shotNode.data.imagePrompt || ''
+              prompt_text: promptText
             });
           }
           
-          const gridPrompt = JSON.stringify({
+          const artStyleName = (state.style && state.style.name) ? state.style.name : '';
+          const baseGuidance = "High-quality image grid. Strictly NO TEXT, NO NUMBERS, NO SHOT INDICES in the top-left corner. Clean visual composition only. No watermarks.";
+          const styleGuidance = artStyleName
+            ? `${baseGuidance} IMPORTANT: You MUST strictly follow this art style for ALL shots: "${artStyleName}". Every shot must consistently use this exact art style throughout the entire grid.`
+            : baseGuidance;
+          const gridPromptObj = {
             grid_layout: gridLayout,
             grid_aspect_ratio: state.ratio || '16:9',
             global_watermark: '',
-            style_guidance: "NO TEXT, NO TITLE, NO LABELS, clean grid lines only.",
+            style_guidance: styleGuidance,
             shots: shots
-          });
+          };
+          if(artStyleName){
+            gridPromptObj.art_style = artStyleName;
+          }
+          const gridPrompt = JSON.stringify(gridPromptObj);
           
           gridTasks.push({
             batchNodes,
@@ -6322,7 +6279,7 @@
           
           if(!res.ok) {
             const errorMsg = typeof data.detail === 'string' ? data.detail :
-                           typeof data.message === 'string' ? data.message :
+                             typeof data.message === 'string' ? data.message :
                            JSON.stringify(data.detail || data.message || '提交任务失败');
             throw new Error(errorMsg);
           }
@@ -6363,7 +6320,7 @@
               gridImageNode.data.gridIndex = gridIndex;
               gridImageNode.data.gridSize = gridSize;
               gridImageNode.data.shotFrameNodeId = shotFrameNode.id;
-              gridImageNode.data.isSplit = false;
+              gridImageNode.data.isSplit = true;
               gridImageNode.data.status = 'pending';
               gridImageNode.title = gridImageNode.data.name;
               

@@ -40,7 +40,8 @@ from config.constant import (
     TASK_STATUS_QUEUED,
     TASK_STATUS_PROCESSING,
     TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED
+    TASK_STATUS_FAILED,
+    RUNNINGHUB_TASK_TYPES
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -162,7 +163,7 @@ def _submit_new_task(ai_tool):
         TasksModel.update_by_task_id(task_id, status=TASK_STATUS_PROCESSING)
         
         # 如果是 RunningHub 任务，更新槽位的 project_id
-        is_runninghub = ai_tool_type in [10, 11, 13]
+        is_runninghub = ai_tool_type in RUNNINGHUB_TASK_TYPES
         if is_runninghub:
             task = TasksModel.get_by_task_id(task_id)
             if task:
@@ -327,7 +328,7 @@ def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
         TasksModel.update_by_task_id(task_id, status=TASK_STATUS_FAILED)
         
         # 释放 RunningHub 槽位
-        is_runninghub = ai_tool_type in [10, 11]
+        is_runninghub = ai_tool_type in RUNNINGHUB_TASK_TYPES
         if is_runninghub:
             if project_id:
                 RunningHubSlotsModel.release_slot_by_project_id(project_id)
@@ -571,7 +572,7 @@ def process_task_with_retry(task_type, process_func):
                     logger.error(f"AI tool {task.task_id} not found")
                     continue
                 
-                is_runninghub = ai_tool.type in [10, 11]
+                is_runninghub = ai_tool.type in RUNNINGHUB_TASK_TYPES
                 
                 # 如果是 RunningHub 任务且状态为0（未提交）
                 if is_runninghub and task.status == TASK_STATUS_QUEUED:

@@ -869,6 +869,11 @@
           });
           
           console.log('音频生成响应状态:', res.status);
+          if(!res.ok){
+            const errorText = await res.text();
+            throw new Error(`服务器错误 (${res.status}): ${errorText || '请求失败'}`);
+          }
+          
           const result = await res.json();
           console.log('音频生成响应结果:', result);
           

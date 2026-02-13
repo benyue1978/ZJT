@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header, Path
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -46,18 +46,29 @@ from config.constant import (
     AI_TOOL_STATUS_PROCESSING,
     AI_TOOL_STATUS_COMPLETED,
     AI_TOOL_STATUS_FAILED,
+    AI_AUDIO_STATUS_PENDING,
+    AI_AUDIO_STATUS_PROCESSING,
+    AI_AUDIO_STATUS_COMPLETED,
+    AI_AUDIO_STATUS_FAILED,
     TASK_STATUS_QUEUED,
     TASK_STATUS_PROCESSING,
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
-    IMAGE_TO_VIDEO_TYPES,
+IMAGE_TO_VIDEO_TYPES,
     IMAGE_EDIT_TYPES,
-    TASK_TYPE_NAME_MAP
+    TASK_TYPE_NAME_MAP,
+    GRID_SIZE_2X2,
+    GRID_SIZE_3X3,
+    GRID_VALID_SIZES,
+    GRID_DEFAULT_SIZE_BY_TYPE,
+    GRID_LOCK_TIMEOUT_SECONDS,
+    GRID_IMAGE_DOWNLOAD_TIMEOUT
 )
 from utils.wechat_pay_util import WechatPayUtil
 from utils.image_grid_splitter import ImageGridSplitter
 from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
+from utils import file_lock
 
 def _get_user_id_from_header(user_id: Optional[int]) -> int:
     if user_id is None:
@@ -68,6 +79,24 @@ def _get_user_id_from_header(user_id: Optional[int]) -> int:
         return int(user_id)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="invalid user_id")
+
+
+
+def _write_and_validate_image(content: bytes, save_path: str):
+    """写入图片文件并用 PIL 验证完整性（同步函数，需在线程池中调用）"""
+    import tempfile
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(save_path), suffix='.tmp')
+    try:
+        with os.fdopen(tmp_fd, 'wb') as f:
+            f.write(content)
+        from PIL import Image
+        with Image.open(tmp_path) as img:
+            img.load()
+        os.replace(tmp_path, save_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 async def _validate_image_size(file: UploadFile, max_size_bytes: int = None) -> tuple[bool, str]:
@@ -110,8 +139,6 @@ def _ensure_world_owner(world_id: int, user_id: int):
     return world
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_PATH = os.path.join(APP_DIR, "qwen_image_edit_api.json")
-COMFYUI_OUTPUT_PATH = '/mnt/disk/ComfyUI/server_output'
 UPLOAD_DIR = os.path.join(APP_DIR, "upload")
 CHECK_AUTH_TOKEN = True
 MP_VERIFY_FILENAME = "MP_verify_lXQewBFqjUipl3B8.txt"
@@ -180,195 +207,6 @@ def _normalize_server(server: str) -> str:
     return server
 
 
-async def _upload_image_to_comfyui(server: str, upload_file: UploadFile) -> str:
-    """
-    Upload the file to ComfyUI's /upload/image endpoint and return the stored filename.
-    """
-    url = f"{server}upload/image"
-    file_content = await upload_file.read()
-    await upload_file.seek(0)
-    files = {
-        "image": (upload_file.filename, file_content, upload_file.content_type or "application/octet-stream")
-    }
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, files=files)
-            resp.raise_for_status()
-            data = resp.json()
-        # ComfyUI commonly returns {"name": "uploaded.png"}
-        name = data.get("name") if isinstance(data, dict) else None
-        if not name:
-            # some forks may return list or different shape
-            if isinstance(data, list) and data:
-                name = data[0].get("name")
-        if not name:
-            raise HTTPException(status_code=502, detail=f"Unexpected upload response: {data}")
-        return name
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to upload image to ComfyUI: {e}")
-
-
-def _build_prompt_payload(image_name: str, text_prompt: str) -> dict:
-    if not os.path.exists(TEMPLATE_PATH):
-        raise HTTPException(status_code=500, detail="Template JSON not found")
-    try:
-        with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-            workflow = json.load(f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load template JSON: {e}")
-
-    # Generate date-based output path
-    output_dir = os.path.join(COMFYUI_OUTPUT_PATH)
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Generate unique filename with timestamp
-    now = datetime.now()
-    timestamp = now.strftime("%H%M%S")
-    unique_id = str(uuid.uuid4())[:8]
-    output_filename = f"image_{timestamp}_{unique_id}.png"
-    full_output_path = os.path.join(output_dir, output_filename)
-
-    # Update nodes as specified by the user
-    try:
-        # Node 78: LoadImage -> inputs.image = uploaded name
-        if "78" in workflow and "inputs" in workflow["78"]:
-            workflow["78"]["inputs"]["image"] = image_name
-        else:
-            raise KeyError("Node 78.inputs.image not found in template")
-        # Node 108: TextEncodeQwenImageEdit -> inputs.prompt = text_prompt
-        if "108" in workflow and "inputs" in workflow["108"]:
-            workflow["108"]["inputs"]["prompt"] = text_prompt
-        else:
-            raise KeyError("Node 108.inputs.prompt not found in template")
-        # Node 113: JWImageSaveToPath -> inputs.path = date-based path
-        if "113" in workflow and "inputs" in workflow["113"]:
-            workflow["113"]["inputs"]["path"] = full_output_path
-        else:
-            raise KeyError("Node 113.inputs.path not found in template")
-    except KeyError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    client_id = str(uuid.uuid4())
-    data = {
-        "prompt": workflow,
-        "client_id": client_id
-    }
-    return data
-
-
-async def _submit_prompt(server: str, payload: dict) -> str:
-    url = f"{server}prompt"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            # Prefer server-assigned prompt_id if present
-            try:
-                rj = resp.json()
-                prompt_id = rj.get("prompt_id") or payload.get("client_id")
-            except Exception:
-                prompt_id = payload.get("client_id")
-            return prompt_id
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to submit prompt: {e}")
-
-
-async def _check_queue_status(server: str, prompt_id: str) -> str:
-    """Check if prompt is in queue (running or pending)"""
-    try:
-        queue_url = f"{server}queue"
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(queue_url)
-            if r.status_code == 200:
-                queue_data = r.json()
-                
-                # Check running jobs
-                if "queue_running" in queue_data:
-                    running_jobs = queue_data["queue_running"]
-                    if isinstance(running_jobs, list):
-                        for job in running_jobs:
-                            if isinstance(job, list) and len(job) >= 2 and job[1] == prompt_id:
-                                return "running"
-                
-                # Check pending jobs
-                if "queue_pending" in queue_data:
-                    pending_jobs = queue_data["queue_pending"]
-                    if isinstance(pending_jobs, list):
-                        for job in pending_jobs:
-                            if isinstance(job, list) and len(job) >= 2 and job[1] == prompt_id:
-                                return "pending"
-        return "not_found"
-    except Exception:
-        return "error"
-
-
-async def _check_history_for_images(server: str, prompt_id: str) -> List[str]:
-    """Check history for completed results"""
-    try:
-        history_url = f"{server}history/{prompt_id}"
-        view_url = f"{server}view?filename="
-        
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(history_url)
-            if r.status_code == 200:
-                data = r.json()
-                # ComfyUI history format: {prompt_id: {outputs: {...}, status: {...}, ...}}
-                if isinstance(data, dict) and prompt_id in data:
-                    prompt_data = data[prompt_id]
-                    outputs = prompt_data.get("outputs") if isinstance(prompt_data, dict) else None
-                    if outputs:
-                        image_urls: List[str] = []
-                        for node_id, node_out in outputs.items():
-                            if not isinstance(node_out, dict):
-                                continue
-                            for out_type, out_items in node_out.items():
-                                if not isinstance(out_items, list):
-                                    continue
-                                for item in out_items:
-                                    if not isinstance(item, dict):
-                                        continue
-                                    fname = item.get("filename")
-                                    if fname:
-                                        image_urls.append(view_url + fname)
-                        return image_urls
-        return []
-    except Exception:
-        return []
-
-
-def _sync_write_file(path: str, data: bytes):
-    """同步写入文件，供 asyncio.to_thread 调用"""
-    with open(path, "wb") as f:
-        f.write(data)
-
-
-@app.post("/api/qwen-image-edit")
-async def qwen_image_edit(
-    image: UploadFile = File(...),
-    prompt: str = Form(...),
-    server: str = Form(None)
-):
-    """
-    Accepts an image and a text prompt, calls ComfyUI with the provided template,
-    and returns the prompt_id for status checking.
-    """
-    srv = _normalize_server(server)
-
-    # Step 1: Upload image to ComfyUI input folder via API
-    image_name = await _upload_image_to_comfyui(srv, image)
-
-    # Step 2: Build workflow payload with updated nodes
-    payload = _build_prompt_payload(image_name, prompt)
-
-    # Step 3: Submit prompt
-    prompt_id = await _submit_prompt(srv, payload)
-
-    return JSONResponse({
-        "prompt_id": prompt_id,
-        "status": "submitted"
-    })
-
-
 @app.get("/api/config/upload")
 async def get_upload_config():
     """
@@ -392,34 +230,6 @@ async def get_debug_password():
     return JSONResponse({
         "success": True,
         "password": debug_password
-    })
-
-
-@app.get("/api/status/{prompt_id}")
-async def check_status(
-    prompt_id: str,
-    server: str = Query(None)
-):
-    """
-    Check the status of a submitted prompt.
-    Returns: pending, running, completed, or error
-    """
-    srv = _normalize_server(server)
-    
-    # First check if it's completed
-    image_urls = await _check_history_for_images(srv, prompt_id)
-    if image_urls:
-        return JSONResponse({
-            "status": "completed",
-            "image_urls": image_urls
-        })
-    
-    # Check queue status
-    queue_status = await _check_queue_status(srv, prompt_id)
-    
-    return JSONResponse({
-        "status": queue_status,
-        "image_urls": []
     })
 
 
@@ -1048,8 +858,8 @@ async def image_edit(
         
         if not image_urls:
             raise HTTPException(status_code=400, detail="At least one image is required (via file upload or URL)")
-        
-        logger.info(f"[image_edit] Input image URLs: {image_urls}")
+
+        logger.info(f"[image_edit] 提示词: {prompt} 参考图片列表 ({len(image_urls)}张): {image_urls}")
         
         # Submit tasks according to generation count
         project_ids = []
@@ -4417,8 +4227,10 @@ async def poll_workflow_node_status(
             project_id = node_data.get('project_id')
             url = node_data.get('url', '')
 
-            # 只处理有 project_id 但 url 为空的节点
-            if project_id and not url:
+            # 宫格拆分节点（isSplit=true）由前端通过 grid-split 接口单独处理，
+            # 不在此处返回，避免将原始宫格图 URL 设入节点
+            is_grid_node = node_data.get('isSplit') == True and node_data.get('gridIndex')
+            if project_id and not url and not is_grid_node:
                 # 查询 ai_tools 表获取状态
                 try:
                     ai_tool = AIToolsModel.get_by_id(project_id)
@@ -4569,25 +4381,31 @@ async def get_grid_split_image(
                 content={"code": -1, "message": "无权访问该AI工具记录"}
             )
         
-        # 3. 验证类型（1=标准版图片编辑，7=加强版图片编辑）
-        if ai_tool.type not in [1, 7]:
+        # 3. 验证类型（图片编辑类型）
+        if ai_tool.type not in IMAGE_EDIT_TYPES:
             return JSONResponse(
                 status_code=400,
                 content={"code": -1, "message": "该AI工具不是图片编辑类型"}
             )
         
-        # 4. 验证状态（2=已完成）
-        if ai_tool.status != 2:
+        # 4. 验证状态
+        if ai_tool.status == AI_TOOL_STATUS_FAILED:
             return JSONResponse(
                 status_code=400,
-                content={"code": -1, "message": f"AI工具未完成，当前状态: {ai_tool.status}"}
+                content={"code": -1, "message": "AI工具任务已失败"}
             )
+        if ai_tool.status != AI_TOOL_STATUS_COMPLETED:
+            # 任务尚未完成（pending/running），返回 code:1 让前端稍后重试（不计入失败次数）
+            return JSONResponse({
+                "code": 1,
+                "message": f"AI工具任务进行中(status={ai_tool.status})，请稍后重试"
+            })
         
         # 5. 确定宫格大小
         # 优先使用前端传入的grid_size（因为type=7可能是4宫格或9宫格）
         # 未传时降级为按type推断：type=1→4宫格，type=7→9宫格
-        if grid_size not in (4, 9):
-            grid_size = 4 if ai_tool.type == 1 else 9
+        if grid_size not in GRID_VALID_SIZES:
+            grid_size = GRID_DEFAULT_SIZE_BY_TYPE.get(ai_tool.type, GRID_SIZE_2X2)
         
         if grid_index < 1 or grid_index > grid_size:
             return JSONResponse(
@@ -4602,82 +4420,118 @@ async def get_grid_split_image(
                 content={"code": -1, "message": "AI工具未生成结果图片"}
             )
         
-        # 准备缓存目录
+        # 准备目录
         cache_dir = os.path.join(os.getcwd(), "upload", "workflow", str(user_id), "grid_cache", str(ai_tools_id))
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        result_url = ai_tool.result_url
-        grid_image_path = None
-        
-        # 判断是远程URL还是本地路径
-        if result_url.startswith('http://') or result_url.startswith('https://'):
-            # 远程URL：下载到本地缓存
-            cached_image_path = os.path.join(cache_dir, "original.png")
-            
-            if not os.path.exists(cached_image_path):
-                logger.info(f"Downloading grid image from: {result_url}")
-                try:
-                    import httpx
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.get(result_url)
-                        if response.status_code == 200:
-                            with open(cached_image_path, 'wb') as f:
-                                f.write(response.content)
-                            logger.info(f"Grid image downloaded to: {cached_image_path}")
-                        else:
-                            logger.error(f"Failed to download grid image, status: {response.status_code}")
-                            return JSONResponse(
-                                status_code=500,
-                                content={"code": -1, "message": f"下载原图失败，状态码: {response.status_code}"}
-                            )
-                except Exception as e:
-                    logger.error(f"Failed to download grid image: {str(e)}")
-                    return JSONResponse(
-                        status_code=500,
-                        content={"code": -1, "message": f"下载原图失败: {str(e)}"}
-                    )
-            
-            grid_image_path = cached_image_path
-        else:
-            # 本地路径
-            result_path = result_url.lstrip('/')
-            grid_image_path = os.path.join(os.getcwd(), result_path)
-        
-        if not os.path.exists(grid_image_path):
-            logger.error(f"Grid image not found: {grid_image_path}")
-            return JSONResponse(
-                status_code=404,
-                content={"code": -1, "message": "原图文件不存在"}
-            )
-        
-        # 7. 准备拆分输出目录
         output_dir = os.path.join(os.getcwd(), "upload", "workflow", str(user_id), "grid_split", str(ai_tools_id))
+        os.makedirs(cache_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
         
-        # 8. 检查缓存
         split_image_name = f"{grid_index}.png"
         split_image_path = os.path.join(output_dir, split_image_name)
+        split_image_url = f"/upload/workflow/{user_id}/grid_split/{ai_tools_id}/{split_image_name}"
         
-        if not os.path.exists(split_image_path):
-            # 需要拆分
+        # 6. 检查拆分缓存 — 如果已拆分过，直接返回
+        if os.path.exists(split_image_path):
+            return JSONResponse({
+                "code": 0,
+                "message": "获取成功",
+                "data": {
+                    "image_url": split_image_url,
+                    "grid_index": grid_index,
+                    "grid_size": grid_size
+                }
+            })
+        
+        # 7. 尝试获取文件锁（跨 worker 进程安全）
+        lock_path = os.path.join(cache_dir, ".lock")
+        acquired = file_lock.try_acquire(lock_path, timeout_seconds=GRID_LOCK_TIMEOUT_SECONDS)
+        
+        if not acquired:
+            # 其他 worker 正在处理，返回处理中
+            logger.info(f"Grid split lock held by another worker: {ai_tools_id}")
+            return JSONResponse({
+                "code": 1,
+                "message": "拆分处理中，请稍后重试"
+            })
+        
+        try:
+            # 8. 二次检查缓存（获锁后可能已被其他进程完成）
+            if os.path.exists(split_image_path):
+                return JSONResponse({
+                    "code": 0,
+                    "message": "获取成功",
+                    "data": {
+                        "image_url": split_image_url,
+                        "grid_index": grid_index,
+                        "grid_size": grid_size
+                    }
+                })
+            
+            result_url = ai_tool.result_url
+            grid_image_path = None
+            
+            # 9. 下载或定位原图
+            if result_url.startswith('http://') or result_url.startswith('https://'):
+                cached_image_path = os.path.join(cache_dir, "original.png")
+                
+                if not os.path.exists(cached_image_path):
+                    logger.info(f"Downloading grid image from: {result_url}")
+                    try:
+                        import httpx
+                        async with httpx.AsyncClient(timeout=GRID_IMAGE_DOWNLOAD_TIMEOUT) as client:
+                            response = await client.get(result_url)
+                            if response.status_code == 200:
+                                # 写文件 + PIL 验证全部在线程池中执行，不阻塞事件循环
+                                await asyncio.to_thread(
+                                    _write_and_validate_image,
+                                    response.content,
+                                    cached_image_path
+                                )
+                                logger.info(f"Grid image downloaded to: {cached_image_path}")
+                            else:
+                                logger.error(f"Failed to download grid image, status: {response.status_code}")
+                                return JSONResponse(
+                                    status_code=500,
+                                    content={"code": -1, "message": f"下载原图失败，状态码: {response.status_code}"}
+                                )
+                    except Exception as e:
+                        logger.error(f"Failed to download grid image: {str(e)}")
+                        return JSONResponse(
+                            status_code=500,
+                            content={"code": -1, "message": f"下载原图失败: {str(e)}"}
+                        )
+                
+                grid_image_path = cached_image_path
+            else:
+                result_path = result_url.lstrip('/')
+                grid_image_path = os.path.join(os.getcwd(), result_path)
+            
+            if not os.path.exists(grid_image_path):
+                logger.error(f"Grid image not found: {grid_image_path}")
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": -1, "message": "原图文件不存在"}
+                )
+            
+            # 10. 拆分全部格子（一次性拆分所有，后续请求直接命中缓存）
             logger.info(f"Splitting grid image {ai_tools_id} (grid_size={grid_size})")
             splitter = ImageGridSplitter()
             
             try:
-                if grid_size == 4:
+                if grid_size == GRID_SIZE_2X2:
                     output_paths = await asyncio.to_thread(
                         splitter.split_2x2_grid,
                         grid_image_path=grid_image_path,
                         output_dir=output_dir,
-                        output_names=[str(i) for i in range(1, 5)],
+                        output_names=[str(i) for i in range(1, GRID_SIZE_2X2 + 1)],
                         output_format="png"
                     )
-                else:  # grid_size == 9
+                else:  # grid_size == GRID_SIZE_3X3
                     output_paths = await asyncio.to_thread(
                         splitter.split_3x3_grid,
                         grid_image_path=grid_image_path,
                         output_dir=output_dir,
-                        output_names=[str(i) for i in range(1, 10)],
+                        output_names=[str(i) for i in range(1, GRID_SIZE_3X3 + 1)],
                         output_format="png"
                     )
                 logger.info(f"Grid split completed: {len(output_paths)} images")
@@ -4688,19 +4542,20 @@ async def get_grid_split_image(
                     status_code=500,
                     content={"code": -1, "message": f"图片拆分失败: {str(e)}"}
                 )
-        
-        # 9. 返回拆分后的图片URL
-        split_image_url = f"/upload/workflow/{user_id}/grid_split/{ai_tools_id}/{split_image_name}"
-        
-        return JSONResponse({
-            "code": 0,
-            "message": "获取成功",
-            "data": {
-                "image_url": split_image_url,
-                "grid_index": grid_index,
-                "grid_size": grid_size
-            }
-        })
+            
+            # 11. 返回拆分后的图片URL
+            return JSONResponse({
+                "code": 0,
+                "message": "获取成功",
+                "data": {
+                    "image_url": split_image_url,
+                    "grid_index": grid_index,
+                    "grid_size": grid_size
+                }
+            })
+        finally:
+            # 12. 释放锁
+            file_lock.release(lock_path)
         
     except Exception as e:
         logger.error(f"Failed to get grid split image: {str(e)}")

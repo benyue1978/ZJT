@@ -247,6 +247,11 @@
             body: form
           });
           
+          if(!res.ok){
+            const errorText = await res.text();
+            throw new Error(`服务器错误 (${res.status}): ${errorText || '请求失败'}`);
+          }
+          
           const result = await res.json();
           node.data.audioId = result.audio_id;
           node.data.status = result.status || 'submitted';
