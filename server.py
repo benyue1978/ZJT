@@ -22,7 +22,7 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import mimetypes
 from pydantic import BaseModel
 from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
-from config_util import get_config_path
+from config_util import get_config_path, resolve_bin_path
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
 from model.world import WorldModel
@@ -456,8 +456,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
         Exception: If audio processing fails
     """
     try:
-        ffmpeg_path = config.get("bin", {}).get("ffmpeg", "ffmpeg")
-        ffprobe_path = config.get("bin", {}).get("ffprobe", "ffprobe")
+        ffmpeg_path = resolve_bin_path(config.get("bin", {}).get("ffmpeg", "ffmpeg"), APP_DIR)
+        ffprobe_path = resolve_bin_path(config.get("bin", {}).get("ffprobe", "ffprobe"), APP_DIR)
         
         # Check audio duration using ffprobe
         duration_cmd = [
@@ -471,6 +471,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
             duration_cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='ignore',
             timeout=10
         )
         
@@ -506,6 +508,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
             trim_cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='ignore',
             timeout=30
         )
         
@@ -583,8 +587,9 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
         
         # Check video duration using ffprobe (async subprocess)
         try:
+            ffprobe_path = resolve_bin_path(config.get("bin", {}).get("ffprobe", "ffprobe"), APP_DIR)
             duration_cmd = [
-                'ffprobe', '-v', 'error',
+                ffprobe_path, '-v', 'error',
                 '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 video_path
@@ -597,7 +602,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
                 if proc.returncode == 0:
-                    duration = float(stdout.decode().strip())
+                    duration = float(stdout.decode('utf-8', errors='ignore').strip())
                     logger.info(f"Video duration: {duration:.2f}s")
                     
                     if duration > 20:
@@ -606,7 +611,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
                             detail=f"视频时长过长: {duration:.1f}秒, 限制为20秒"
                         )
                 else:
-                    logger.warning(f"Failed to get video duration: {stderr.decode()}")
+                    logger.warning(f"Failed to get video duration: {stderr.decode('utf-8', errors='ignore')}")
             except asyncio.TimeoutError:
                 proc.kill()
                 logger.warning("ffprobe timeout when checking duration")
@@ -624,8 +629,9 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
         logger.info(f"Extracting audio to: {audio_path}")
         
         # Use ffmpeg to extract audio
+        ffmpeg_path = resolve_bin_path(config.get("bin", {}).get("ffmpeg", "ffmpeg"), APP_DIR)
         ffmpeg_cmd = [
-            'ffmpeg', '-i', video_path,
+            ffmpeg_path, '-i', video_path,
             '-vn',  # No video
             '-acodec', 'pcm_s16le',  # PCM 16-bit
             '-ar', '44100',  # Sample rate 44.1kHz
@@ -650,7 +656,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
             )
         
         if proc.returncode != 0:
-            error_msg = stderr.decode()[:200] if stderr else "Unknown error"
+            error_msg = stderr.decode('utf-8', errors='ignore')[:200] if stderr else "Unknown error"
             logger.error(f"ffmpeg error: {error_msg}")
             raise HTTPException(
                 status_code=500,

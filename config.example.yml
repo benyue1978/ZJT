@@ -73,8 +73,13 @@ pay:
       appSecret: 3469XXXX
 
 bin:
-  ffmpeg: "/usr/bin/ffmpeg"
-  ffprobe: "/usr/bin/ffprobe"
+  # FFmpeg 可执行文件路径配置
+  # 支持三种格式：
+  # 1. 绝对路径（向后兼容）: "/usr/bin/ffmpeg"
+  # 2. 相对路径（基于项目根目录）: "bin/ffmpeg/ffmpeg.exe"
+  # 3. 使用系统 PATH 查找: "ffmpeg"
+  ffmpeg: "bin/ffmpeg/ffmpeg"
+  ffprobe: "bin/ffmpeg/ffprobe"
 
 llm:
   baidu:
