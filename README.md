@@ -24,10 +24,38 @@ pip install -r requirements.txt
 如使用国内镜像，可在最后一行追加 `-i https://pypi.tuna.tsinghua.edu.cn/simple`。
 
 ## 启动后端
+
+### 方式 1：使用 uv 启动（推荐，Windows）
+
+[uv](https://docs.astral.sh/uv/) 是一个快速的 Python 包管理器，会自动管理依赖和虚拟环境。
+
+**安装 uv**（首次使用）：
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**启动服务**：
+```powershell
+# 开发环境
+$env:comfyui_env="dev"
+uv run start_windows.py
+
+# 生产环境（默认）
+uv run start_windows.py
+```
+
+`start_windows.py` 会自动：
+1. 启动本地 MySQL 服务（首次启动时自动初始化）
+2. 启动 Web 服务和定时任务
+3. 监控服务状态，异常时自动重启
+
+### 方式 2：手动启动
+
 ```bash
 # 激活虚拟环境后
 python3 server.py
 ```
+
 默认监听 `http://0.0.0.0:5173`，并以静态站点形式提供 `web/` 目录。你的浏览器可直接访问：
 - 前端首页：`http://127.0.0.1:5173/`
 - API：`POST http://127.0.0.1:5173/api/qwen-image-edit`
