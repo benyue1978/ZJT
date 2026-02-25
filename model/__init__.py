@@ -14,7 +14,6 @@ from .computing_power import ComputingPowerModel, ComputingPower
 from .computing_power_log import ComputingPowerLogModel, ComputingPowerLog
 from .verify_codes import VerifyCodesModel, VerifyCode
 from .login_log import LoginLogModel, LoginLog
-from .valid_serial_number import ValidSerialNumberModel, ValidSerialNumber
 from .token_log import TokenLogModel, TokenLog
 
 __all__ = [
@@ -46,8 +45,6 @@ __all__ = [
     'VerifyCode',
     'LoginLogModel',
     'LoginLog',
-    'ValidSerialNumberModel',
-    'ValidSerialNumber',
     'TokenLogModel',
     'TokenLog',
 ]

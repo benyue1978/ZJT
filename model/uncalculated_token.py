@@ -4,7 +4,10 @@ UncalculatedToken Model - 未计算token表
 """
 from typing import Optional
 from datetime import datetime
-from model.database import get_db_connection
+from model.database import execute_query, execute_update, execute_insert
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class UncalculatedToken:
@@ -40,34 +43,23 @@ class UncalculatedTokenModel:
         cache_read: Optional[int] = None
     ) -> int:
         """创建未计算token记录"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        sql = """INSERT INTO uncalculated_token 
+               (user_id, uncalculated_input_token, uncalculated_output_token, uncalculated_cache_read) 
+               VALUES (%s, %s, %s, %s)"""
         try:
-            cursor.execute(
-                """INSERT INTO uncalculated_token 
-                   (user_id, uncalculated_input_token, uncalculated_output_token, uncalculated_cache_read) 
-                   VALUES (%s, %s, %s, %s)""",
-                (user_id, input_token, output_token, cache_read)
-            )
-            conn.commit()
-            return cursor.lastrowid
-        finally:
-            cursor.close()
-            conn.close()
+            return execute_insert(sql, (user_id, input_token, output_token, cache_read))
+        except Exception as e:
+            logger.error(f"Failed to create uncalculated token: {e}")
+            raise
     
     @staticmethod
     def get_by_user_id(user_id: int) -> Optional[UncalculatedToken]:
         """根据用户ID获取未计算token记录"""
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        sql = """SELECT id, user_id, uncalculated_input_token, uncalculated_output_token, 
+               uncalculated_cache_read, created_at, updated_at 
+               FROM uncalculated_token WHERE user_id = %s"""
         try:
-            cursor.execute(
-                """SELECT id, user_id, uncalculated_input_token, uncalculated_output_token, 
-                   uncalculated_cache_read, created_at, updated_at 
-                   FROM uncalculated_token WHERE user_id = %s""",
-                (user_id,)
-            )
-            row = cursor.fetchone()
+            row = execute_query(sql, (user_id,), fetch_one=True)
             if not row:
                 return None
             return UncalculatedToken(
@@ -79,9 +71,9 @@ class UncalculatedTokenModel:
                 created_at=row['created_at'],
                 updated_at=row['updated_at']
             )
-        finally:
-            cursor.close()
-            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to get uncalculated token for user {user_id}: {e}")
+            raise
     
     @staticmethod
     def update(
@@ -91,34 +83,24 @@ class UncalculatedTokenModel:
         cache_read: Optional[int] = None
     ) -> bool:
         """更新用户的未计算token"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        sql = """UPDATE uncalculated_token 
+               SET uncalculated_input_token = %s, uncalculated_output_token = %s, 
+                   uncalculated_cache_read = %s, updated_at = CURRENT_TIMESTAMP 
+               WHERE user_id = %s"""
         try:
-            cursor.execute(
-                """UPDATE uncalculated_token 
-                   SET uncalculated_input_token = %s, uncalculated_output_token = %s, 
-                       uncalculated_cache_read = %s, updated_at = CURRENT_TIMESTAMP 
-                   WHERE user_id = %s""",
-                (input_token, output_token, cache_read, user_id)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            cursor.close()
-            conn.close()
+            rows = execute_update(sql, (input_token, output_token, cache_read, user_id))
+            return rows > 0
+        except Exception as e:
+            logger.error(f"Failed to update uncalculated token for user {user_id}: {e}")
+            raise
     
     @staticmethod
     def delete(user_id: int) -> bool:
         """删除用户的未计算token记录"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        sql = "DELETE FROM uncalculated_token WHERE user_id = %s"
         try:
-            cursor.execute(
-                "DELETE FROM uncalculated_token WHERE user_id = %s",
-                (user_id,)
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            cursor.close()
-            conn.close()
+            rows = execute_update(sql, (user_id,))
+            return rows > 0
+        except Exception as e:
+            logger.error(f"Failed to delete uncalculated token for user {user_id}: {e}")
+            raise

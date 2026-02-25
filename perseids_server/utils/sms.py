@@ -99,7 +99,7 @@ def send_sms_code(phone: str, code: str, agent: str = 'default') -> dict:
         response = client.send_sms_with_options(send_sms_request, runtime)
         
         if response.body.code == 'OK':
-            logger.info(f"短信发送成功: {phone}")
+            logger.info(f"短信发送成功: {phone} 验证码：{code}")
             return {"success": True, "message": "验证码发送成功"}
         else:
             error_msg = f"{response.body.code} - {response.body.message}"

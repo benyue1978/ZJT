@@ -340,7 +340,7 @@ CREATE TABLE `computing_power`  (
   `updated_at` datetime(0) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(0),
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `user_id`(`user_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 187 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for computing_power_log
@@ -361,7 +361,7 @@ CREATE TABLE `computing_power_log`  (
   INDEX `idx_user_created`(`user_id`, `created_at`) USING BTREE,
   INDEX `idx_behavior_created`(`behavior`, `created_at`) USING BTREE,
   INDEX `idx_user_behavior_note`(`user_id`, `behavior`, `note`(100)) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 7230 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for login_logs
@@ -377,7 +377,7 @@ CREATE TABLE `login_logs`  (
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `user_id`(`user_id`) USING BTREE,
   CONSTRAINT `login_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 1824 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for token_history
@@ -412,7 +412,7 @@ CREATE TABLE `token_log`  (
   `status` tinyint(0) NULL DEFAULT 0 COMMENT '状态（0-未扣除，1-已处理）',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_token_log_status_created`(`status`, `created_at`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 986 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for uncalculated_token
@@ -428,7 +428,7 @@ CREATE TABLE `uncalculated_token`  (
   `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `user_id`(`user_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '未计算token表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '未计算token表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for user_tokens
@@ -447,7 +447,7 @@ CREATE TABLE `user_tokens`  (
   INDEX `idx_expire_time`(`expire_time`) USING BTREE,
   INDEX `idx_device_uuid`(`device_uuid`) USING BTREE,
   CONSTRAINT `user_tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 1610 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for users
@@ -472,7 +472,7 @@ CREATE TABLE `users`  (
   UNIQUE INDEX `idx_serial_number`(`serial_number`) USING BTREE,
   INDEX `invite_code`(`invite_code`) USING BTREE,
   INDEX `inviter_id`(`inviter_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 104 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for model
@@ -484,7 +484,7 @@ CREATE TABLE `model`  (
   `created_at` datetime(0) NULL DEFAULT NULL,
   `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '其他信息',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '模型表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '模型表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of model
@@ -502,7 +502,7 @@ CREATE TABLE `vendor`  (
   `created_at` datetime(0) NULL DEFAULT NULL,
   `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '其他信息',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '供应商表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '供应商表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of vendor
@@ -523,7 +523,7 @@ CREATE TABLE `vendor_model`  (
   `cache_read_threshold` int(0) NULL DEFAULT NULL COMMENT '缓存读取阈值',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `vendor_id_model_id`(`vendor_id`, `model_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of vendor_model
@@ -546,7 +546,7 @@ CREATE TABLE `verify_codes`  (
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_phone_type`(`phone`, `type`) USING BTREE,
   INDEX `idx_expire_time`(`expire_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 197 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
 

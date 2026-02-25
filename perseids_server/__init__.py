@@ -8,12 +8,10 @@ __version__ = "0.1.0"
 
 from .services.auth_service import AuthService
 from .services.computing_power_service import ComputingPowerService
-from .services.serial_number_service import SerialNumberService
 from .services.verify_code_service import VerifyCodeService
 
 __all__ = [
     'AuthService',
     'ComputingPowerService',
-    'SerialNumberService',
     'VerifyCodeService',
 ]
