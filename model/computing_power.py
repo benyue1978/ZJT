@@ -1,0 +1,119 @@
+"""
+ComputingPower Model - Database operations for computing_power table
+对应Go的models/computing_power.go
+"""
+from typing import Optional, Dict, Any
+from datetime import datetime
+from .database import execute_query, execute_update, execute_insert
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class ComputingPower:
+    """ComputingPower model class"""
+    
+    def __init__(self, **kwargs):
+        self.id = kwargs.get('id')
+        self.user_id = kwargs.get('user_id')
+        self.computing_power = kwargs.get('computing_power', 0)
+        self.expiration_time = kwargs.get('expiration_time')
+        self.created_at = kwargs.get('created_at')
+        self.updated_at = kwargs.get('updated_at')
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'computing_power': self.computing_power,
+            'expiration_time': self.expiration_time.isoformat() if self.expiration_time else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ComputingPowerModel:
+    """ComputingPower database operations"""
+    
+    @staticmethod
+    def get_by_user_id(user_id: int) -> Optional[ComputingPower]:
+        """根据用户ID获取算力信息"""
+        sql = "SELECT * FROM computing_power WHERE user_id = %s"
+        try:
+            result = execute_query(sql, (user_id,), fetch_one=True)
+            if result:
+                return ComputingPower(**result)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get computing power for user {user_id}: {e}")
+            raise
+    
+    @staticmethod
+    def create(user_id: int, computing_power: int = 0, expiration_time: Optional[datetime] = None) -> int:
+        """创建新的算力记录"""
+        sql = """
+            INSERT INTO computing_power (user_id, computing_power, expiration_time)
+            VALUES (%s, %s, %s)
+        """
+        try:
+            record_id = execute_insert(sql, (user_id, computing_power, expiration_time))
+            logger.info(f"Created computing power record with ID: {record_id}")
+            return record_id
+        except Exception as e:
+            logger.error(f"Failed to create computing power record: {e}")
+            raise
+    
+    @staticmethod
+    def update(user_id: int, computing_power: int) -> int:
+        """更新用户算力"""
+        sql = "UPDATE computing_power SET computing_power = %s, updated_at = NOW() WHERE user_id = %s"
+        try:
+            return execute_update(sql, (computing_power, user_id))
+        except Exception as e:
+            logger.error(f"Failed to update computing power for user {user_id}: {e}")
+            raise
+    
+    @staticmethod
+    def update_with_expiration(user_id: int, computing_power: int, expiration_time: Optional[datetime]) -> int:
+        """更新用户算力和过期时间"""
+        sql = """
+            UPDATE computing_power 
+            SET computing_power = %s, expiration_time = %s, updated_at = NOW() 
+            WHERE user_id = %s
+        """
+        try:
+            return execute_update(sql, (computing_power, expiration_time, user_id))
+        except Exception as e:
+            logger.error(f"Failed to update computing power with expiration for user {user_id}: {e}")
+            raise
+    
+    @staticmethod
+    def delete(user_id: int) -> int:
+        """删除算力记录"""
+        sql = "DELETE FROM computing_power WHERE user_id = %s"
+        try:
+            return execute_update(sql, (user_id,))
+        except Exception as e:
+            logger.error(f"Failed to delete computing power for user {user_id}: {e}")
+            raise
+    
+    @staticmethod
+    def exists(user_id: int) -> bool:
+        """检查用户是否已有算力记录"""
+        sql = "SELECT COUNT(*) as count FROM computing_power WHERE user_id = %s"
+        try:
+            result = execute_query(sql, (user_id,), fetch_one=True)
+            return result['count'] > 0 if result else False
+        except Exception as e:
+            logger.error(f"Failed to check computing power exists for user {user_id}: {e}")
+            raise
+    
+    @staticmethod
+    def ensure_exists(user_id: int) -> ComputingPower:
+        """确保用户有算力记录，没有则创建"""
+        power = ComputingPowerModel.get_by_user_id(user_id)
+        if not power:
+            ComputingPowerModel.create(user_id, 0, None)
+            power = ComputingPowerModel.get_by_user_id(user_id)
+        return power

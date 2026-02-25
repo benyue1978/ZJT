@@ -1,97 +1,32 @@
 import logging
-import requests
-import httpx
 import traceback
-import hmac
-import hashlib
-import time
-import secrets
-import json
 import os
-import yaml
-from urllib.parse import quote_plus
-from config_util import get_config_path
 import platform
 import subprocess
 import uuid as uuid_module
+import asyncio
+
+from perseids_server.services.auth_service import AuthService
+from perseids_server.services.computing_power_service import ComputingPowerService
+from perseids_server.services.verify_code_service import VerifyCodeService
 
 logger = logging.getLogger(__name__)
 
-# 预共享的密钥（需与服务器端一致）
-SECRET_KEY = "7LVmHyyj2UTu"
-
-# Load authentication URL from config
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-config_file = get_config_path()
-with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-BASE_URL = config["authentication"]["url"]
-
-def generate_signature(data, timestamp, nonce):
+def _extract_token_from_headers(headers: dict) -> str:
     """
-    生成签名
-    :param data: dict 请求数据
-    :param timestamp: int 时间戳
-    :param nonce: str 随机字符串
-    :return: str 签名
+    从请求头中提取token
     """
-    logger.debug("开始生成签名...")
-    logger.debug(f"原始数据: {data}")
-    logger.debug(f"时间戳: {timestamp}")
-    logger.debug(f"随机数: {nonce}")
-
-    # 将请求参数按字典序排序
-    sorted_keys = sorted(data.keys())
-    logger.debug(f"排序后的键: {sorted_keys}")
-    
-    # 构建参数对并进行 URL 编码
-    pairs = []
-    for k in sorted_keys:
-        # 将值转换为字符串
-        v = data[k]
-        original_v = v
-        if isinstance(v, bool):
-            v = str(v).lower()
-        elif isinstance(v, (int, float)):
-            v = str(v)
-        elif not isinstance(v, str):
-            # 对于其他类型，尝试 JSON 序列化
-            try:
-                v = json.dumps(v)
-            except:
-                v = str(v)
-        
-        logger.debug(f"处理键值对 - 键: {k}, 原始值: {original_v}, 转换后: {v}")
-        
-        # URL 编码 key 和 value (使用 quote_plus 匹配 Go 的 url.QueryEscape 行为)
-        k = quote_plus(str(k))
-        v = quote_plus(str(v))
-        pair = f"{k}={v}"
-        logger.debug(f"URL编码后的键值对: {pair}")
-        pairs.append(pair)
-    
-    # 拼接参数字符串
-    data_str = "&".join(pairs)
-    logger.debug(f"参数字符串: {data_str}")
-    
-    # 拼接签名字符串
-    sign_str = f"{data_str}&timestamp={timestamp}&nonce={nonce}"
-    logger.debug(f"完整签名字符串: {sign_str}")
-    
-    # 使用 HMAC-SHA256 生成签名
-    signature = hmac.new(
-        SECRET_KEY.encode('utf-8'),
-        sign_str.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
-    
-    logger.debug(f"最终签名: {signature}")
-    return signature
+    if not headers:
+        return None
+    auth_header = headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        return auth_header[7:]
+    return auth_header
 
 
 def make_perseids_request(endpoint=None, data=None, method='POST', headers=None):
     """
-    向 Go 服务器发起请求
+    内部认证服务请求（同步版本）
     :param endpoint: str 接口路径
     :param data: dict 请求数据
     :param method: str 请求方法
@@ -99,164 +34,197 @@ def make_perseids_request(endpoint=None, data=None, method='POST', headers=None)
     :return: tuple (bool, str, dict) 是否成功，消息，响应数据
     """
     try:
-        timeout = 30
-        
-        # 构建认证 URL，已含有添加 api/v1 前缀
-        auth_url = f"{BASE_URL}/{endpoint}"
-        logger.info(f"调用认证服务器 URL: {auth_url}")
-        
-        # 生成签名所需参数
-        timestamp = int(time.time())
-        nonce = secrets.token_hex(16)
-        
-        # 构建请求数据
+        token = _extract_token_from_headers(headers)
         payload = data or {}
-        logger.debug(f"请求数据: {payload}")
+        logger.debug(f"内部认证请求: {endpoint}, 数据: {payload}")
         
-        # 生成签名
-        signature = generate_signature(payload, timestamp, nonce)
+        # 根据endpoint路由到对应的内部服务
+        if endpoint == 'user/check_computing_power':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = ComputingPowerService.check_computing_power(user_id)
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
         
-        # 构建请求头
-        request_headers = headers or {}
-        request_headers.update({
-            'X-Timestamp': str(timestamp),
-            'X-Nonce': nonce,
-            'X-Signature': signature
-        })
-        logger.debug(f"请求头: {request_headers}")
+        elif endpoint == 'user/calculate_computing_power':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = ComputingPowerService.calculate_computing_power(
+                user_id=user_id,
+                computing_power=payload.get('computing_power', 0),
+                behavior=payload.get('behavior', 'deduct'),
+                transaction_id=payload.get('transaction_id', ''),
+                message=payload.get('message'),
+                note=payload.get('note')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
         
-        response = requests.request(method, auth_url, json=payload, headers=request_headers, timeout=timeout)
-        logger.debug(f"响应状态码: {response.status_code}")
-        logger.debug(f"响应内容: {response.text}")
+        elif endpoint == 'user/computing_power_logs':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = ComputingPowerService.get_computing_power_logs(
+                user_id=user_id,
+                limit=payload.get('page_size', 20),
+                offset=(payload.get('page', 1) - 1) * payload.get('page_size', 20),
+                behavior=payload.get('behavior')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
         
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('success', False), data.get('message', ''), data.get('data', {})
+        elif endpoint == 'user/invitation_reward_stats':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = ComputingPowerService.get_invitation_reward_stats(user_id)
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'user/get_user_id_by_auth_token':
+            user_id = AuthService.verify_token(token)
+            if user_id:
+                return True, '获取成功', {'user_id': user_id}
+            return False, '无效的认证信息', {}
+        
+        elif endpoint == 'user/check_first_recharge':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = AuthService.check_first_recharge(user_id)
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'user/update_first_recharge':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = AuthService.update_first_recharge(user_id, payload.get('status', 1))
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'send_verify_code':
+            result = VerifyCodeService.create_verify_code(
+                phone=payload.get('phone'),
+                code_type=payload.get('type', 'register')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'auth/logout':
+            result = AuthService.logout(token)
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'get_auth_token_by_user_id':
+            result = AuthService.get_auth_token_by_user_id(
+                user_id=payload.get('user_id'),
+                authentication_id=payload.get('authentication_id', '')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'user/token_log':
+            user_id = AuthService.verify_token(token)
+            if not user_id:
+                return False, '无效的认证信息', {}
+            result = AuthService.create_token_log(
+                user_id=user_id,
+                input_token=payload.get('input_token'),
+                output_token=payload.get('output_token'),
+                cache_read=payload.get('cache_read'),
+                cache_creation=payload.get('cache_creation'),
+                vendor_id=payload.get('vendor_id'),
+                model_id=payload.get('model_id'),
+                note=payload.get('note')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif endpoint == 'user/models':
+            result = AuthService.get_all_models(
+                limit=payload.get('limit', 50),
+                offset=payload.get('offset', 0)
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
         else:
-            # 尝试解析错误响应
-            try:
-                error_data = response.json()
-                error_message = error_data.get('message', '未知错误')
-            except:
-                error_message = f'服务器错误 ({response.status_code}): {response.text}'
-            
-            logger.error(f'认证服务器返回错误: {error_message}')
-            return False, error_message, { }
+            logger.warning(f"未知的endpoint: {endpoint}")
+            return False, f'未知的接口: {endpoint}', {}
 
     except Exception as e:
-        logger.error(f'调用认证服务器时发生错误: {str(e)}')
+        logger.error(f'内部认证服务调用失败: {str(e)}')
         logger.error(traceback.format_exc())
         return False, '服务器内部错误', {}
 
 async def async_make_perseids_request(endpoint=None, data=None, method='POST', headers=None):
     """
-    向 Go 服务器发起异步请求（非阻塞版本）
+    内部认证服务请求（异步非阻塞版本）
+    使用 asyncio.to_thread 包装同步服务调用，避免阻塞事件循环
     :param endpoint: str 接口路径
     :param data: dict 请求数据
     :param method: str 请求方法
     :param headers: dict 请求头
     :return: tuple (bool, str, dict) 是否成功，消息，响应数据
     """
-    try:
-        timeout = 30
-        
-        # 构建认证 URL，已含有添加 api/v1 前缀
-        auth_url = f"{BASE_URL}/{endpoint}"
-        logger.info(f"调用认证服务器 URL: {auth_url}")
-        
-        # 生成签名所需参数
-        timestamp = int(time.time())
-        nonce = secrets.token_hex(16)
-        
-        # 构建请求数据
-        payload = data or {}
-        logger.debug(f"请求数据: {payload}")
-        
-        # 生成签名
-        signature = generate_signature(payload, timestamp, nonce)
-        
-        # 构建请求头
-        request_headers = headers or {}
-        request_headers.update({
-            'X-Timestamp': str(timestamp),
-            'X-Nonce': nonce,
-            'X-Signature': signature
-        })
-        logger.debug(f"请求头: {request_headers}")
-        
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(method, auth_url, json=payload, headers=request_headers)
-        logger.debug(f"响应状态码: {response.status_code}")
-        logger.debug(f"响应内容: {response.text}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('success', False), data.get('message', ''), data.get('data', {})
-        else:
-            # 尝试解析错误响应
-            try:
-                error_data = response.json()
-                error_message = error_data.get('message', '未知错误')
-            except:
-                error_message = f'服务器错误 ({response.status_code}): {response.text}'
-            
-            logger.error(f'认证服务器返回错误: {error_message}')
-            return False, error_message, { }
-
-    except Exception as e:
-        logger.error(f'调用认证服务器时发生错误: {str(e)}')
-        logger.error(traceback.format_exc())
-        return False, '服务器内部错误', {}
+    return await asyncio.to_thread(make_perseids_request, endpoint, data, method, headers)
 
 
 async def async_call_external_auth_server(phone, password, device_uuid=None, auth_type='login', extra_data=None):
     """
-    调用外部认证服务器（异步非阻塞版本）
+    内部认证服务调用（异步非阻塞版本）
     :param phone: 手机号
     :param password: 密码
     :param device_uuid: 设备UUID
-    :param auth_type: 认证类型，'login' 或 'register'
+    :param auth_type: 认证类型，'login', 'register' 或 'reset_password'
     :param extra_data: 额外数据
     :return: (bool, str, dict) 是否成功，消息，数据
     """
-    # 构建请求数据
-    payload = {
-        'phone': phone,
-        'password': password,
-        'device_uuid': device_uuid
-    }
-    
-    if extra_data:
-        logger.debug(f"调用认证服务器 包含extra_data: {extra_data}")
-        payload.update(extra_data)
-
-    logger.debug(f"调用认证服务器 参数: {payload}")
-    return await async_make_perseids_request(auth_type, payload)
+    return await asyncio.to_thread(
+        call_external_auth_server, phone, password, device_uuid, auth_type, extra_data
+    )
 
 
 def call_external_auth_server(phone, password, device_uuid=None, auth_type='login', extra_data=None):
     """
-    调用外部认证服务器
+    内部认证服务调用（同步版本）
     :param phone: 手机号
     :param password: 密码
     :param device_uuid: 设备UUID
-    :param auth_type: 认证类型，'login' 或 'register'
+    :param auth_type: 认证类型，'login', 'register' 或 'reset_password'
     :param extra_data: 额外数据
     :return: (bool, str, dict) 是否成功，消息，数据
     """
-    # 构建请求数据
-    payload = {
-        'phone': phone,
-        'password': password,
-        'device_uuid': device_uuid
-    }
-    
-    if extra_data:
-        logger.debug(f"调用认证服务器 包含extra_data: {extra_data}")
-        payload.update(extra_data)
+    try:
+        extra = extra_data or {}
+        logger.debug(f"内部认证调用: {auth_type}, phone: {phone}")
+        
+        if auth_type == 'login':
+            result = AuthService.login(
+                phone=phone,
+                password=password,
+                device_uuid=device_uuid,
+                terms_agreed=extra.get('terms_agreed')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif auth_type == 'register':
+            result = AuthService.register(
+                phone=phone,
+                password=password,
+                verify_code=extra.get('code'),
+                invite_code=extra.get('invite_code')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        elif auth_type == 'reset_password':
+            result = AuthService.reset_password(
+                phone=phone,
+                new_password=password,
+                verify_code=extra.get('code')
+            )
+            return result.get('success', False), result.get('message', ''), result.get('data', {})
+        
+        else:
+            logger.warning(f"未知的认证类型: {auth_type}")
+            return False, f'未知的认证类型: {auth_type}', {}
 
-    logger.debug(f"调用认证服务器 参数: {payload}")
-    return make_perseids_request(auth_type, payload)
+    except Exception as e:
+        logger.error(f'内部认证服务调用失败: {str(e)}')
+        logger.error(traceback.format_exc())
+        return False, '服务器内部错误', {}
 
 def get_device_uuid():
     """

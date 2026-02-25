@@ -21,6 +21,17 @@ timeout:
 authentication:
   url: "http://192.168.10.212:8082/api/v1"
 
+# SMS configuration (阿里云短信服务)
+sms:
+  agents:
+    default:
+      access_key_id: "LTAI5txxxxxxxx"
+      access_key_secret: "eKRGvkHCxxxxxxxx"
+      sign_name: "公司名称"
+      template_code: "SMS_29225xxxx"
+      broadcast_template_code: "SMS_48972xxxx"
+      region_id: "cn-hangzhou"
+
 # Database configuration
 database:
   host: "192.168.10.212"

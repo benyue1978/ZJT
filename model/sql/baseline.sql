@@ -328,6 +328,228 @@ CREATE TABLE `world` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='世界表';
+
+
+DROP TABLE IF EXISTS `computing_power`;
+CREATE TABLE `computing_power`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `user_id` int(0) NOT NULL,
+  `computing_power` int(0) NOT NULL DEFAULT 0,
+  `expiration_time` datetime(0) NULL DEFAULT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `updated_at` datetime(0) NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 187 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for computing_power_log
+-- ----------------------------
+DROP TABLE IF EXISTS `computing_power_log`;
+CREATE TABLE `computing_power_log`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `computing_power` int(0) NULL DEFAULT NULL,
+  `behavior` enum('increase','deduct') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `message` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
+  `user_id` int(0) NOT NULL,
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `transaction_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `from` int(0) NULL DEFAULT NULL,
+  `to` int(0) NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_user_created`(`user_id`, `created_at`) USING BTREE,
+  INDEX `idx_behavior_created`(`behavior`, `created_at`) USING BTREE,
+  INDEX `idx_user_behavior_note`(`user_id`, `behavior`, `note`(100)) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 7230 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for login_logs
+-- ----------------------------
+DROP TABLE IF EXISTS `login_logs`;
+CREATE TABLE `login_logs`  (
+  `id` bigint(0) NOT NULL AUTO_INCREMENT,
+  `user_id` int(0) NOT NULL,
+  `login_time` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `ip_address` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `user_agent` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `user_id`(`user_id`) USING BTREE,
+  CONSTRAINT `login_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1824 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for token_history
+-- ----------------------------
+DROP TABLE IF EXISTS `token_history`;
+CREATE TABLE `token_history`  (
+  `id` bigint(0) NOT NULL,
+  `user_tokens_id` int(0) NULL DEFAULT NULL,
+  `user_token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `created_at` timestamp(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `time_index` int(0) NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_created_at`(`created_at`) USING BTREE,
+  INDEX `idx_user_tokens_id`(`user_tokens_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for token_log
+-- ----------------------------
+DROP TABLE IF EXISTS `token_log`;
+CREATE TABLE `token_log`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `input_token` int(0) NULL DEFAULT NULL COMMENT '输入token',
+  `output_token` int(0) NULL DEFAULT NULL COMMENT '输出token',
+  `cache_read` int(0) NULL DEFAULT NULL COMMENT '缓存读取',
+  `cache_creation` int(0) NULL DEFAULT NULL COMMENT '缓存创建',
+  `vendor_id` int(0) NULL DEFAULT NULL COMMENT '供应商id',
+  `model_id` int(0) NULL DEFAULT NULL COMMENT '模型id',
+  `user_id` int(0) NOT NULL COMMENT '用户id',
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `status` tinyint(0) NULL DEFAULT 0 COMMENT '状态（0-未扣除，1-已处理）',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_token_log_status_created`(`status`, `created_at`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 986 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for uncalculated_token
+-- ----------------------------
+DROP TABLE IF EXISTS `uncalculated_token`;
+CREATE TABLE `uncalculated_token`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `user_id` int(0) NOT NULL COMMENT '用户id',
+  `uncalculated_input_token` int(0) NULL DEFAULT NULL COMMENT '未计算输入token',
+  `uncalculated_output_token` int(0) NULL DEFAULT NULL COMMENT '未计算输出token',
+  `uncalculated_cache_read` int(0) NULL DEFAULT NULL COMMENT '未计算缓存读取',
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `user_id`(`user_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '未计算token表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for user_tokens
+-- ----------------------------
+DROP TABLE IF EXISTS `user_tokens`;
+CREATE TABLE `user_tokens`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `user_id` int(0) NOT NULL,
+  `token` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `created_at` timestamp(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `expire_time` timestamp(0) NOT NULL,
+  `device_uuid` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `idx_token`(`token`) USING BTREE,
+  INDEX `idx_user_id`(`user_id`) USING BTREE,
+  INDEX `idx_expire_time`(`expire_time`) USING BTREE,
+  INDEX `idx_device_uuid`(`device_uuid`) USING BTREE,
+  CONSTRAINT `user_tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1610 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for users
+-- ----------------------------
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password_hash` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` tinyint(0) NOT NULL DEFAULT 1 COMMENT '用户状态：1-正常，0-禁用',
+  `created_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `updated_at` datetime(0) NULL DEFAULT CURRENT_TIMESTAMP(0) ON UPDATE CURRENT_TIMESTAMP(0),
+  `serial_number` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '序列号',
+  `secret_key` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL,
+  `role` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '角色',
+  `terms_agreed` tinyint(0) NOT NULL DEFAULT 0 COMMENT '同意条款（0-不同意，1-同意）',
+  `invite_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '邀请码',
+  `inviter_id` int(0) NULL DEFAULT NULL COMMENT '邀请人id',
+  `first_recharge` tinyint(0) NULL DEFAULT 0 COMMENT '是否首次充值',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `idx_phone`(`phone`) USING BTREE,
+  UNIQUE INDEX `idx_serial_number`(`serial_number`) USING BTREE,
+  INDEX `invite_code`(`invite_code`) USING BTREE,
+  INDEX `inviter_id`(`inviter_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 104 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for model
+-- ----------------------------
+DROP TABLE IF EXISTS `model`;
+CREATE TABLE `model`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `model_name` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '模型名称',
+  `created_at` datetime(0) NULL DEFAULT NULL,
+  `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '其他信息',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '模型表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of model
+-- ----------------------------
+INSERT INTO `model` VALUES (1, 'gemini-3-flash-preview', '2026-01-22 14:14:32', NULL);
+INSERT INTO `model` VALUES (2, 'gemini-3-pro-preview', '2026-01-22 14:14:34', NULL);
+
+-- ----------------------------
+-- Table structure for vendor
+-- ----------------------------
+DROP TABLE IF EXISTS `vendor`;
+CREATE TABLE `vendor`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `vendor_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '供应商名称',
+  `created_at` datetime(0) NULL DEFAULT NULL,
+  `note` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '其他信息',
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '供应商表' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of vendor
+-- ----------------------------
+INSERT INTO `vendor` VALUES (1, 'jiekou', '2026-01-22 14:11:28', NULL);
+
+-- ----------------------------
+-- Table structure for vendor_model
+-- ----------------------------
+DROP TABLE IF EXISTS `vendor_model`;
+CREATE TABLE `vendor_model`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `vendor_id` int(0) NULL DEFAULT NULL COMMENT '供应商id',
+  `model_id` int(0) NULL DEFAULT NULL COMMENT '模型id',
+  `created_at` datetime(0) NULL DEFAULT NULL,
+  `input_token_threshold` int(0) NULL DEFAULT NULL COMMENT '输入token阈值',
+  `out_token_threshold` int(0) NULL DEFAULT NULL COMMENT '输出token阈值',
+  `cache_read_threshold` int(0) NULL DEFAULT NULL COMMENT '缓存读取阈值',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `vendor_id_model_id`(`vendor_id`, `model_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of vendor_model
+-- ----------------------------
+INSERT INTO `vendor_model` VALUES (1, 1, 1, '2026-01-22 14:16:46', 11000, 1800, 112000);
+INSERT INTO `vendor_model` VALUES (2, 1, 2, '2026-01-22 14:16:49', 1500, 340, 15000);
+
+-- ----------------------------
+-- Table structure for verify_codes
+-- ----------------------------
+DROP TABLE IF EXISTS `verify_codes`;
+CREATE TABLE `verify_codes`  (
+  `id` int(0) NOT NULL AUTO_INCREMENT,
+  `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `code` varchar(6) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `created_at` timestamp(0) NULL DEFAULT CURRENT_TIMESTAMP(0),
+  `expire_time` timestamp(0) NOT NULL,
+  `used` tinyint(1) NULL DEFAULT 0,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_phone_type`(`phone`, `type`) USING BTREE,
+  INDEX `idx_expire_time`(`expire_time`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 197 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

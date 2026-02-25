@@ -6,6 +6,7 @@ import os
 import fcntl
 from task.visual_task import generate_video_task
 from task.audio_task import generate_audio_task
+from task.token_task import process_token_task
 from functools import partial
 
 
@@ -82,6 +83,7 @@ def init_scheduler(app):
     # 创建一个带有app参数的任务函数
     task_with_app_video = partial(generate_video_task, app=app)
     task_with_app_audio = partial(_run_async_task, generate_audio_task, app=app)
+    task_with_app_token = partial(process_token_task, app=app)
     
     logger.info('启用视频生成任务')
     scheduler.add_job(
@@ -100,6 +102,18 @@ def init_scheduler(app):
         trigger=IntervalTrigger(seconds=7),
         id='generate_audio',
         name='Generate audio every 7 seconds',
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True
+    )
+
+    # Token日志处理任务
+    logger.info('启用Token日志处理任务')
+    scheduler.add_job(
+        func=task_with_app_token,
+        trigger=IntervalTrigger(seconds=6),
+        id='process_token',
+        name='Process token logs every 6 seconds',
         replace_existing=True,
         max_instances=1,
         coalesce=True
