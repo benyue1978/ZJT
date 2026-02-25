@@ -542,6 +542,56 @@ def monitor_services():
             time.sleep(5)
 
 
+def stop_mysql_gracefully():
+    """
+    使用 mysqladmin shutdown 优雅停止 MySQL
+    """
+    try:
+        mysql_exists, mysql_paths = check_mysql_path()
+        if not mysql_exists:
+            return False
+
+        current_dir = get_current_dir()
+        mysql_client = mysql_paths['mysql_client']
+        mysqladmin = os.path.join(mysql_paths['mysql_bin_dir'], 'mysqladmin.exe')
+
+        if not os.path.exists(mysqladmin):
+            logger.warning(f"mysqladmin 不存在: {mysqladmin}")
+            return False
+
+        config = load_config()
+        password = config['database']['password'] if config and 'database' in config else ""
+        port = get_mysql_port()
+
+        cmd = [mysqladmin, '-uroot', f'-P{port}', 'shutdown']
+        if password:
+            cmd.insert(2, f'-p{password}')
+
+        logger.info("使用 mysqladmin shutdown 停止 MySQL...")
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        stdout, stderr = process.communicate(timeout=15)
+
+        if process.returncode == 0:
+            logger.info("MySQL 已优雅停止")
+            return True
+        else:
+            error_msg = stderr.decode('utf-8', errors='ignore')
+            logger.warning(f"mysqladmin shutdown 失败: {error_msg}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        logger.warning("mysqladmin shutdown 超时")
+        return False
+    except Exception as e:
+        logger.error(f"停止 MySQL 时出错: {e}")
+        return False
+
+
 def cleanup():
     """
     清理函数，停止所有服务
@@ -564,16 +614,18 @@ def cleanup():
             logger.error(f"停止应用服务时出错: {e}")
 
     if mysql_process is not None:
-        try:
-            logger.info("正在停止MySQL服务...")
-            mysql_process.terminate()
-            mysql_process.wait(timeout=10)
-            logger.info("MySQL服务已停止")
-        except subprocess.TimeoutExpired:
-            logger.warning("MySQL服务停止超时，强制结束")
-            mysql_process.kill()
-        except Exception as e:
-            logger.error(f"停止MySQL服务时出错: {e}")
+        logger.info("正在停止MySQL服务...")
+        if not stop_mysql_gracefully():
+            try:
+                logger.info("尝试强制终止MySQL进程...")
+                mysql_process.terminate()
+                mysql_process.wait(timeout=10)
+                logger.info("MySQL服务已停止")
+            except subprocess.TimeoutExpired:
+                logger.warning("MySQL服务停止超时，强制结束")
+                mysql_process.kill()
+            except Exception as e:
+                logger.error(f"停止MySQL服务时出错: {e}")
 
 
 def signal_handler(signum, frame):
