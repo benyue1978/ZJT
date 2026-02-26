@@ -8,6 +8,7 @@ import yaml
 from .base_video_driver import BaseVideoDriver
 from config_util import get_config_path
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
 
 class Veo3DuomiV1Driver(BaseVideoDriver):
@@ -30,6 +31,10 @@ class Veo3DuomiV1Driver(BaseVideoDriver):
         self._token = config["duomi"]["token"]
         self._base_url = "https://duomiapi.com"
         self._timeout = config["timeout"]["request_timeout"]
+
+        # 是否为本地环境
+        self._is_local = config.get("server", {}).get("is_local", False)
+        self._config = config
 
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """

@@ -8,6 +8,7 @@ import yaml
 from .base_video_driver import BaseVideoDriver
 from config_util import get_config_path
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
 
 class Sora2DuomiV1Driver(BaseVideoDriver):
@@ -30,6 +31,10 @@ class Sora2DuomiV1Driver(BaseVideoDriver):
         self._token = config["duomi"]["token"]
         self._base_url = "https://duomiapi.com"
         self._timeout = config["timeout"]["request_timeout"]
+
+        # 是否为本地环境
+        self._is_local = config.get("server", {}).get("is_local", False)
+        self._config = config
     
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
@@ -147,6 +152,14 @@ class Sora2DuomiV1Driver(BaseVideoDriver):
             "duration": ai_tool.duration or 15,
             "image_urls": [ai_tool.image_path]
         }
+
+        # 如果是本地环境，将本地图片上传到图床
+        if self._is_local and ai_tool.image_path:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到图床: {ai_tool.image_path}")
+            cdn_urls = upload_local_images_to_cdn_sync([ai_tool.image_path], self._config)
+            self.logger.info(f"图片上传完成，CDN链接: {cdn_urls}")
+            if cdn_urls and cdn_urls[0]:
+                payload["image_urls"] = [cdn_urls[0]]
         
         return {
             "url": f"{self._base_url}/v1/videos/generations",
