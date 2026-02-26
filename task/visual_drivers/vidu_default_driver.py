@@ -1,13 +1,14 @@
 """
 Vidu 默认驱动实现
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import traceback
 import os
 import yaml
 from .base_video_driver import BaseVideoDriver
 from config_util import get_config_path
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
 
 class ViduDefaultDriver(BaseVideoDriver):
@@ -31,6 +32,10 @@ class ViduDefaultDriver(BaseVideoDriver):
         self._api_key = vidu_config.get("token", "")
         self._base_url = "https://api.vidu.cn"
         self._timeout = config["timeout"]["request_timeout"]
+
+        # 是否为本地环境
+        self._is_local = config.get("server", {}).get("is_local", False)
+        self._config = config
 
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
@@ -151,6 +156,12 @@ class ViduDefaultDriver(BaseVideoDriver):
                 image_urls = [url.strip() for url in ai_tool.image_path.split(',') if url.strip()]
             else:
                 image_urls = ai_tool.image_path
+
+        # 如果是本地环境，将本地图片上传到图床
+        if self._is_local and image_urls:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到图床: {image_urls}")
+            image_urls = upload_local_images_to_cdn_sync(image_urls, self._config)
+            self.logger.info(f"图片上传完成，CDN链接: {image_urls}")
 
         if len(image_urls) == 2:
             # 两张图片：首尾图生视频
