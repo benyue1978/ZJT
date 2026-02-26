@@ -5,9 +5,11 @@ from typing import Dict, Any, Optional
 import traceback
 import os
 import yaml
+import asyncio
 from .base_video_driver import BaseVideoDriver
 from config_util import get_config_path
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.file_storage import RunningHubFileStorage
 
 
 class Wan22RunninghubV1Driver(BaseVideoDriver):
@@ -32,6 +34,18 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
         self._webapp_id = "1950219582398185474"  # Wan2.2 webapp ID
         self._timeout = config["timeout"]["request_timeout"]
     
+        # 是否为本地环境
+        self._is_local = config.get("server", {}).get("is_local", False)
+        self._config = config
+
+        # 初始化 RunningHub 文件存储
+        self._storage = RunningHubFileStorage(
+            host=self._host,
+            api_key=self._api_key,
+            config=config,
+            logger=self.logger
+        )
+
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
         发送报警信息
@@ -143,6 +157,17 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
         Returns:
             Dict[str, Any]: 请求参数字典
         """
+        # 处理图片路径 - 如果是本地环境，上传到 RunningHub
+        image_path = ai_tool.image_path
+        if self._is_local and image_path:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到 RunningHub: {image_path}")
+            result = asyncio.run(self._storage.upload_file("", image_path))
+            if result.success:
+                image_path = result.key
+                self.logger.info(f"图片上传完成，使用 fileName: {image_path}")
+            else:
+                self.logger.warning(f"图片上传失败: {result.error}")
+
         # Map ratio to Wan2.2 ratio value
         ratio_map = {
             "16:9": "5",  # 横屏
@@ -161,7 +186,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
             {
                 "nodeId": "135",
                 "fieldName": "image",
-                "fieldValue": ai_tool.image_path,
+                "fieldValue": image_path,
                 "description": "上传图像"
             },
             {
