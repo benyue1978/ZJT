@@ -6,9 +6,11 @@ import os
 import asyncio
 import tempfile
 import logging
+import uuid
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse, unquote
 
+from config.constant import FilePathConstants
 from utils.network_utils import is_local_path, is_local_file_path
 from utils.file_storage import get_file_storage
 
@@ -69,12 +71,13 @@ def try_map_url_to_local_file(url: str, config: Dict[str, Any], project_root: st
         return None
 
 
-async def download_url_to_temp(url: str) -> Optional[str]:
+async def download_url_to_temp(url: str, app_dir: str = None) -> Optional[str]:
     """
-    下载URL到临时文件
+    下载URL到临时文件（使用 files/tmp/pic/年月日/ 目录）
 
     Args:
         url: 图片URL
+        app_dir: 应用根目录，默认为当前工作目录
 
     Returns:
         Optional[str]: 临时文件路径，失败返回None
@@ -82,15 +85,20 @@ async def download_url_to_temp(url: str) -> Optional[str]:
     import aiohttp
 
     try:
+        # 获取图片临时目录（按年月日分组）
+        if app_dir is None:
+            app_dir = os.getcwd()
+        pic_tmp_dir = FilePathConstants.get_pic_tmp_dir(app_dir)
+
         # 从URL中提取文件名
         parsed = urlparse(url)
         path = unquote(parsed.path)
         filename = os.path.basename(path) or "image.png"
 
-        # 创建临时文件
+        # 生成唯一的临时文件名
         suffix = os.path.splitext(filename)[1] or ".png"
-        fd, temp_path = tempfile.mkstemp(suffix=suffix)
-        os.close(fd)
+        unique_name = f"{uuid.uuid4().hex}{suffix}"
+        temp_path = os.path.join(pic_tmp_dir, unique_name)
 
         logger.info(f"下载局域网图片: {url} -> {temp_path}")
 
@@ -165,7 +173,7 @@ async def upload_local_images_to_cdn(
                 else:
                     # 无法映射，需要HTTP下载
                     logger.info(f"检测到局域网URL，准备下载: {image_path}")
-                    temp_file = await download_url_to_temp(image_path)
+                    temp_file = await download_url_to_temp(image_path, project_root)
                     if not temp_file:
                         logger.error(f"下载局域网图片失败: {image_path}")
                         result_urls.append(image_path)

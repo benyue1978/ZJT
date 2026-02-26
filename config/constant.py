@@ -142,6 +142,25 @@ class FilePathConstants:
     # 路径常量（相对路径）
     _TTS_AUDIO_SUBDIR = "files/tmp/tts/tmp_ref_audio"
     _JIANYING_EXPORT_SUBDIR = "files/tmp/jianying_export"
+    _PIC_TMP_SUBDIR = "files/tmp/pic"
+
+    @staticmethod
+    def get_pic_tmp_dir(app_dir: str) -> str:
+        """
+        获取图片临时目录的完整路径（自动按年月日分组，自动创建目录）
+
+        Args:
+            app_dir: 应用根目录路径
+
+        Returns:
+            完整的图片临时目录路径，格式：files/tmp/pic/2026-02-26/
+        """
+        import os
+        from datetime import datetime
+        date_folder = datetime.now().strftime('%Y-%m-%d')
+        path = os.path.join(app_dir, FilePathConstants._PIC_TMP_SUBDIR, date_folder)
+        os.makedirs(path, exist_ok=True)
+        return path
     
     @staticmethod
     def get_tts_audio_dir(app_dir: str) -> str:

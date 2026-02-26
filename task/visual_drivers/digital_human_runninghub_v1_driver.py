@@ -5,9 +5,11 @@ from typing import Dict, Any, Optional
 import traceback
 import os
 import yaml
+import asyncio
 from .base_video_driver import BaseVideoDriver
 from config_util import get_config_path
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.file_storage import RunningHubFileStorage
 
 
 class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
@@ -31,7 +33,19 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
         self._host = config["runninghub"]["host"]
         self._webapp_id = "2017494689997398017"  # Digital Human webapp ID
         self._timeout = config["timeout"]["request_timeout"]
-    
+
+        # 是否为本地环境
+        self._is_local = config.get("server", {}).get("is_local", False)
+        self._config = config
+
+        # 初始化 RunningHub 文件存储
+        self._storage = RunningHubFileStorage(
+            host=self._host,
+            api_key=self._api_key,
+            config=config,
+            logger=self.logger
+        )
+
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
         发送报警信息
@@ -145,7 +159,28 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
         """
         # 从 extra_config 中获取 audio_url
         audio_url = ai_tool.message or ""
-        
+
+        # 处理音频路径 - 如果是本地环境，上传到 RunningHub
+        if self._is_local and audio_url:
+            self.logger.info(f"本地环境检测到音频路径，准备上传到 RunningHub: {audio_url}")
+            result = asyncio.run(self._storage.upload_file("", audio_url))
+            if result.success:
+                audio_url = result.key
+                self.logger.info(f"音频上传完成，使用 fileName: {audio_url}")
+            else:
+                self.logger.warning(f"音频上传失败: {result.error}")
+
+        # 处理图片路径 - 如果是本地环境，上传到 RunningHub
+        image_path = ai_tool.image_path
+        if self._is_local and image_path:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到 RunningHub: {image_path}")
+            result = asyncio.run(self._storage.upload_file("", image_path))
+            if result.success:
+                image_path = result.key
+                self.logger.info(f"图片上传完成，使用 fileName: {image_path}")
+            else:
+                self.logger.warning(f"图片上传失败: {result.error}")
+
         # Map aspect_ratio to value
         ratio_map = {
             "original": "original",
@@ -159,13 +194,13 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
             "9:16": "9:16"
         }
         ratio_value = ratio_map.get(ai_tool.ratio or "9:16", "9:16")
-        
+
         # Build node info list for digital human
         node_info_list = [
             {
                 "nodeId": "126",
                 "fieldName": "image",
-                "fieldValue": ai_tool.image_path,
+                "fieldValue": image_path,
                 "description": "上传图像"
             },
             {
