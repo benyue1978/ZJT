@@ -137,8 +137,15 @@ alembic:
 
 file_storage:
   # Qiniu cloud storage configuration
+  # 标准存储每月免费额度具体包括：
+  # 存储空间：10GB/月
+  # CDN回源流量：10GB/月
+  # 请求次数：
+  # PUT/DELETE 请求：10万次/月
+  # GET 请求：100万次/月
+  # 具体参考 https://developer.qiniu.com/kodo/6379/metering-and-billing?ref=support.qiniu.com
   qiniu:
     access_key: "IAM-xxxxxxxxxxxxxxxx"  # 七牛云 Access Key
     secret_key: "xxxxxxxxxxxxxxxxxxxx"  # 七牛云 Secret Key
     bucket_name: "jeffstric"  # 存储空间名称
-    cdn_domain: "cdn.perseids.cn"  # CDN 加速域名
+    cdn_domain: "cdn.perseids.cn"  # CDN 加速域名  绑定CDN加速域名图文教程文档，您可以参考：https://developer.qiniu.com/fusion/manual/4939/the-domain-name-to-access 需要注意您要绑定工信部备案的域名。
