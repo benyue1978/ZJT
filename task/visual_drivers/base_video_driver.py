@@ -196,9 +196,6 @@ class BaseVideoDriver(ABC):
         api_logger.info(f"Headers: {self._mask_sensitive_headers(headers)}")
         api_logger.info(f"Payload: {self._mask_sensitive_payload(json)}")
 
-        self.logger.info(f"[{self.driver_name}] {method} {url}")
-        self.logger.info(f"[{self.driver_name}] Payload: {json}")
-
         try:
             response = requests.request(method, url, json=json, headers=headers, **kwargs)
             response_time = datetime.now().isoformat()
@@ -217,7 +214,6 @@ class BaseVideoDriver(ABC):
 
             api_logger.info(f"========== API 请求结束 ==========")
 
-            self.logger.info(f"[{self.driver_name}] Response: {result}")
             response.raise_for_status()
             return result
 
@@ -242,17 +238,25 @@ class BaseVideoDriver(ABC):
         return masked
 
     def _mask_sensitive_payload(self, payload: dict) -> dict:
-        """脱敏请求体中的敏感信息"""
+        """脱敏请求体中的敏感信息（递归处理嵌套字典）"""
         if not payload:
             return {}
-        masked = payload.copy()
-        for key in masked:
-            if key.lower() in ["apikey", "api_key", "secret", "password", "token"]:
-                value = str(masked[key])
-                if len(value) > 10:
-                    masked[key] = value[:4] + "***" + value[-4:]
+
+        sensitive_keys = ["apikey", "api_key", "secret", "password", "token", "key"]
+        masked = {}
+        for key, value in payload.items():
+            if key.lower() in sensitive_keys:
+                str_value = str(value)
+                if len(str_value) > 10:
+                    masked[key] = str_value[:4] + "***" + str_value[-4:]
                 else:
                     masked[key] = "***"
+            elif isinstance(value, dict):
+                masked[key] = self._mask_sensitive_payload(value)
+            elif isinstance(value, list):
+                masked[key] = [self._mask_sensitive_payload(item) if isinstance(item, dict) else item for item in value]
+            else:
+                masked[key] = value
         return masked
     
     @abstractmethod

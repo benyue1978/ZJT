@@ -503,7 +503,7 @@ def process_task_with_retry(task_type, process_func):
                     
                     # 释放 RunningHub 槽位
                     ai_tool = AIToolsModel.get_by_id(task.task_id)
-                    if ai_tool and ai_tool.type in [10, 11]:
+                    if ai_tool and ai_tool.type in RUNNINGHUB_TASK_TYPES:
                         if ai_tool.project_id:
                             RunningHubSlotsModel.release_slot_by_project_id(ai_tool.project_id)
                         else:
@@ -553,7 +553,7 @@ def process_task_with_retry(task_type, process_func):
                             logger.error(f"Failed to refund computing power for task {task.task_id}: {e}")
                         
                         # 释放 RunningHub 槽位
-                        if ai_tool.type in [10, 11, 13]:
+                        if ai_tool.type in RUNNINGHUB_TASK_TYPES:
                             if ai_tool.project_id:
                                 RunningHubSlotsModel.release_slot_by_project_id(ai_tool.project_id)
                             else:
