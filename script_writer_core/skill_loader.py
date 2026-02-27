@@ -16,10 +16,11 @@ class SkillLoader:
         """初始化技能加载器
         
         Args:
-            skills_dir: 技能目录路径，默认为 .claude/skills
+            skills_dir: 技能目录路径，默认为 skills 目录
         """
         if skills_dir is None:
-            skills_dir = os.path.join(os.path.dirname(__file__), '.claude', 'skills')
+            # 修复：技能文件位于 script_writer_core/skills 目录下
+            skills_dir = os.path.join(os.path.dirname(__file__), 'skills')
         
         self.skills_dir = Path(skills_dir)
         self.skills_metadata = {}  # 只存储元数据

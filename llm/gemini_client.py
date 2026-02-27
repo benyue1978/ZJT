@@ -22,40 +22,25 @@ except ImportError:
 
 from script_writer_core.log_utils import should_log_debug, should_log_info, truncate_log_content
 
-# 配置 API 日志记录器
-def setup_api_logger():
-    """设置 API 日志记录器，输出到 logs/api.log"""
-    api_logger = logging.getLogger('gemini_api')
-    api_logger.setLevel(logging.DEBUG)
+# 配置 LLM 日志记录器
+def setup_llm_logger():
+    """设置 LLM 日志记录器，输出到 logs/llm.log"""
+    llm_logger = logging.getLogger('llm')
+    llm_logger.setLevel(logging.DEBUG)
     
     # 如果已经有 handler，不重复添加
-    if api_logger.handlers:
-        return api_logger
+    if llm_logger.handlers:
+        return llm_logger
     
     # 创建 logs 目录 - 使用绝对路径
-    # 获取项目根目录 (agents 目录的上一级)
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     log_dir = Path(project_root) / 'logs'
     
     # 打印日志路径以便调试
-    print(f"Gemini API Logger initialized. Log file: {log_dir / 'api.log'}")
+    print(f"LLM Logger initialized. Log file: {log_dir / 'llm.log'}")
     
     log_dir.mkdir(exist_ok=True)
-    
-    # 创建文件 handler（无缓冲模式）
-    file_handler = logging.FileHandler(log_dir / 'api.log', encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
-    
-    # 创建格式化器
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    file_handler.setFormatter(formatter)
-    
-    # 添加 handler
-    api_logger.addHandler(file_handler)
     
     # 设置为无缓冲模式 - 每次写入立即刷新到磁盘
     class FlushingHandler(logging.FileHandler):
@@ -63,18 +48,25 @@ def setup_api_logger():
             super().emit(record)
             self.flush()
     
-    # 替换为无缓冲的handler
-    api_logger.removeHandler(file_handler)
-    flushing_handler = FlushingHandler(log_dir / 'api.log', encoding='utf-8')
+    # 创建无缓冲的文件 handler
+    flushing_handler = FlushingHandler(log_dir / 'llm.log', encoding='utf-8')
     flushing_handler.setLevel(logging.DEBUG)
-    flushing_handler.setFormatter(formatter)
-    api_logger.addHandler(flushing_handler)
     
-    return api_logger
+    # 创建格式化器
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    flushing_handler.setFormatter(formatter)
+    
+    # 添加 handler
+    llm_logger.addHandler(flushing_handler)
+    
+    return llm_logger
 
 # 初始化日志记录器
 logger = logging.getLogger(__name__)
-api_logger = setup_api_logger()
+llm_logger = setup_llm_logger()
 
 # 优先使用 jiekou 配置，如果没有则使用 google 配置
 API_KEY = get_config_value('jiekou', 'api_key') or get_config_value('google', 'api_key', default='')
@@ -268,15 +260,29 @@ class GeminiClient:
         model_name = model.replace("gemini/", "", 1) if "/" in model else model
         
         url = f"{base_url}/gemini/v1/models/{model_name}:generateContent"
-        api_logger.info(f"Gemini API URL: {url}")
-        api_logger.info(f"Gemini API model: {model_name}")
-        api_logger.info(f"Gemini API contents count: {len(gemini_payload.get('contents', []))}")
+        llm_logger.info(f"Gemini API URL: {url}")
+        llm_logger.info(f"Gemini API model: {model_name}")
+        llm_logger.info(f"Gemini API contents count: {len(gemini_payload.get('contents', []))}")
         
-        # 记录完整 payload 到文件，命令行只显示前500字符
+        # 记录完整 payload 到文件
         payload_str = json.dumps(gemini_payload, ensure_ascii=False, indent=2)
-        api_logger.debug(f"Gemini API request payload:\n{payload_str}")
+        
+        # 在 dev 环境下记录完整的 system_prompt（用于调试技能是否正确传入）
         if should_log_debug():
+            system_instruction = gemini_payload.get('systemInstruction', {})
+            system_parts = system_instruction.get('parts', [])
+            if system_parts:
+                system_prompt_text = system_parts[0].get('text', '')
+                llm_logger.info(f"="*80)
+                llm_logger.info(f"[DEV DEBUG] SYSTEM PROMPT (技能内容检查):")
+                llm_logger.info(f"="*80)
+                llm_logger.info(f"{system_prompt_text}")
+                llm_logger.info(f"="*80)
+                llm_logger.info(f"[DEV DEBUG] System prompt length: {len(system_prompt_text)} chars")
+                llm_logger.info(f"="*80)
             print(f"[DEBUG] Gemini API request payload (first 500 chars):\n{payload_str[:500]}")
+        
+        llm_logger.debug(f"Gemini API request payload:\n{payload_str}")
 
         try:
             response = requests.post(
@@ -286,11 +292,11 @@ class GeminiClient:
                 timeout=240
             )
             
-            api_logger.info(f"Gemini API response status: {response.status_code}")
+            llm_logger.info(f"Gemini API response status: {response.status_code}")
             
             if response.status_code != 200:
-                api_logger.error(f"Gemini API error: {response.status_code}")
-                api_logger.error(f"Gemini API error response: {response.text}")
+                llm_logger.error(f"Gemini API error: {response.status_code}")
+                llm_logger.error(f"Gemini API error response: {response.text}")
                 response.raise_for_status()
             
             # 记录响应内容
@@ -298,36 +304,36 @@ class GeminiClient:
             
             # 检查响应是否为空
             if not response_json:
-                api_logger.error("Gemini API returned empty response (None)")
+                llm_logger.error("Gemini API returned empty response (None)")
                 raise Exception("Gemini API returned empty response")
             
             # 完整记录响应结构
-            api_logger.info("="*80)
-            api_logger.info("GEMINI API RESPONSE:")
+            llm_logger.info("="*80)
+            llm_logger.info("GEMINI API RESPONSE:")
             
             if response_json and 'candidates' in response_json:
                 for i, candidate in enumerate(response_json['candidates']):
-                    api_logger.info(f"Candidate[{i}]:")
+                    llm_logger.info(f"Candidate[{i}]:")
                     content = candidate.get('content') or {}
                     parts = content.get('parts') or []
-                    api_logger.info(f"  Role: {content.get('role', 'unknown')}")
-                    api_logger.info(f"  Parts count: {len(parts)}")
+                    llm_logger.info(f"  Role: {content.get('role', 'unknown')}")
+                    llm_logger.info(f"  Parts count: {len(parts)}")
                     
                     for j, part in enumerate(parts):
                         if 'text' in part:
-                            api_logger.info(f"  Part[{j}] (text, {len(part['text'])} chars):")
-                            api_logger.info(f"{part['text']}")
+                            llm_logger.info(f"  Part[{j}] (text, {len(part['text'])} chars):")
+                            llm_logger.info(f"{part['text']}")
                         elif 'functionCall' in part:
                             func_call = part['functionCall']
-                            api_logger.info(f"  Part[{j}] (functionCall):")
-                            api_logger.info(f"    Name: {func_call.get('name', 'unknown')}")
-                            api_logger.info(f"    Args: {json.dumps(func_call.get('args', {}), ensure_ascii=False, indent=6)}")
+                            llm_logger.info(f"  Part[{j}] (functionCall):")
+                            llm_logger.info(f"    Name: {func_call.get('name', 'unknown')}")
+                            llm_logger.info(f"    Args: {json.dumps(func_call.get('args', {}), ensure_ascii=False, indent=6)}")
                     
                     # 记录 finishReason
                     if 'finishReason' in candidate:
-                        api_logger.info(f"  Finish reason: {candidate['finishReason']}")
+                        llm_logger.info(f"  Finish reason: {candidate['finishReason']}")
             
-            api_logger.info("-"*80)
+            llm_logger.info("-"*80)
             
             # 转换响应为标准格式
             converted_response = self._convert_gemini_response(
@@ -340,8 +346,8 @@ class GeminiClient:
             # 记录转换后的响应
             if converted_response.choices:
                 message = converted_response.choices[0].message
-                api_logger.debug(f"Converted response - Content length: {len(message.content) if message.content else 0}")
-                api_logger.debug(f"Converted response - Tool calls: {len(message.tool_calls) if message.tool_calls else 0}")
+                llm_logger.debug(f"Converted response - Content length: {len(message.content) if message.content else 0}")
+                llm_logger.debug(f"Converted response - Tool calls: {len(message.tool_calls) if message.tool_calls else 0}")
             
             return converted_response
             
@@ -386,7 +392,7 @@ class GeminiClient:
             "raw_completion_tokens": completion_tokens
         }
         
-        api_logger.info(f"Token usage analysis: input={input_tokens}, output={completion_tokens}, "
+        llm_logger.info(f"Token usage analysis: input={input_tokens}, output={completion_tokens}, "
                        f"cache_read={cached_tokens}, overhead={overhead_tokens}, total={total_tokens}")
         
         return result
@@ -420,7 +426,7 @@ class GeminiClient:
 
         if not data.get("candidates"):
             logger.warning("Gemini response has no candidates")
-            api_logger.info(f"Gemini usage1: {usage}")
+            llm_logger.info(f"Gemini usage1: {usage}")
             return Response([Choice(Message(""))], usage=usage)
 
         candidate = data["candidates"][0]
@@ -451,7 +457,7 @@ class GeminiClient:
                 if "thoughtSignature" in part:
                     thought_signature = part["thoughtSignature"]
                     if should_log_debug():
-                        api_logger.debug(f"Extracted thought_signature from response: {thought_signature[:100]}...")
+                        llm_logger.debug(f"Extracted thought_signature from response: {thought_signature[:100]}...")
                 
                 tool_call = type('obj', (object,), {
                     'id': f"call_{uuid.uuid4()}",
@@ -470,7 +476,7 @@ class GeminiClient:
         cache_read_token = usage.get("cache_read_token", 0)
         total_token = usage.get("total_token", 0)
 
-        api_logger.info(f"Gemini usage: {usage}")
+        llm_logger.info(f"Gemini usage: {usage}")
         logger.info(f"Gemini metadata - auth_token={auth_token}, vendor_id={vendor_id}, model_id={model_id}")
         headers = {'Authorization': f'Bearer {auth_token}'}
         # 发起请求，增加token日志

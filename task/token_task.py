@@ -160,7 +160,14 @@ def process_token_logs():
                 vendor_id=token_log.vendor_id or 0,
                 model_id=token_log.model_id or 0
             )
-            
+
+            # 如果扣减为0，只标记为已处理，不生成算力日志
+            if computing_power_to_deduct == 0:
+                TokenLogModel.update_status(token_log.id, 1)
+                processed_count += 1
+                logger.info(f"token日志 ID:{token_log.id} 扣减算力为0，已标记为已处理")
+                continue
+
             # 获取用户当前算力
             user_power = ComputingPowerModel.get_by_user_id(token_log.user_id)
             if not user_power:
