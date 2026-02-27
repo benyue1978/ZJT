@@ -2582,12 +2582,13 @@ def generate_text_to_image(user_id: str, world_id: str, auth_token: str, prompt:
                     }
     
         # 需要读取内网，避免ssh.perseids.cn 内网无法访问的问题
-        comfyui_base_url = get_config().get("server", {}).get("comfyui_base_url_inner", "")
+        server_config = get_config().get("server", {})
+        comfyui_base_url = server_config.get("comfyui_base_url_inner") or server_config.get("host", "")
         
         if not comfyui_base_url:
             return {
                 'success': False,
-                'error': '配置文件中未找到comfyui_base_url配置'
+                'error': '配置文件中未找到comfyui_base_url_inner或host配置'
             }
         
         # 准备请求数据
