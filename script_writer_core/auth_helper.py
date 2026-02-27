@@ -5,6 +5,7 @@
 
 from typing import Optional, Tuple
 from perseids_client import make_perseids_request
+from config.constant import Edition
 
 
 class AuthHelper:
@@ -55,17 +56,19 @@ class AuthHelper:
                 
                 if not world:
                     return False, f'世界不存在: world_id={world_id}'
-                
-                world_user_id = str(world.user_id)
-                
-                # 验证世界的用户ID与token的用户ID是否一致
-                if world_user_id != token_user_id:
-                    return False, f'无权访问该世界: 世界属于用户{world_user_id}，但token属于用户{token_user_id}'
-                
-                # 如果同时提供了 user_id，也要验证与世界的用户ID一致
-                if user_id is not None and str(user_id) != world_user_id:
-                    return False, f'用户ID不匹配: 传入的用户ID({user_id})与世界所属用户ID({world_user_id})不一致'
-                    
+
+                # 商业版才验证用户隔离
+                if Edition.is_enterprise():
+                    world_user_id = str(world.user_id)
+
+                    # 验证世界的用户ID与token的用户ID是否一致
+                    if world_user_id != token_user_id:
+                        return False, f'无权访问该世界: 世界属于用户{world_user_id}，但token属于用户{token_user_id}'
+
+                    # 如果同时提供了 user_id，也要验证与世界的用户ID一致
+                    if user_id is not None and str(user_id) != world_user_id:
+                        return False, f'用户ID不匹配: 传入的用户ID({user_id})与世界所属用户ID({world_user_id})不一致'
+
             except Exception as e:
                 return False, f'验证世界权限时发生错误: {str(e)}'
         
