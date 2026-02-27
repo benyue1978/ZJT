@@ -7,6 +7,7 @@ import os
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, Any
+from config.constant import FilePathConstants
 
 
 class FileManager:
@@ -35,7 +36,7 @@ class FileManager:
         Returns:
             用户世界的基础路径
         """
-        return self.base_dir / "files" / str(user_id) / str(world_id)
+        return self.base_dir / FilePathConstants._SCRIPT_WRITER_USER_DATA_SUBDIR / str(user_id) / str(world_id)
     
     def _ensure_directories(self, user_id: str, world_id: str):
         """

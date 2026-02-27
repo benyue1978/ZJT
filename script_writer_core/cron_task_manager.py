@@ -19,6 +19,7 @@ from PIL import Image
 from io import BytesIO
 from script_writer_core.image_grid_splitter import ImageGridSplitter
 from config.config_util import get_config
+from config.constant import FilePathConstants
     
 class TaskManager:
     """任务管理器，使用APScheduler处理后台任务"""
@@ -71,7 +72,7 @@ class TaskManager:
     
     def _get_task_status_file_path(self, user_id: str, world_id: str) -> str:
         """获取任务状态文件的路径"""
-        task_status_dir = f"files/{user_id}/{world_id}/task_status"
+        task_status_dir = os.path.join(FilePathConstants._SCRIPT_WRITER_USER_DATA_SUBDIR, str(user_id), str(world_id), "task_status")
         os.makedirs(task_status_dir, exist_ok=True)
         return os.path.join(task_status_dir, "task_status.json")
     

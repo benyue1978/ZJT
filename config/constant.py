@@ -182,6 +182,7 @@ class FilePathConstants:
     _TTS_AUDIO_SUBDIR = "files/tmp/tts/tmp_ref_audio"
     _JIANYING_EXPORT_SUBDIR = "files/tmp/jianying_export"
     _PIC_TMP_SUBDIR = "files/tmp/pic"
+    _SCRIPT_WRITER_USER_DATA_SUBDIR = "files/script_writer"  # 剧本创作系统用户数据根目录
 
     @staticmethod
     def get_pic_tmp_dir(app_dir: str) -> str:

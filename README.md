@@ -104,7 +104,30 @@ comfyui_server/
 │  ├─ script.py.mako          # 迁移脚本模板
 │  └─ versions/               # 迁移版本目录
 └─ web/
-   └─ index.html              # 前端（Vue + Router + Axios）
+│  └─ index.html              # 前端（Vue + Router + Axios）
+files/
+├─ tmp/                    # 临时文件（可定期清理）
+│  ├─ tts/                 # TTS音频临时文件
+│  ├─ jianying_export/     # 剪映导出临时文件
+│  └─ pic/                 # 图片临时文件
+└─ script_writer/                    # 剧本创作系统数据根目录
+   └─ {user_id}/                     # 用户ID目录
+      └─ {world_id}/                 # 世界ID目录（每个用户可以有多个世界）
+         ├─ characters/              # 角色卡目录
+         │  └─ character_*.json      # 角色JSON文件
+         ├─ locations/               # 场景目录
+         │  └─ location_*.json       # 场景JSON文件
+         ├─ props/                   # 道具目录
+         │  └─ prop_*.json           # 道具JSON文件
+         ├─ scripts/                 # 剧本目录
+         │  └─ script_*.json         # 剧本JSON文件
+         ├─ worlds/                  # 世界信息目录
+         │  └─ world_*.json          # 世界设定JSON文件
+         ├─ task_status/             # 任务状态目录
+         │  └─ task_status.json      # 任务状态跟踪文件
+         ├─ user_long_input/         # 长文本输入目录
+         │  └─ HH:mm:ss.txt          # 超过5000字的用户输入文件
+         └─ script_problem.json      # 剧本问题/审核报告文件
 ```
 
 ## 数据库迁移

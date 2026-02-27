@@ -7,6 +7,7 @@ import queue
 import uuid
 import logging
 import os
+from config.constant import FilePathConstants
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def process_long_input(user_id: str, world_id: str, user_message: str) -> Dict[s
     filename = f"{timestamp}.txt"
     
     # 保存完整内容到文件
-    file_dir = f"files/{user_id}/{world_id}/user_long_input"
+    file_dir = os.path.join(FilePathConstants._SCRIPT_WRITER_USER_DATA_SUBDIR, str(user_id), str(world_id), "user_long_input")
     os.makedirs(file_dir, exist_ok=True)
     
     file_path = os.path.join(file_dir, filename)

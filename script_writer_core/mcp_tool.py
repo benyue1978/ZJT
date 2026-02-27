@@ -17,6 +17,7 @@ from script_writer_core.file_manager import FileManager
 from script_writer_core.skill_loader import SkillLoader
 from script_writer_core.cron_task_manager import get_task_manager
 from config.config_util import get_config
+from config.constant import FilePathConstants
 
 # 设置技能调用日志
 def setup_skill_logger():
@@ -2909,7 +2910,7 @@ def get_long_user_input(user_id: str, world_id: str, auth_token: str, name: str,
             'error': '用户ID和世界ID不能为空'
         }, ensure_ascii=False)
     
-    file_dir = f"files/{user_id}/{world_id}/user_long_input"
+    file_dir = os.path.join(FilePathConstants._SCRIPT_WRITER_USER_DATA_SUBDIR, str(user_id), str(world_id), "user_long_input")
     file_path = os.path.join(file_dir, name)
     
     if not os.path.exists(file_path):
