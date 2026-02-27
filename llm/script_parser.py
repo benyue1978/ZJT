@@ -6,7 +6,6 @@
 
 import json
 import os
-import yaml
 from typing import Dict, Any, Optional
 from script_writer_core.agents.gemini_client import get_gemini_client
 from config_util import get_config_path
@@ -29,11 +28,6 @@ def _save_log_file(log_dir, filename, content):
                 json.dump(content, f, ensure_ascii=False, indent=2)
             else:
                 f.write(content)
-
-APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-config_file = get_config_path()
-with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
 
 # 剧本解析的系统提示词
 SCRIPT_PARSER_SYSTEM_PROMPT = """你是一个专业的影视剧本分析师和分镜师,擅长将剧本拆解为人物、场景和分镜。

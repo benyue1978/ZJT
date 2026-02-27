@@ -4,10 +4,9 @@ Sentry 错误监控工具类
 """
 import os
 import logging
-import yaml
 from typing import Dict, Any, Optional
 from enum import Enum
-from config_util import get_config_path
+from config.config_util import get_config_value
 
 logger = logging.getLogger(__name__)
 

@@ -22,7 +22,7 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import mimetypes
 from pydantic import BaseModel
 from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
-from config_util import get_config_path, resolve_bin_path
+from config.config_util import get_config_path, resolve_bin_path
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
 from model.world import WorldModel
@@ -147,29 +147,29 @@ MP_VERIFY_ROUTE = "/MP_verify_lXQewBFqjUipl3B8.txt"
 
 
 # Load server configuration
-import yaml
-config_file = get_config_path()
-with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
+from config.config_util import get_config, get_config_value
+
+
 # Choose appropriate host based on HTTPS configuration
-https_config = config["server"].get("https", {})
-if https_config.get("enabled", False) and "https_host" in config["server"]:
-    SERVER_HOST = config["server"]["https_host"]
-else:
-    SERVER_HOST = config["server"]["host"]
-API_KEY = config["runninghub"]["api_key"]
+https_enabled = get_config_value("server", "https", "enabled", default=False)
+if https_enabled:
+    SERVER_HOST = get_config_value("server", "https_host", default="")
+if not https_enabled or not SERVER_HOST:
+    SERVER_HOST = get_config_value("server", "host", default="0.0.0.0")
+API_KEY = get_config_value("runninghub", "api_key", default="")
+
+SCRIPT_WRITER_URL = get_config_value("script_writer", "url", default="")
 
 # 上传文件大小限制配置（单位：MB）
-MAX_IMAGE_SIZE_MB = config.get("upload", {}).get("max_image_size_mb", 10)
+MAX_IMAGE_SIZE_MB = get_config_value("upload", "max_image_size_mb", default=10)
 MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
 
 # 初始化微信支付工具
-wechat_pay_config = config.get("pay", {}).get("wxpay", {})
 wechat_pay_util = WechatPayUtil(
-    app_id=wechat_pay_config.get("appId"),
-    mch_id=wechat_pay_config.get("mchId"),
-    api_key=wechat_pay_config.get("api_key"),
-    APIv3_key=wechat_pay_config.get("APIv3_key")
+    app_id=get_config_value("pay", "wxpay", "appId", default=""),
+    mch_id=get_config_value("pay", "wxpay", "mchId", default=""),
+    api_key=get_config_value("pay", "wxpay", "api_key", default=""),
+    APIv3_key=get_config_value("pay", "wxpay", "APIv3_key", default="")
 )
 
 # Default ComfyUI server address; can be overridden by request field
@@ -229,7 +229,7 @@ async def get_debug_password():
     """
     获取前端 Debug 模式密码
     """
-    debug_password = config.get('frontend', {}).get('debug_password', 'debug123')
+    debug_password = get_config_value('frontend', 'debug_password', default='debug123')
     return JSONResponse({
         "success": True,
         "password": debug_password
@@ -458,8 +458,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
         Exception: If audio processing fails
     """
     try:
-        ffmpeg_path = resolve_bin_path(config.get("bin", {}).get("ffmpeg", "ffmpeg"), APP_DIR)
-        ffprobe_path = resolve_bin_path(config.get("bin", {}).get("ffprobe", "ffprobe"), APP_DIR)
+        ffmpeg_path = resolve_bin_path(get_config_value("bin", "ffmpeg", default="ffmpeg"), APP_DIR)
+        ffprobe_path = resolve_bin_path(get_config_value("bin", "ffprobe", default="ffprobe"), APP_DIR)
         
         # Check audio duration using ffprobe
         duration_cmd = [
@@ -631,7 +631,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
         logger.info(f"Extracting audio to: {audio_path}")
         
         # Use ffmpeg to extract audio
-        ffmpeg_path = resolve_bin_path(config.get("bin", {}).get("ffmpeg", "ffmpeg"), APP_DIR)
+        ffmpeg_path = resolve_bin_path(get_config_value("bin", "ffmpeg", default="ffmpeg"), APP_DIR)
         ffmpeg_cmd = [
             ffmpeg_path, '-i', video_path,
             '-vn',  # No video
@@ -3578,9 +3578,8 @@ async def get_wechat_openid(code: str):
     """
     try:
         # 从配置文件读取微信配置
-        wechat_config = config.get("pay", {}).get("wxpay", {})
-        app_id = wechat_config.get("appId")
-        app_secret = wechat_config.get("appSecret")
+        app_id = get_config_value("pay", "wxpay", "appId", default="")
+        app_secret = get_config_value("pay", "wxpay", "appSecret", default="")
         
         if not app_id or not app_secret:
             raise HTTPException(status_code=500, detail="微信配置不完整")
@@ -6831,13 +6830,13 @@ async def serve_spa(full_path: str):
 
 if __name__ == "__main__":
     # Check if HTTPS is enabled
-    https_config = config["server"].get("https", {})
-    if https_config.get("enabled", False):
+    https_enabled = get_config_value("server", "https", "enabled", default=False)
+    if https_enabled:
         # For HTTPS, prefer https_port, fallback to port, then default
-        port = config["server"].get("https_port") or config["server"].get("port")
+        port = get_config_value("server", "https_port") or get_config_value("server", "port", default=8000)
     else:
         # For HTTP, use port or default
-        port = config["server"].get("port")
+        port = get_config_value("server", "port", default=8000)
 
     # Run database migrations on startup if enabled (只在主进程执行一次，避免 uvicorn 重新导入时再次执行)
     alembic_config = get_alembic_config()
@@ -6847,10 +6846,10 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"Database migration failed on startup: {e}")
 
-    if https_config.get("enabled", False):
+    if https_enabled:
         # HTTPS configuration
-        ssl_keyfile = os.path.join(APP_DIR, https_config["keyfile"])
-        ssl_certfile = os.path.join(APP_DIR, https_config["certfile"])
+        ssl_keyfile = os.path.join(APP_DIR, get_config_value("server", "https", "keyfile", default=""))
+        ssl_certfile = os.path.join(APP_DIR, get_config_value("server", "https", "certfile", default=""))
         
         # Verify certificate files exist
         if not os.path.exists(ssl_keyfile):

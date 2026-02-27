@@ -15,18 +15,8 @@ APP_DIR = Path(__file__).parent.parent
  
 def get_alembic_config():
     """获取 Alembic 配置"""
-    import yaml
-    from config_util import get_config_path
- 
-    config_file = APP_DIR / get_config_path()
- 
-    if not config_file.exists():
-        return {"auto_migrate": False}
- 
-    with open(config_file, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
- 
-    return config.get('alembic', {"auto_migrate": False})
+    from config.config_util import get_config_value
+    return get_config_value('alembic', default={"auto_migrate": False})
  
  
 def run_migrations() -> bool:

@@ -4,8 +4,8 @@ Character Model - Database operations for character table
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
+from config.constant import Edition
 import logging
-import json
 
 logger = logging.getLogger(__name__)
 

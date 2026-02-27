@@ -11,7 +11,7 @@ import sys
 import os
 import time
 import yaml
-from config_util import get_config_path
+from config.config_util import get_config_path
 
 
 # 子进程列表

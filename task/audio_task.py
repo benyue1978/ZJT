@@ -26,20 +26,15 @@ from config.constant import (
 )
 from utils.index_tts_util import generate_audio, validate_emotion_vector
 import os
-import yaml
-from config_util import get_config_path
+from config.config_util import get_config_value
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load task queue configuration
-config_path = get_config_path()
-with open(config_path, 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-task_queue_config = config.get("task_queue", {})
-MAX_RETRY_COUNT = task_queue_config.get("max_retry_count", 30)
-TASK_EXPIRE_DAYS = task_queue_config.get("task_expire_days", 7)
-ENABLE_EXPIRE_CHECK = task_queue_config.get("enable_expire_check", True)
+MAX_RETRY_COUNT = get_config_value("task_queue", "max_retry_count", default=30)
+TASK_EXPIRE_DAYS = get_config_value("task_queue", "task_expire_days", default=7)
+ENABLE_EXPIRE_CHECK = get_config_value("task_queue", "enable_expire_check", default=True)
 
 # Get upload directory path
 UPLOAD_DIR = "/nas/comfyui_upload/tts/result_audio/"

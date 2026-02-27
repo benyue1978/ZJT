@@ -6,19 +6,12 @@ from typing import Optional
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 import logging
-import yaml
-import os
-from config_util import get_config_path
+from config.config_util import get_config_value
 
 logger = logging.getLogger(__name__)
 
-# 加载配置文件
-config_path = get_config_path()
-with open(config_path, 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-
 # 从配置文件读取最大槽位数量，默认为3
-MAX_CONCURRENT_SLOTS = config.get("runninghub", {}).get("max_concurrent_slots", 3)
+MAX_CONCURRENT_SLOTS = get_config_value("runninghub", "max_concurrent_slots", default=3)
 
 
 class RunningHubSlot:

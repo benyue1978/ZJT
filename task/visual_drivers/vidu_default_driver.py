@@ -3,10 +3,8 @@ Vidu 默认驱动实现
 """
 from typing import Dict, Any, Optional, List
 import traceback
-import os
-import yaml
 from .base_video_driver import BaseVideoDriver
-from config_util import get_config_path
+from config.config_util import get_config, get_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
 from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
@@ -21,21 +19,13 @@ class ViduDefaultDriver(BaseVideoDriver):
         super().__init__(driver_name="vidu_default", driver_type=14)
 
         # 加载配置
-        config_path = get_config_path()
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-
-        vidu_config = config.get("vidu", {})
-        self._api_key = vidu_config.get("token", "")
+        self._api_key = get_config_value("vidu", "token", default="")
         self._base_url = "https://api.vidu.cn"
-        self._timeout = config["timeout"]["request_timeout"]
+        self._timeout = get_config_value("timeout", "request_timeout", default=30)
 
         # 是否为本地环境
-        self._is_local = config.get("server", {}).get("is_local", False)
-        self._config = config
+        self._is_local = get_config_value("server", "is_local", default=False)
+        self._config = get_config()
 
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """

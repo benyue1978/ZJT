@@ -59,16 +59,8 @@ def get_file_storage(config: dict = None) -> BaseFileStorage:
 
 def _load_config() -> dict:
     """从配置文件加载配置"""
-    import os
-    import yaml
-    from config_util import get_config_path
-
-    config_path = get_config_path()
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"配置文件不存在: {config_path}")
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    from config.config_util import get_config
+    return get_config()
 
 
 def reset_file_storage():

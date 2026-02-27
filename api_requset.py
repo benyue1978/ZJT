@@ -1,18 +1,7 @@
 import requests
-from config_util import get_config_path
-import os
-import yaml
+from config.config_util import get_config_value
 
-config_path = get_config_path()
-    
-# Load config to get host
-if not os.path.exists(config_path):
-    raise FileNotFoundError(f"Configuration file not found: {config_path}")
-    
-with open(config_path, 'r', encoding='utf-8') as file:
-    config = yaml.safe_load(file)
-    
-token = config["ai_tools"]["token"]
+token = get_config_value("ai_tools", "token", default="")
 
 
 def create_image_to_video(prompt, ratio="9:16", img_url=None, duration=15):

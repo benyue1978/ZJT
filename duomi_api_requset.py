@@ -1,7 +1,5 @@
 import requests
-from config_util import get_config_path
-import os
-import yaml
+from config.config_util import get_config_value
 import uuid
 import time
 import json
@@ -9,22 +7,12 @@ from logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
-config_path = get_config_path()
-    
-# Load config to get host
-if not os.path.exists(config_path):
-    raise FileNotFoundError(f"Configuration file not found: {config_path}")
-    
-with open(config_path, 'r', encoding='utf-8') as file:
-    config = yaml.safe_load(file)
-    
-token = config["duomi"]["token"]
+token = get_config_value("duomi", "token", default="")
 
 # Test mode configuration
-test_mode_config = config.get("test_mode", {})
-TEST_MODE_ENABLED = test_mode_config.get("enabled", False)
-MOCK_VIDEOS = test_mode_config.get("mock_videos", {})
-MOCK_IMAGES = test_mode_config.get("mock_images", {})
+TEST_MODE_ENABLED = get_config_value("test_mode", "enabled", default=False)
+MOCK_VIDEOS = get_config_value("test_mode", "mock_videos", default={})
+MOCK_IMAGES = get_config_value("test_mode", "mock_images", default={})
 
 
 def _generate_mock_task_id():

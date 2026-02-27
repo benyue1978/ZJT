@@ -19,7 +19,7 @@ def _load_sms_config():
         return _sms_config
     
     try:
-        from config_util import get_config_path
+        from config.config_util import get_config_path
         app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         config_file = get_config_path()
         config_path = os.path.join(app_dir, config_file)
