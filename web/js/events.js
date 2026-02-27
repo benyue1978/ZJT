@@ -4169,6 +4169,11 @@
 
     // 页面加载时初始化
     (async function init(){
+      // 加载版本信息
+      if(typeof loadAndDisplayEditionInfo === 'function'){
+        await loadAndDisplayEditionInfo();
+      }
+      
       // 初始化世界选择器
       initWorldSelector();
       

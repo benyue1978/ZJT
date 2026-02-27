@@ -4,6 +4,7 @@ Video Workflow Model - Database operations for video_workflow table
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
+from config.constant import Edition
 import logging
 import json
 
@@ -156,8 +157,13 @@ class VideoWorkflowModel:
             order_direction = 'DESC'
         
         # Build WHERE clause
-        where_conditions = ["user_id = %s"]
-        params = [user_id]
+        where_conditions = []
+        params = []
+        
+        # 商业版才按 user_id 过滤
+        if Edition.is_enterprise():
+            where_conditions.append("user_id = %s")
+            params.append(user_id)
         
         if status is not None:
             where_conditions.append("status = %s")
@@ -167,7 +173,7 @@ class VideoWorkflowModel:
             where_conditions.append("name LIKE %s")
             params.append(f"%{keyword}%")
         
-        where_clause = " AND ".join(where_conditions)
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         # Get total count
         count_sql = f"SELECT COUNT(*) as total FROM video_workflow WHERE {where_clause}"

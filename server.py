@@ -66,6 +66,7 @@ from config.constant import (
     FilePathConstants
 )
 from utils.wechat_pay_util import WechatPayUtil
+from config.constant import Edition, Action
 from utils.image_grid_splitter import ImageGridSplitter
 from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
@@ -131,13 +132,55 @@ async def _validate_image_size(file: UploadFile, max_size_bytes: int = None) -> 
     return True, ""
 
 
-def _ensure_world_owner(world_id: int, user_id: int):
+def _check_resource_permission(resource, user_id: int, action: str) -> bool:
+    """
+    统一资源权限检查
+    
+    Args:
+        resource: 资源对象（world, workflow, character等）
+        user_id: 用户ID
+        action: 操作类型 'view' | 'edit' | 'delete'
+    
+    Returns:
+        bool: 是否有权限
+    """
+    if Edition.is_community():
+        if action == Action.DELETE:
+            return getattr(resource, 'user_id', None) == user_id
+        return True
+    else:
+        return getattr(resource, 'user_id', None) == user_id
+
+
+def _ensure_resource_access(resource, user_id: int, action: str, resource_name: str = "资源"):
+    """
+    确保用户有权限访问资源，无权限则抛出异常
+    
+    Args:
+        resource: 资源对象
+        user_id: 用户ID
+        action: 操作类型 'view' | 'edit' | 'delete'
+        resource_name: 资源名称（用于错误提示）
+    
+    Returns:
+        resource: 原资源对象
+    
+    Raises:
+        HTTPException: 无权限时抛出403异常
+    """
+    if not _check_resource_permission(resource, user_id, action):
+        if action == Action.DELETE:
+            raise HTTPException(status_code=403, detail=f"仅创建者可删除该{resource_name}")
+        raise HTTPException(status_code=403, detail=f"无权访问该{resource_name}")
+    return resource
+
+
+def _ensure_world_access(world_id: int, user_id: int, action: str = Action.VIEW):
+    """检查用户对世界的访问权限"""
     world = WorldModel.get_by_id(world_id)
     if not world:
         raise HTTPException(status_code=404, detail="世界不存在")
-    if getattr(world, 'user_id', None) != user_id:
-        raise HTTPException(status_code=403, detail="无权访问该世界")
-    return world
+    return _ensure_resource_access(world, user_id, action, "世界")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(APP_DIR, "upload")
@@ -4947,6 +4990,34 @@ static_dir = os.path.join(APP_DIR, "web")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir, exist_ok=True)
 
+@app.get('/api/edition')
+async def get_edition():
+    """
+    获取版本信息
+    """
+    try:
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': 'success',
+                'data': {
+                    'mode': Edition.get_mode(),
+                    'mode_label': Edition.get_label()
+                }
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get edition info: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
+
 @app.get('/api/worlds')
 async def get_worlds(
     page: int = Query(1, ge=1, description="页码"),
@@ -5072,7 +5143,7 @@ async def update_world(
     """
     try:
         user_id = _get_user_id_from_header(user_id)
-        world = _ensure_world_owner(world_id, user_id)
+        world = _ensure_world_access(world_id, user_id, Action.EDIT)
 
         update_fields = {}
 
@@ -5148,7 +5219,7 @@ async def delete_world(
     """
     try:
         user_id = _get_user_id_from_header(user_id)
-        _ensure_world_owner(world_id, user_id)
+        _ensure_world_access(world_id, user_id, Action.DELETE)
 
         character_count = CharacterModel.count_by_world(world_id)
         if character_count > 0:
@@ -5211,7 +5282,7 @@ async def get_scripts(
     """
     try:
         user_id = _get_user_id_from_header(user_id)
-        _ensure_world_owner(world_id, user_id)
+        _ensure_world_access(world_id, user_id, Action.VIEW)
         
         result = ScriptModel.list_by_world(
             world_id=world_id,

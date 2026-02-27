@@ -1,6 +1,45 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+
+class Action:
+    """资源操作类型常量"""
+    
+    VIEW = "view"      # 查看权限
+    EDIT = "edit"      # 编辑权限
+    DELETE = "delete"  # 删除权限
+
+
+class Edition:
+    """版本模式管理类"""
+    
+    # 版本模式常量
+    COMMUNITY = "community"
+    ENTERPRISE = "enterprise"
+    
+    @staticmethod
+    def get_mode() -> str:
+        """获取当前版本模式"""
+        from config.config_util import get_config_value
+        return get_config_value("edition", "mode", default=Edition.COMMUNITY)
+    
+    @staticmethod
+    def is_community() -> bool:
+        """判断是否为开源/社区版"""
+        return Edition.get_mode() == Edition.COMMUNITY
+    
+    @staticmethod
+    def is_enterprise() -> bool:
+        """判断是否为商业版"""
+        return not Edition.is_community()
+    
+    @staticmethod
+    def get_label() -> str:
+        """获取版本模式标签"""
+        mode = Edition.get_mode()
+        return "社区版" if mode == Edition.COMMUNITY else "商业版"
+
+
 # 任务类型
 TASK_TYPE_GENERATE_VIDEO = 'generate_video'
 

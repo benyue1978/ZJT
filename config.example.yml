@@ -139,6 +139,10 @@ alembic:
   auto_migrate: true  # 应用启动时是否自动执行迁移
   script_location: "alembic"  # 迁移脚本目录
 
+# Edition configuration
+edition:
+  mode: "community"  # community (开源版/社区版) | enterprise (商业版)
+
 file_storage:
   # Qiniu cloud storage configuration
   # 标准存储每月免费额度具体包括：

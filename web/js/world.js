@@ -361,3 +361,22 @@ function initWorldSelector() {
     });
   }
 }
+
+// 加载并显示版本信息
+async function loadAndDisplayEditionInfo() {
+  try {
+    const editionInfo = await getEditionInfo();
+    state.editionInfo = editionInfo;
+    
+    const editionBadge = document.getElementById('editionBadge');
+    if (editionBadge && editionInfo.mode === 'community') {
+      editionBadge.style.display = 'inline-block';
+      editionBadge.textContent = '公共空间';
+      editionBadge.title = '社区版：所有用户共享资源空间';
+    } else if (editionBadge) {
+      editionBadge.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('Failed to load edition info:', error);
+  }
+}

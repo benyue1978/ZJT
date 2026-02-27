@@ -275,14 +275,19 @@ class CharacterModel:
         if order_direction.upper() not in valid_directions:
             order_direction = 'DESC'
         
-        where_conditions = ["user_id = %s"]
-        params = [user_id]
+        where_conditions = []
+        params = []
+        
+        # 商业版才按 user_id 过滤
+        if Edition.is_enterprise():
+            where_conditions.append("user_id = %s")
+            params.append(user_id)
         
         if keyword:
             where_conditions.append("name LIKE %s")
             params.append(f"%{keyword}%")
         
-        where_clause = " AND ".join(where_conditions)
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         count_sql = f"SELECT COUNT(*) as total FROM `character` WHERE {where_clause}"
         count_result = execute_query(count_sql, tuple(params), fetch_one=True)

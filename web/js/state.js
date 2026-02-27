@@ -45,6 +45,7 @@
       worldCharacters: [],
       worldProps: [],
       worldLocations: [],
+      editionInfo: { mode: 'community', mode_label: '社区版' },
       selectionMode: false,
       selecting: null,
       selectedNodeIds: [],
