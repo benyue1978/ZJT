@@ -4206,7 +4206,8 @@
           return;
         }
         
-        let url = `/script-writer?auth_token=${encodeURIComponent(authToken)}&user_id=${encodeURIComponent(userId)}`;
+        // auth_token 已在 localStorage 中，无需通过 URL 传递
+        let url = `/script-writer?user_id=${encodeURIComponent(userId)}`;
         
         // 如果已选择世界，添加 world_id 参数
         if (state.defaultWorldId) {

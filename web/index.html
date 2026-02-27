@@ -539,7 +539,8 @@
           return;
         }
         
-        const url = `/script-writer?auth_token=${encodeURIComponent(authToken)}&user_id=${encodeURIComponent(userId)}`;
+        // auth_token 已在 localStorage 中，无需通过 URL 传递
+        const url = `/script-writer?user_id=${encodeURIComponent(userId)}`;
         window.location.href = url;
       }
     }

@@ -1122,8 +1122,11 @@
         const authToken = getAuthToken();
         const userId = getUserId();
         
-        // 直接跳转到内部路由
-        const url = `/script-writer?auth_token=${encodeURIComponent(authToken)}&user_id=${encodeURIComponent(userId)}`;
+        // 将 auth_token 存储到 localStorage，避免在 URL 中暴露
+        localStorage.setItem('auth_token', authToken);
+        
+        // 直接跳转到内部路由（不传递 auth_token）
+        const url = `/script-writer?user_id=${encodeURIComponent(userId)}`;
         
         // 打开新窗口
         window.open(url, '_blank');

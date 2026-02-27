@@ -743,11 +743,8 @@
         // 全局参数：从URL获取并存储，供所有接口使用
         const USER_ID = urlParams.get('user_id');
         const WORLD_ID = urlParams.get('world_id');
-        const AUTH_TOKEN = urlParams.get('auth_token') || localStorage.getItem('auth_token') || '';
-        // 同时保存到 localStorage 以便后续使用
-        if (urlParams.get('auth_token')) {
-            localStorage.setItem('auth_token', urlParams.get('auth_token'));
-        }
+        // auth_token 从 localStorage 读取，不再从 URL 获取，避免敏感信息暴露
+        const AUTH_TOKEN = localStorage.getItem('auth_token') || '';
         
         const LOGIN_URL = window.location.origin + '/?login=1&redirect_url=video-workflow-list';
         let currentFileType = 'worlds';
@@ -2195,7 +2192,8 @@
                 return;
             }
             
-            const newUrl = `${window.location.pathname}?auth_token=${AUTH_TOKEN}&user_id=${USER_ID}&world_id=${worldId}`;
+            // auth_token 已在 localStorage 中，无需通过 URL 传递
+            const newUrl = `${window.location.pathname}?user_id=${USER_ID}&world_id=${worldId}`;
             window.location.href = newUrl;
         }
 
@@ -2313,8 +2311,8 @@
             const modal = document.getElementById('computing-power-logs-modal');
             const iframe = document.getElementById('computing-power-logs-iframe');
             
-            // 设置 iframe src，传递 auth_token 参数
-            iframe.src = `/computing_power_logs.html?auth_token=${AUTH_TOKEN}`;
+            // iframe 与父页面同源，共享 localStorage，无需通过 URL 传递 auth_token
+            iframe.src = `/computing_power_logs.html`;
             
             modal.classList.add('show');
         }
