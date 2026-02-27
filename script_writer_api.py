@@ -238,6 +238,366 @@ async def validate_model(model: str, auth_token: str) -> tuple[bool, List[str], 
         logger.error(f"模型验证异常: {str(e)}")
         return False, [], f'模型验证异常: {str(e)}'
 
+# ==================== 数据库同步函数 ====================
+
+def sync_database_to_files(user_id: str, world_id: str, auth_token: str, force_overwrite: bool) -> dict:
+    """
+    从数据库同步数据到文件系统（JSON格式）
+    
+    Args:
+        user_id: 用户ID
+        world_id: 世界ID
+        auth_token: 认证令牌
+        force_overwrite: 是否强制覆盖（必填）
+            - True: 强制覆盖，返回被覆盖的文件列表
+            - False: 不覆盖有差异的文件，返回差异文件列表
+    
+    Returns:
+        dict: {
+            'success': bool,
+            'diff_files': list,  # 存在差异的文件名列表
+            'overwritten_files': list,  # 被覆盖的文件名列表（仅force_overwrite=True时）
+            'skipped_files': list,  # 跳过的文件名列表（仅force_overwrite=False时）
+            'local_only_files': list  # 本地存在但数据库不存在的文件列表
+        }
+    """
+    result = {
+        'success': True,
+        'diff_files': [],
+        'overwritten_files': [],
+        'skipped_files': [],
+        'local_only_files': []
+    }
+    
+    if not user_id or not world_id:
+        raise ValueError(f"user_id 和 world_id 不能为空: user_id={user_id}, world_id={world_id}")
+    
+    def compare_json_content(new_content: str, existing_content: str, file_name: str = "") -> bool:
+        """比较两个JSON内容是否一致（忽略格式差异和时间戳字段）"""
+        try:
+            new_data = json.loads(new_content) if isinstance(new_content, str) else new_content
+            existing_data = json.loads(existing_content) if isinstance(existing_content, str) else existing_content
+            
+            ignore_fields = {
+                'created_at', 'update_time', 'create_time', 'updated_at',
+                'user_id', 'world_id', 'type'
+            }
+            
+            new_data_filtered = {k: v for k, v in new_data.items() if k not in ignore_fields}
+            existing_data_filtered = {k: v for k, v in existing_data.items() if k not in ignore_fields}
+            
+            return new_data_filtered == existing_data_filtered
+        except Exception as e:
+            logger.error(f"比较JSON内容失败 ({file_name}): {e}")
+            return new_content == existing_content
+    
+    try:
+        from model.world import WorldModel
+        from model.character import CharacterModel
+        from model.location import LocationModel
+        from model.script import ScriptModel
+        from model.props import PropsModel
+        from script_writer_core.mcp_tool import create_character_json, create_location_json, create_prop_json
+        from pathlib import Path
+
+        base_path = file_manager._get_user_world_path(user_id, world_id)
+
+        if force_overwrite:
+            deleted_files = []
+            directories_to_clean = ['worlds', 'characters', 'scripts', 'locations', 'props']
+            
+            for dir_name in directories_to_clean:
+                dir_path = base_path / dir_name
+                if dir_path.exists() and dir_path.is_dir():
+                    for file_path in dir_path.glob('*.json'):
+                        if not file_path.name.startswith('temp_'):
+                            try:
+                                file_path.unlink()
+                                deleted_files.append(f"{dir_name}/{file_path.name}")
+                            except Exception as e:
+                                logger.error(f"删除文件失败 {file_path}: {e}")
+            
+            if deleted_files:
+                logger.info(f"强制覆盖模式：已删除 {len(deleted_files)} 个现有文件")
+
+        # 0. 同步世界信息
+        world = WorldModel.get_by_id(int(world_id))
+        if world:
+            world_data = {
+                'id': world.id,
+                'name': world.name,
+                'story_outline': world.story_outline,
+                'visual_style': world.visual_style,
+                'era_environment': world.era_environment,
+                'color_language': world.color_language,
+                'composition_preference': world.composition_preference,
+                'user_id': world.user_id
+            }
+            new_world_json = json.dumps(world_data, ensure_ascii=False, indent=2)
+            world_file = base_path / "worlds" / f"world_{world_id}.json"
+            file_name = f"world_{world_id}.json"
+            
+            if world_file.exists():
+                existing_content = world_file.read_text(encoding='utf-8')
+                if not compare_json_content(new_world_json, existing_content, file_name):
+                    if force_overwrite:
+                        file_manager.save_world(world_data, user_id, world_id)
+                        result['diff_files'].append(file_name)
+                        result['overwritten_files'].append(file_name)
+                    else:
+                        result['diff_files'].append(file_name)
+                        result['skipped_files'].append(file_name)
+            else:
+                file_manager.save_world(world_data, user_id, world_id)
+
+        # 1. 同步角色卡
+        characters_result = CharacterModel.list_by_world(int(world_id), page=1, page_size=1000)
+        characters = characters_result.get('data', []) if isinstance(characters_result, dict) else []
+        for char in characters:
+            if char.get('user_id') != int(user_id):
+                continue
+                
+            try:
+                existing_char_data = file_manager.get_character(char.get('name'), user_id, world_id)
+                preserve_empty_other_info = (
+                    existing_char_data and 
+                    isinstance(existing_char_data, dict) and 
+                    existing_char_data.get('other_info') == ""
+                )
+            except:
+                existing_char_data = None
+                preserve_empty_other_info = False
+            
+            sync_other_info = "" if preserve_empty_other_info else char.get('other_info')
+            
+            char_file = base_path / "characters" / f"character_{char.get('name')}.json"
+            file_name = f"character_{char.get('name')}.json"
+            
+            if char_file.exists():
+                temp_filename = f"temp_character_{char.get('name')}.json"
+                temp_result = create_character_json(
+                    user_id=user_id,
+                    world_id=world_id,
+                    auth_token=auth_token,
+                    name=char.get('name'),
+                    age=char.get('age'),
+                    identity=char.get('identity'),
+                    appearance=char.get('appearance'),
+                    personality=char.get('personality'),
+                    behavior=char.get('behavior'),
+                    other_info=sync_other_info,
+                    reference_image=char.get('reference_image'),
+                    _temp_filename=temp_filename
+                )
+                
+                if temp_result.get('success'):
+                    temp_file = base_path / "characters" / temp_filename
+                    if temp_file.exists():
+                        try:
+                            new_content = temp_file.read_text(encoding='utf-8')
+                            existing_content = char_file.read_text(encoding='utf-8')
+                            
+                            if not compare_json_content(new_content, existing_content, file_name):
+                                if force_overwrite:
+                                    create_character_json(
+                                        user_id=user_id,
+                                        world_id=world_id,
+                                        auth_token=auth_token,
+                                        name=char.get('name'),
+                                        age=char.get('age'),
+                                        identity=char.get('identity'),
+                                        appearance=char.get('appearance'),
+                                        personality=char.get('personality'),
+                                        behavior=char.get('behavior'),
+                                        other_info=sync_other_info,
+                                        reference_image=char.get('reference_image')
+                                    )
+                                    result['diff_files'].append(file_name)
+                                    result['overwritten_files'].append(file_name)
+                                else:
+                                    result['diff_files'].append(file_name)
+                                    result['skipped_files'].append(file_name)
+                        finally:
+                            if temp_file.exists():
+                                temp_file.unlink()
+            else:
+                create_character_json(
+                    user_id=user_id,
+                    world_id=world_id,
+                    auth_token=auth_token,
+                    name=char.get('name'),
+                    age=char.get('age'),
+                    identity=char.get('identity'),
+                    appearance=char.get('appearance'),
+                    personality=char.get('personality'),
+                    behavior=char.get('behavior'),
+                    other_info=sync_other_info,
+                    reference_image=char.get('reference_image')
+                )
+        
+        # 2. 同步剧本
+        scripts_result = ScriptModel.list_by_world(int(world_id), page=1, page_size=1000)
+        scripts = scripts_result.get('data', []) if isinstance(scripts_result, dict) else []
+        for script in scripts:
+            if script.get('user_id') != int(user_id) or not script.get('content'):
+                continue
+                
+            script_data = {
+                'title': script.get('title'),
+                'episode_number': script.get('episode_number'),
+                'content': script.get('content'),
+                'create_time': script.get('create_time'),
+                'update_time': script.get('update_time')
+            }
+            new_script_json = json.dumps(script_data, ensure_ascii=False, indent=2)
+            script_file = base_path / "scripts" / f"script_{script.get('title')}.json"
+            file_name = f"script_{script.get('title')}.json"
+            
+            if script_file.exists():
+                existing_content = script_file.read_text(encoding='utf-8')
+                if not compare_json_content(new_script_json, existing_content, file_name):
+                    if force_overwrite:
+                        file_manager.save_script(script.get('title'), new_script_json, user_id, world_id)
+                        result['diff_files'].append(file_name)
+                        result['overwritten_files'].append(file_name)
+                    else:
+                        result['diff_files'].append(file_name)
+                        result['skipped_files'].append(file_name)
+            else:
+                file_manager.save_script(script.get('title'), new_script_json, user_id, world_id)
+        
+        # 3. 同步场景
+        locations_result = LocationModel.list_by_world(int(world_id), page=1, page_size=1000)
+        locations = locations_result.get('data', []) if isinstance(locations_result, dict) else []
+        for loc in locations:
+            if loc.get('user_id') != int(user_id):
+                continue
+                
+            loc_file = base_path / "locations" / f"location_{loc.get('name')}.json"
+            file_name = f"location_{loc.get('name')}.json"
+            
+            if loc_file.exists():
+                temp_filename = f"temp_location_{loc.get('name')}.json"
+                temp_result = create_location_json(
+                    user_id=user_id,
+                    world_id=world_id,
+                    auth_token=auth_token,
+                    name=loc.get('name'),
+                    description=loc.get('description'),
+                    reference_image=loc.get('reference_image'),
+                    _temp_filename=temp_filename
+                )
+                
+                if temp_result.get('success'):
+                    temp_file = base_path / "locations" / temp_filename
+                    if temp_file.exists():
+                        try:
+                            new_content = temp_file.read_text(encoding='utf-8')
+                            existing_content = loc_file.read_text(encoding='utf-8')
+                            
+                            if not compare_json_content(new_content, existing_content, file_name):
+                                if force_overwrite:
+                                    create_location_json(
+                                        user_id=user_id,
+                                        world_id=world_id,
+                                        auth_token=auth_token,
+                                        name=loc.get('name'),
+                                        description=loc.get('description'),
+                                        reference_image=loc.get('reference_image')
+                                    )
+                                    result['diff_files'].append(file_name)
+                                    result['overwritten_files'].append(file_name)
+                                else:
+                                    result['diff_files'].append(file_name)
+                                    result['skipped_files'].append(file_name)
+                        finally:
+                            if temp_file.exists():
+                                temp_file.unlink()
+            else:
+                create_location_json(
+                    user_id=user_id,
+                    world_id=world_id,
+                    auth_token=auth_token,
+                    name=loc.get('name'),
+                    description=loc.get('description'),
+                    reference_image=loc.get('reference_image')
+                )
+        
+        # 4. 同步道具
+        props_result = PropsModel.list_by_world(int(world_id), page=1, page_size=1000)
+        props = props_result.get('data', []) if isinstance(props_result, dict) else []
+        for prop in props:
+            if prop.get('user_id') != int(user_id):
+                continue
+                
+            prop_file = base_path / "props" / f"prop_{prop.get('name')}.json"
+            file_name = f"prop_{prop.get('name')}.json"
+            
+            if prop_file.exists():
+                temp_filename = f"temp_prop_{prop.get('name')}.json"
+                temp_result = create_prop_json(
+                    user_id=user_id,
+                    world_id=world_id,
+                    auth_token=auth_token,
+                    name=prop.get('name'),
+                    prop_type=prop.get('type'),
+                    description=prop.get('content'),
+                    reference_image=prop.get('reference_image'),
+                    _temp_filename=temp_filename
+                )
+                
+                if temp_result.get('success'):
+                    temp_file = base_path / "props" / temp_filename
+                    if temp_file.exists():
+                        try:
+                            new_content = temp_file.read_text(encoding='utf-8')
+                            existing_content = prop_file.read_text(encoding='utf-8')
+                            
+                            if not compare_json_content(new_content, existing_content, file_name):
+                                if force_overwrite:
+                                    create_prop_json(
+                                        user_id=user_id,
+                                        world_id=world_id,
+                                        auth_token=auth_token,
+                                        name=prop.get('name'),
+                                        prop_type=prop.get('type'),
+                                        description=prop.get('content'),
+                                        reference_image=prop.get('reference_image')
+                                    )
+                                    result['diff_files'].append(file_name)
+                                    result['overwritten_files'].append(file_name)
+                                else:
+                                    result['diff_files'].append(file_name)
+                                    result['skipped_files'].append(file_name)
+                        finally:
+                            if temp_file.exists():
+                                temp_file.unlink()
+            else:
+                create_prop_json(
+                    user_id=user_id,
+                    world_id=world_id,
+                    auth_token=auth_token,
+                    name=prop.get('name'),
+                    prop_type=prop.get('type'),
+                    description=prop.get('content'),
+                    reference_image=prop.get('reference_image')
+                )
+        
+        logger.info(f"数据库同步完成: user_id={user_id}, world_id={world_id}, force_overwrite={force_overwrite}")
+        if result['diff_files']:
+            if force_overwrite:
+                logger.info(f"  已覆盖的差异文件: {result['overwritten_files']}")
+            else:
+                logger.info(f"  跳过的差异文件: {result['skipped_files']}")
+        if result['local_only_files']:
+            logger.info(f"  本地存在但数据库不存在的文件: {result['local_only_files']}")
+            
+    except Exception as e:
+        logger.error(f"数据库同步失败: {e}")
+        result['success'] = False
+    
+    return result
+
 # ==================== 请求模型定义 ====================
 
 class SessionCreateRequest(BaseModel):
@@ -301,6 +661,11 @@ async def create_session(request: SessionCreateRequest):
         if not is_valid:
             return JSONResponse(error_response, status_code=401)
         
+        # 从数据库同步数据到文件系统（不强制覆盖，有差异时跳过）
+        sync_result = sync_database_to_files(request.user_id, request.world_id, request.auth_token, force_overwrite=False)
+        if sync_result['skipped_files']:
+            logger.info(f"create_session: 以下文件存在差异，已跳过: {sync_result['skipped_files']}")
+        
         # 生成会话ID
         session_id = str(uuid.uuid4())
         
@@ -331,8 +696,8 @@ async def create_session(request: SessionCreateRequest):
             'session_id': session_id,
             'user_id': request.user_id,
             'world_id': request.world_id,
-            'skipped_files': [],
-            'local_only_files': []
+            'skipped_files': sync_result.get('skipped_files', []),
+            'local_only_files': sync_result.get('local_only_files', [])
         })
     except Exception as e:
         logger.error(f'创建会话失败: {str(e)}')
@@ -546,22 +911,30 @@ async def get_available_models(
 async def sync_files(request: SyncFilesRequest):
     """同步数据库到文件系统"""
     try:
-        user_id = int(request.user_id)
-        world_id = int(request.world_id)
+        user_id = request.user_id
+        world_id = request.world_id
+        auth_token = getattr(request, 'auth_token', '')
         
-        # 注意：script_writer原本的同步逻辑是将数据库内容写入文件系统
-        # 由于我们现在直接使用数据库，这个功能可以简化
-        # 只需要返回成功，表示数据已经在数据库中
+        # 调用同步函数（强制覆盖）
+        sync_result = sync_database_to_files(user_id, world_id, auth_token, force_overwrite=True)
         
-        return JSONResponse({
+        response_data = {
             'success': True,
-            'message': '数据已在数据库中，无需同步'
-        })
+            'message': '数据库内容已同步到文件系统'
+        }
+        
+        # 如果有差异文件被覆盖，添加提示信息
+        if sync_result['overwritten_files']:
+            response_data['overwritten_files'] = sync_result['overwritten_files']
+            response_data['message'] = f"数据库内容已同步到文件系统，以下文件存在差异并已被覆盖: {', '.join(sync_result['overwritten_files'])}"
+        
+        return JSONResponse(response_data)
     except Exception as e:
         logger.error(f'同步文件失败: {str(e)}')
         return JSONResponse({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'message': f'同步失败: {str(e)}'
         }, status_code=500)
 
 @router.post('/submit-to-database')
