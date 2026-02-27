@@ -40,10 +40,15 @@ class Edition:
         return "社区版" if mode == Edition.COMMUNITY else "商业版"
 
 
-# 任务类型
-TASK_TYPE_GENERATE_VIDEO = 'generate_video'
+class TaskType:
+    """任务类型常量"""
+    GENERATE_VIDEO = 'generate_video'
+    GENERATE_AUDIO = 'generate_audio'
 
-TASK_TYPE_GENERATE_AUDIO = 'generate_audio'
+
+# 向后兼容别名
+TASK_TYPE_GENERATE_VIDEO = TaskType.GENERATE_VIDEO
+TASK_TYPE_GENERATE_AUDIO = TaskType.GENERATE_AUDIO
 
 # 1: 图片编辑, 2: Sora2文生视频, 3: Sora2图生视频, 4: 高清放大, 5: ai视频高清修复, 6: 图生视频高清修复，7：图片编辑(nano-banana-pro), 8: 创建角色卡, 
 # 9: AI音频生成, 10: LTX2.0图生视频, 11: Wan2.2图生视频（5秒=12，10秒=24）, 12: 可灵图生视频（5秒=38，10秒=55）, 13: 数字人生成, 14: Vidu图生视频（5秒=8）, 15: VEO3图生视频（8秒=6）
@@ -149,31 +154,65 @@ TASK_TYPE_NAME_MAP = {
     15: '图片生成视频 (VEO3.1)'
 }
 
-# AI Tools 状态常量
-AI_TOOL_STATUS_PENDING = 0      # 未处理
-AI_TOOL_STATUS_PROCESSING = 1   # 正在处理
-AI_TOOL_STATUS_FAILED = -1      # 处理失败
-AI_TOOL_STATUS_COMPLETED = 2    # 处理完成
+class AIToolStatus:
+    """AI工具状态常量"""
+    PENDING = 0       # 未处理
+    PROCESSING = 1    # 正在处理
+    FAILED = -1       # 处理失败
+    COMPLETED = 2     # 处理完成
 
-# Tasks 状态常量
-TASK_STATUS_QUEUED = 0          # 队列中
-TASK_STATUS_PROCESSING = 1      # 处理中
-TASK_STATUS_COMPLETED = 2       # 处理完成
-TASK_STATUS_FAILED = -1         # 处理失败
 
-# AI Audio 状态常量
-AI_AUDIO_STATUS_PENDING = 0     # 未处理
-AI_AUDIO_STATUS_PROCESSING = 1  # 处理中
-AI_AUDIO_STATUS_FAILED = -1     # 处理失败
-AI_AUDIO_STATUS_COMPLETED = 2   # 处理完成
+class TaskStatus:
+    """任务状态常量"""
+    QUEUED = 0        # 队列中
+    PROCESSING = 1    # 处理中
+    COMPLETED = 2     # 处理完成
+    FAILED = -1       # 处理失败
 
-# 宫格拆分相关常量
-GRID_SIZE_2X2 = 4                          # 2x2 宫格（标准版）
-GRID_SIZE_3X3 = 9                          # 3x3 宫格（加强版）
-GRID_VALID_SIZES = (4, 9)                  # 允许的宫格大小
-GRID_DEFAULT_SIZE_BY_TYPE = {1: 4, 7: 9}   # AI工具类型 → 默认宫格大小
-GRID_LOCK_TIMEOUT_SECONDS = 120            # 文件锁超时（秒）
-GRID_IMAGE_DOWNLOAD_TIMEOUT = 60.0         # 下载原图超时（秒）
+
+class AIAudioStatus:
+    """AI音频状态常量"""
+    PENDING = 0       # 未处理
+    PROCESSING = 1    # 处理中
+    FAILED = -1       # 处理失败
+    COMPLETED = 2     # 处理完成
+
+
+# 向后兼容别名 - AI Tools 状态
+AI_TOOL_STATUS_PENDING = AIToolStatus.PENDING
+AI_TOOL_STATUS_PROCESSING = AIToolStatus.PROCESSING
+AI_TOOL_STATUS_FAILED = AIToolStatus.FAILED
+AI_TOOL_STATUS_COMPLETED = AIToolStatus.COMPLETED
+
+# 向后兼容别名 - Tasks 状态
+TASK_STATUS_QUEUED = TaskStatus.QUEUED
+TASK_STATUS_PROCESSING = TaskStatus.PROCESSING
+TASK_STATUS_COMPLETED = TaskStatus.COMPLETED
+TASK_STATUS_FAILED = TaskStatus.FAILED
+
+# 向后兼容别名 - AI Audio 状态
+AI_AUDIO_STATUS_PENDING = AIAudioStatus.PENDING
+AI_AUDIO_STATUS_PROCESSING = AIAudioStatus.PROCESSING
+AI_AUDIO_STATUS_FAILED = AIAudioStatus.FAILED
+AI_AUDIO_STATUS_COMPLETED = AIAudioStatus.COMPLETED
+
+class GridConfig:
+    """宫格拆分配置常量"""
+    SIZE_2X2 = 4                          # 2x2 宫格（标准版）
+    SIZE_3X3 = 9                          # 3x3 宫格（加强版）
+    VALID_SIZES = (4, 9)                  # 允许的宫格大小
+    DEFAULT_SIZE_BY_TYPE = {1: 4, 7: 9}   # AI工具类型 → 默认宫格大小
+    LOCK_TIMEOUT_SECONDS = 120            # 文件锁超时（秒）
+    IMAGE_DOWNLOAD_TIMEOUT = 60.0         # 下载原图超时（秒）
+
+
+# 向后兼容别名 - 宫格拆分
+GRID_SIZE_2X2 = GridConfig.SIZE_2X2
+GRID_SIZE_3X3 = GridConfig.SIZE_3X3
+GRID_VALID_SIZES = GridConfig.VALID_SIZES
+GRID_DEFAULT_SIZE_BY_TYPE = GridConfig.DEFAULT_SIZE_BY_TYPE
+GRID_LOCK_TIMEOUT_SECONDS = GridConfig.LOCK_TIMEOUT_SECONDS
+GRID_IMAGE_DOWNLOAD_TIMEOUT = GridConfig.IMAGE_DOWNLOAD_TIMEOUT
 
 class FilePathConstants:
     """文件路径相关常量 - 兼容Windows的跨平台路径配置"""
