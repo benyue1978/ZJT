@@ -4160,7 +4160,8 @@ async def get_video_workflow(
                 content={"code": -1, "message": "工作流不存在"}
             )
 
-        if getattr(workflow, 'user_id', None) != user_id:
+        # 商业版才检查权限，社区版所有人都可以访问
+        if Edition.is_enterprise() and getattr(workflow, 'user_id', None) != user_id:
             return JSONResponse(
                 status_code=403,
                 content={"code": -1, "message": "无权限访问该工作流"}
@@ -4201,7 +4202,8 @@ async def poll_workflow_node_status(
                 content={"code": -1, "message": "工作流不存在"}
             )
         
-        if getattr(workflow, 'user_id', None) != user_id:
+        # 商业版才检查权限，社区版所有人都可以访问
+        if Edition.is_enterprise() and getattr(workflow, 'user_id', None) != user_id:
             return JSONResponse(
                 status_code=403,
                 content={"code": -1, "message": "无权限访问该工作流"}
@@ -4892,7 +4894,8 @@ async def update_video_workflow(
                 content={"code": -1, "message": "工作流不存在"}
             )
 
-        if getattr(workflow, 'user_id', None) != user_id:
+        # 商业版才检查权限，社区版所有人都可以修改
+        if Edition.is_enterprise() and getattr(workflow, 'user_id', None) != user_id:
             return JSONResponse(
                 status_code=403,
                 content={"code": -1, "message": "无权限修改该工作流"}
