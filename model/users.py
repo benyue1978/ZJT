@@ -2,7 +2,7 @@
 Users Model - Database operations for users table
 对应Go的models/users.go
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 import logging
@@ -216,3 +216,133 @@ class UsersModel:
             except Exception as e:
                 logger.error(f"Failed to check invite code uniqueness: {e}")
                 raise
+    
+    # ==================== 管理员方法 ====================
+    
+    @staticmethod
+    def get_total_count() -> int:
+        """获取用户总数"""
+        sql = "SELECT COUNT(*) as count FROM users"
+        try:
+            result = execute_query(sql, fetch_one=True)
+            return result['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Failed to get total user count: {e}")
+            raise
+    
+    @staticmethod
+    def list_all(
+        page: int = 1,
+        page_size: int = 20,
+        keyword: Optional[str] = None,
+        status: Optional[int] = None,
+        role: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        管理员获取用户列表（支持分页和筛选）
+        
+        Args:
+            page: 页码（从1开始）
+            page_size: 每页数量
+            keyword: 搜索关键词（手机号）
+            status: 状态筛选（0-禁用, 1-正常）
+            role: 角色筛选（user/admin）
+        
+        Returns:
+            包含 total, page, page_size, data 的字典
+        """
+        where_conditions = []
+        params = []
+        
+        if keyword:
+            where_conditions.append("phone LIKE %s")
+            params.append(f"%{keyword}%")
+        
+        if status is not None:
+            where_conditions.append("status = %s")
+            params.append(status)
+        
+        if role:
+            where_conditions.append("role = %s")
+            params.append(role)
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # 获取总数
+        count_sql = f"SELECT COUNT(*) as count FROM users WHERE {where_clause}"
+        try:
+            count_result = execute_query(count_sql, tuple(params), fetch_one=True)
+            total = count_result['count'] if count_result else 0
+        except Exception as e:
+            logger.error(f"Failed to count users: {e}")
+            raise
+        
+        # 获取分页数据
+        offset = (page - 1) * page_size
+        data_sql = f"""
+            SELECT id, phone, status, role, created_at, updated_at, invite_code, inviter_id, first_recharge
+            FROM users 
+            WHERE {where_clause}
+            ORDER BY id DESC
+            LIMIT %s OFFSET %s
+        """
+        params.extend([page_size, offset])
+        
+        try:
+            results = execute_query(data_sql, tuple(params), fetch_all=True)
+            users = [User(**row).to_dict() for row in results] if results else []
+            
+            return {
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'data': users
+            }
+        except Exception as e:
+            logger.error(f"Failed to list users: {e}")
+            raise
+    
+    @staticmethod
+    def update_status(user_id: int, status: int) -> int:
+        """
+        更新用户状态
+        
+        Args:
+            user_id: 用户ID
+            status: 新状态（0-禁用, 1-正常）
+        
+        Returns:
+            受影响的行数
+        """
+        sql = "UPDATE users SET status = %s, updated_at = NOW() WHERE id = %s"
+        try:
+            affected = execute_update(sql, (status, user_id))
+            logger.info(f"Updated user {user_id} status to {status}")
+            return affected
+        except Exception as e:
+            logger.error(f"Failed to update user status: {e}")
+            raise
+    
+    @staticmethod
+    def update_role(user_id: int, role: str) -> int:
+        """
+        更新用户角色
+        
+        Args:
+            user_id: 用户ID
+            role: 新角色（user/admin）
+        
+        Returns:
+            受影响的行数
+        """
+        if role not in ('user', 'admin'):
+            raise ValueError(f"Invalid role: {role}")
+        
+        sql = "UPDATE users SET role = %s, updated_at = NOW() WHERE id = %s"
+        try:
+            affected = execute_update(sql, (role, user_id))
+            logger.info(f"Updated user {user_id} role to {role}")
+            return affected
+        except Exception as e:
+            logger.error(f"Failed to update user role: {e}")
+            raise

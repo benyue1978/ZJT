@@ -2,9 +2,10 @@
 ComputingPower Model - Database operations for computing_power table
 对应Go的models/computing_power.go
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
+from .computing_power_log import ComputingPowerLogModel
 import logging
 
 logger = logging.getLogger(__name__)
@@ -136,3 +137,46 @@ class ComputingPowerModel:
             ComputingPowerModel.create_or_update(user_id, 0, None)
             power = ComputingPowerModel.get_by_user_id(user_id)
         return power
+    
+    # ==================== 管理员方法 ====================
+    
+    @staticmethod
+    def admin_adjust(user_id: int, amount: int, reason: str) -> Tuple[int, int]:
+        """
+        管理员调整用户算力
+        
+        Args:
+            user_id: 用户ID
+            amount: 调整数量（正数增加，负数扣减）
+            reason: 调整原因
+        
+        Returns:
+            (原算力值, 新算力值) 元组
+        """
+        # 确保用户有算力记录
+        power = ComputingPowerModel.ensure_exists(user_id)
+        old_value = power.computing_power if power else 0
+        new_value = max(0, old_value + amount)  # 确保算力不为负数
+        
+        # 更新算力
+        ComputingPowerModel.update(user_id, new_value)
+        logger.info(f"Admin adjusted computing power for user {user_id}: {old_value} -> {new_value}, reason: {reason}")
+        
+        # 记录到 computing_power_log
+        try:
+            # behavior 字段只能是 'increase' 或 'deduct'
+            behavior = 'increase' if amount > 0 else 'deduct'
+            ComputingPowerLogModel.create(
+                user_id=user_id,
+                behavior=behavior,
+                computing_power=abs(amount),  # 使用绝对值
+                from_value=old_value,
+                to_value=new_value,
+                message='管理员调整算力',
+                note=reason
+            )
+        except Exception as e:
+            logger.error(f"Failed to create computing power log for user {user_id}: {e}")
+            # 不影响主流程，继续执行
+        
+        return (old_value, new_value)

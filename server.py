@@ -25,6 +25,9 @@ from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
 from config.config_util import get_config_path, resolve_bin_path
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
+from model.users import UsersModel, User
+from model.user_tokens import UserTokensModel
+from model.computing_power import ComputingPowerModel
 from model.world import WorldModel
 from model.character import CharacterModel
 from model.location import LocationModel
@@ -72,6 +75,7 @@ from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
 from utils import file_lock
 from perseids_server.utils.permission import require_permission, admin_required
+from api.admin import router as admin_router
 
 def _get_user_id_from_header(user_id: Optional[int]) -> int:
     if user_id is None:
@@ -224,6 +228,9 @@ app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
 # 导入并注册 script_writer API 路由
 from script_writer_api import router as script_writer_router
 app.include_router(script_writer_router)
+
+# 注册管理员 API 路由
+app.include_router(admin_router)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -1626,6 +1633,37 @@ async def ai_app_run_image(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to submit AI app task: {str(e)}")
+
+
+@app.get('/api/user/role')
+async def get_user_role(auth_token: str = Header(None, alias="Authorization")):
+    """
+    获取用户角色
+    """
+    try:
+        if not auth_token:
+            return {"code": -1, "message": "未提供认证信息"}
+        
+        if auth_token.startswith("Bearer "):
+            auth_token = auth_token[7:]
+        
+        user_id = UserTokensModel.get_user_id_by_token(auth_token)
+        if not user_id:
+            return {"code": -1, "message": "无效或已过期的认证信息"}
+        
+        user = UsersModel.get_by_id(user_id)
+        if not user:
+            return {"code": -1, "message": "用户不存在"}
+        
+        return {
+            "code": 0,
+            "data": {
+                "role": user.role
+            }
+        }
+    except Exception as e:
+        logger.error(f'获取用户角色失败: {str(e)}')
+        return {"code": -1, "message": "服务器错误"}
 
 
 @app.get('/api/user/computing_power')
@@ -6959,6 +6997,11 @@ async def serve_spa(full_path: str):
     if os.path.isfile(file_path):
         return FileResponse(file_path)
     
+    # 检查是否有对应的 .html 文件（支持 /admin -> admin.html）
+    html_path = os.path.join(static_dir, f"{full_path}.html")
+    if os.path.isfile(html_path):
+        return FileResponse(html_path)
+
     # Otherwise return index.html for SPA routing
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):

@@ -363,3 +363,27 @@ class VideoWorkflowModel:
         except Exception as e:
             logger.error(f"Failed to delete video workflow records for user {user_id}: {e}")
             raise
+    
+    # ==================== 管理员方法 ====================
+    
+    @staticmethod
+    def count_active_recent_days(days: int = 3) -> int:
+        """
+        统计最近N天有更新的工作流数量
+        
+        Args:
+            days: 天数（默认3天）
+        
+        Returns:
+            活跃工作流数量
+        """
+        sql = """
+            SELECT COUNT(*) as count FROM video_workflow 
+            WHERE update_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """
+        try:
+            result = execute_query(sql, (days,), fetch_one=True)
+            return result['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Failed to count active workflows in recent {days} days: {e}")
+            raise
