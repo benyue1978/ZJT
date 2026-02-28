@@ -298,3 +298,13 @@ RECHARGE_PACKAGES = [
         "description": "进阶套餐"
     }
 ]
+
+
+# 系统配置相关常量
+class SystemConfigConstants:
+    """系统配置相关常量"""
+    CONFIG_KEY_MAX_LENGTH = 256  # 配置键最大长度
+
+
+# 向后兼容别名
+CONFIG_KEY_MAX_LENGTH = SystemConfigConstants.CONFIG_KEY_MAX_LENGTH
