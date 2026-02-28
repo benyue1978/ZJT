@@ -34,30 +34,12 @@ class SentryUtil:
         """
         从配置文件初始化 Sentry
         
-        配置文件路径由 config_util.get_config_path() 获取
         配置项：
             sentry.dsn: Sentry DSN URL（必需）
             sentry.environment: 环境名称，默认 "production"
         """
-        sentry_dsn = None
-        environment = "production"
-        
-        try:
-            config_path = get_config_path()
-            
-            if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as file:
-                    config = yaml.safe_load(file)
-                    
-                    # 从配置文件读取 sentry 配置
-                    if config and "sentry" in config:
-                        sentry_config = config["sentry"]
-                        sentry_dsn = sentry_config.get("dsn")
-                        environment = sentry_config.get("environment", "production")
-            else:
-                logger.warning(f"Configuration file not found: {config_path}")
-        except Exception as e:
-            logger.warning(f"Failed to load Sentry config from file: {e}")
+        sentry_dsn = get_config_value('sentry', 'dsn', default=None)
+        environment = get_config_value('sentry', 'environment', default='production')
         
         # 初始化
         cls.init(

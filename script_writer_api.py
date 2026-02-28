@@ -9,54 +9,32 @@ import json
 import logging
 import uuid
 import asyncio
-import yaml
 import threading
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, Query as QueryParam, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+<<<<<<< HEAD
 from perseids_server.utils.permission import require_permission
+=======
+from config.config_util import get_config_value
+>>>>>>> 8a70db7 (修复了 sentry 和 script_writer 没有调用 config_util 获取配置的问题)
 
 # ==================== 加载 API 配置 ====================
 def _load_api_config():
-    """从 config.yml 加载 API 配置到环境变量"""
-    config_path = os.path.join(os.path.dirname(__file__), 'config.yml')
-    
-    if not os.path.exists(config_path):
-        logging.warning("config.yml not found, API keys may not be set")
-        return
-    
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-    except Exception as e:
-        logging.warning(f"Failed to load config.yml: {e}")
-        return
-    
-    # 设置 Anthropic API
-    anthropic_config = config.get('anthropic', {})
-    if anthropic_config.get('base_url'):
-        os.environ.setdefault('ANTHROPIC_BASE_URL', anthropic_config['base_url'])
-    if anthropic_config.get('api_key'):
-        os.environ.setdefault('ANTHROPIC_API_KEY', anthropic_config['api_key'])
-    if anthropic_config.get('auth_token'):
-        os.environ.setdefault('ANTHROPIC_AUTH_TOKEN', anthropic_config['auth_token'])
-    
+    """从统一配置加载 API 配置到环境变量"""
     # 设置 Google Gemini API
-    google_config = config.get('google', {})
-    if google_config.get('api_key'):
-        os.environ.setdefault('GOOGLE_API_KEY', google_config['api_key'])
-        os.environ.setdefault('GEMINI_API_KEY', google_config['api_key'])
-    if google_config.get('gemini_base_url'):
-        os.environ.setdefault('GOOGLE_GEMINI_BASE_URL', google_config['gemini_base_url'])
+    google_api_key = get_config_value('google', 'api_key', default=None)
+    google_base_url = get_config_value('google', 'gemini_base_url', default=None)
     
-    # 设置 Jiekou API (备用)
-    jiekou_config = config.get('jiekou', {})
-    if jiekou_config.get('api_key') and not os.environ.get('GEMINI_API_KEY'):
-        os.environ.setdefault('GEMINI_API_KEY', jiekou_config['api_key'])
+    if google_api_key:
+        os.environ.setdefault('GOOGLE_API_KEY', google_api_key)
+        os.environ.setdefault('GEMINI_API_KEY', google_api_key)
+    if google_base_url:
+        os.environ.setdefault('GOOGLE_GEMINI_BASE_URL', google_base_url)
     
-    logging.info(f"API config loaded from {config_path}")
+    logging.info("API config loaded from unified config")
 
 # 启动时加载配置
 _load_api_config()
