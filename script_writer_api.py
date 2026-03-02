@@ -1429,7 +1429,7 @@ async def create_agent_task(request: Request, session_id: str, task_request: Tas
                 }, status_code=400)
         
         # 验证消息不能为空
-        if not request.message:
+        if not task_request.message:
             return JSONResponse({
                 'success': False,
                 'error': '消息不能为空'
@@ -1438,11 +1438,11 @@ async def create_agent_task(request: Request, session_id: str, task_request: Tas
         # 创建任务（返回 task_id 字符串）
         task_id = task_manager.create_task(
             session_id=session_id,
-            user_message=request.message,
+            user_message=task_request.message,
             user_id=user_id,
             world_id=world_id,
             auth_token=auth_token,
-            vendor_id=request.vendor_id,
+            vendor_id=task_request.vendor_id,
             model_id=model_id
         )
         
