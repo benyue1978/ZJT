@@ -4,9 +4,9 @@ runninghub:
   max_concurrent_slots: 3  # RunningHub 最大并发槽位数量
 # Server configuration
 server:
-  host: "http://ssh.perseids.cn:12000"
+  host: "http://localhost:12000"
   is_local: true  # 是否为本地环境，如果是本地环境，进行图片生成以及视频生成时，将参考图片上传到图床中。
-  https_host: "https://ssh.perseids.cn:12443"
+  https_host: "https://localhost:12443"
   port: 9003                # 如需自定义端口可保留
   https_port: 5174
   https:
