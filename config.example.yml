@@ -46,20 +46,11 @@ sms:
 
 # Database configuration
 database:
-  host: "192.168.10.212"
+  host: "localhost"
   port: 3306
-  user: "voice_replace_debug_admin"
-  password: "xxxxx"
-  database: "voice_replace_debug"
-  charset: "utf8mb4"
-
-# Test Database configuration
-test_database:
-  host: "192.168.10.212"
-  port: 3306
-  user: "xxxxxxxx"
-  password: "xxxxxxxx"
-  database: "voice_replace_unittest"
+  user: "root"
+  password: "root"
+  database: "zjt"
   charset: "utf8mb4"
 
 # AI Tools configuration
@@ -75,9 +66,9 @@ vidu:
 pay:
   wxpay:
       #公众账号ID
-      appId: wxfcf09f56c3d2b2b8
+      appId: wxfcxxxx
       #商户号
-      mchId: 1663740701
+      mchId: 16xxxxxx
       #商户API证书序列号
       api_key: 3C57FXXXX
       #APIv3_key

@@ -25,7 +25,44 @@ pip install -r requirements.txt
 
 ## 启动后端
 
-### 方式 1：使用 uv 启动（推荐，Windows）
+### 方式 1：Windows 双击启动（推荐）
+
+**📌 详细说明请查看：[Windows启动说明.md](Windows启动说明.md)**
+
+项目提供了英文版启动脚本（推荐使用，无编码问题）：
+
+#### 1. start.bat - 启动服务（显示日志）
+- ✅ 显示详细的启动日志和运行状态
+- ✅ 适合首次启动和问题排查
+- ✅ 纯英文界面，无乱码问题
+- 📝 双击即可运行
+
+#### 2. start_silent.vbs - 静默启动
+- ✅ 后台运行，无控制台窗口
+- ✅ 界面简洁，不占用桌面空间
+- 📝 双击即可运行
+
+#### 3. stop.bat - 停止服务
+- ✅ 一键停止所有服务
+- 📝 双击即可运行
+
+**快速开始**：
+1. 确保已安装 Python 3.10+
+2. 将 MySQL 解压到 `bin/mysql` 目录
+3. 复制 `config.example.yml` 为 `config_prod.yml` 并配置
+4. 双击 `start.bat` 即可启动
+5. （可选）双击 `create_shortcuts.vbs` 创建桌面快捷方式
+
+**注意**：项目中也有中文版本的启动脚本（启动.bat等），但由于Windows批处理文件编码问题，可能会出现乱码。建议使用英文版本。详见 `Windows启动文件说明.txt`
+
+`start_windows.py` 会自动：
+1. 检查 Python 和 uv 环境
+2. 启动本地 MySQL 服务（首次启动时自动初始化）
+3. 设置数据库密码并导入表结构
+4. 启动 Web 服务和定时任务
+5. 监控服务状态，异常时自动重启
+
+### 方式 2：使用 uv 启动（命令行）
 
 [uv](https://docs.astral.sh/uv/) 是一个快速的 Python 包管理器，会自动管理依赖和虚拟环境。
 
@@ -44,12 +81,7 @@ uv run start_windows.py
 uv run start_windows.py
 ```
 
-`start_windows.py` 会自动：
-1. 启动本地 MySQL 服务（首次启动时自动初始化）
-2. 启动 Web 服务和定时任务
-3. 监控服务状态，异常时自动重启
-
-### 方式 2：手动启动
+### 方式 3：手动启动（Linux/macOS）
 
 ```bash
 # 激活虚拟环境后

@@ -2,8 +2,9 @@
 """
 生产环境统一启动器
 - 管理 scheduler 子进程（定时任务）
-- 管理 gunicorn 子进程（Web 服务）
+- 管理 gunicorn/uvicorn 子进程（Web 服务）
 - 父进程退出时自动清理所有子进程
+- Windows 系统使用 uvicorn，Linux/macOS 使用 gunicorn
 """
 import subprocess
 import signal
@@ -11,6 +12,7 @@ import sys
 import os
 import time
 import yaml
+import platform
 from config.config_util import get_config_path
 
 
@@ -79,20 +81,36 @@ def main():
     # 等待 scheduler 启动
     time.sleep(2)
     
-    # 2. 启动 gunicorn 进程
-    print(f"[Manager] Starting gunicorn on port {port}...")
-    gunicorn_cmd = [
-        "gunicorn", "server:app",
-        "-w", "4",
-        "-k", "uvicorn.workers.UvicornWorker",
-        "--bind", f"0.0.0.0:{port}",
-        "--timeout", "600",
-        "--graceful-timeout", "90",
-        "--access-logfile", "access.log",
-        "--error-logfile", "error.log"
-    ]
-    gunicorn_proc = subprocess.Popen(gunicorn_cmd, cwd=cwd)
-    processes.append(gunicorn_proc)
+    # 2. 启动 Web 服务进程
+    is_windows = platform.system() == "Windows"
+    
+    if is_windows:
+        # Windows 使用 uvicorn（gunicorn 不支持 Windows）
+        print(f"[Manager] Starting uvicorn on port {port}...")
+        web_cmd = [
+            sys.executable, "-m", "uvicorn", "server:app",
+            "--host", "0.0.0.0",
+            "--port", port,
+            "--timeout-keep-alive", "600"
+        ]
+        web_server_name = "uvicorn"
+    else:
+        # Linux/macOS 使用 gunicorn（性能更好）
+        print(f"[Manager] Starting gunicorn on port {port}...")
+        web_cmd = [
+            "gunicorn", "server:app",
+            "-w", "4",
+            "-k", "uvicorn.workers.UvicornWorker",
+            "--bind", f"0.0.0.0:{port}",
+            "--timeout", "600",
+            "--graceful-timeout", "90",
+            "--access-logfile", "access.log",
+            "--error-logfile", "error.log"
+        ]
+        web_server_name = "gunicorn"
+    
+    web_proc = subprocess.Popen(web_cmd, cwd=cwd)
+    processes.append(web_proc)
     
     print("[Manager] All processes started. Press Ctrl+C to stop.")
     
@@ -100,7 +118,7 @@ def main():
     while True:
         for i, proc in enumerate(processes):
             if proc.poll() is not None:
-                name = "scheduler" if i == 0 else "gunicorn"
+                name = "scheduler" if i == 0 else web_server_name
                 print(f"[Manager] {name} exited with code {proc.returncode}")
                 cleanup()
         time.sleep(1)

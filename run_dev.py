@@ -82,7 +82,7 @@ def main():
     # 2. 启动 uvicorn 开发服务器（单进程，支持热重载）
     print(f"[Manager] Starting uvicorn dev server on port {port}...")
     uvicorn_cmd = [
-        "uvicorn", "server:app",
+        sys.executable, "-m", "uvicorn", "server:app",
         "--host", "0.0.0.0",
         "--port", port,
         "--reload"

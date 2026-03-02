@@ -185,6 +185,69 @@ def check_port_in_use(port):
         return False
 
 
+def update_mysql_ini_paths():
+    """
+    更新 my.ini 中的路径为当前项目路径
+    Returns:
+        tuple: (bool, str) - (是否成功, 消息)
+    """
+    try:
+        current_dir = get_current_dir()
+        mysql_dir = os.path.join(current_dir, 'bin', 'mysql')
+        mysql_ini = os.path.join(mysql_dir, 'my.ini')
+        mysql_ini_template = os.path.join(mysql_dir, 'my.ini.template')
+        
+        # 将Windows路径转换为正斜杠格式（MySQL配置文件要求）
+        basedir = mysql_dir.replace('\\', '/')
+        datadir = os.path.join(current_dir, 'data', 'mysql').replace('\\', '/')
+        
+        # 如果存在模板文件，使用模板
+        if os.path.exists(mysql_ini_template):
+            logger.info(f"使用模板文件更新MySQL配置: {mysql_ini_template}")
+            with open(mysql_ini_template, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+            
+            # 替换占位符
+            ini_content = template_content.replace('{BASEDIR}', basedir)
+            ini_content = ini_content.replace('{DATADIR}', datadir)
+            
+            # 写入 my.ini
+            with open(mysql_ini, 'w', encoding='utf-8') as f:
+                f.write(ini_content)
+            
+            logger.info(f"MySQL配置文件已更新: basedir={basedir}, datadir={datadir}")
+            return True, "MySQL配置文件路径更新成功"
+        
+        # 如果没有模板文件，直接修改现有的 my.ini
+        if not os.path.exists(mysql_ini):
+            return False, f"MySQL配置文件不存在: {mysql_ini}"
+        
+        logger.info(f"直接修改MySQL配置文件: {mysql_ini}")
+        with open(mysql_ini, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # 更新路径
+        updated_lines = []
+        for line in lines:
+            if line.strip().startswith('basedir='):
+                updated_lines.append(f'basedir={basedir}\n')
+            elif line.strip().startswith('datadir='):
+                updated_lines.append(f'datadir={datadir}\n')
+            else:
+                updated_lines.append(line)
+        
+        # 写回文件
+        with open(mysql_ini, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+        
+        logger.info(f"MySQL配置文件已更新: basedir={basedir}, datadir={datadir}")
+        return True, "MySQL配置文件路径更新成功"
+        
+    except Exception as e:
+        logger.error(f"更新MySQL配置文件时出错: {e}")
+        return False, f"更新MySQL配置文件失败: {e}"
+
+
 def start_mysql_service():
     """
     启动 MySQL 服务
@@ -197,6 +260,14 @@ def start_mysql_service():
         mysql_exists, mysql_paths = check_mysql_path()
         if not mysql_exists:
             return False, mysql_paths, False
+
+        # 更新 my.ini 中的路径为当前项目路径
+        logger.info("正在更新MySQL配置文件路径...")
+        success, message = update_mysql_ini_paths()
+        if not success:
+            logger.warning(f"更新MySQL配置文件路径失败: {message}，继续尝试启动")
+        else:
+            logger.info(message)
 
         mysqld_exe = mysql_paths['mysqld_exe']
         mysql_ini = mysql_paths['mysql_ini']
