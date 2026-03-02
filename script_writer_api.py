@@ -15,11 +15,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, Query as QueryParam, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-<<<<<<< HEAD
 from perseids_server.utils.permission import require_permission
-=======
 from config.config_util import get_config_value
->>>>>>> 8a70db7 (修复了 sentry 和 script_writer 没有调用 config_util 获取配置的问题)
 
 # ==================== 加载 API 配置 ====================
 def _load_api_config():

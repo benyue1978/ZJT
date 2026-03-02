@@ -88,6 +88,23 @@
     let taskComputingPowerConfig = {};
     // 视频模型时长选项配置（全局缓存，只请求一次）
     let videoModelDurationOptions = {};
+    // 驱动可用状态（用于禁用未配置的功能）
+    let driverStatusConfig = {};
+    
+    // 模型值 -> 任务类型映射
+    const MODEL_TASK_TYPE_MAP = {
+      // 视频模型
+      'sora2': 3,
+      'ltx2': 10,
+      'wan22': 11,
+      'kling': 12,
+      'vidu': 14,
+      'veo3': 15,
+      // 图片模型
+      'gemini-2.5-pro-image-preview': 1,
+      'gemini-3-pro-image-preview': 7,
+      'gemini-3-pro-4grid': 7  // 4宫格也用加强版
+    };
     
     async function fetchComputingPowerConfig(){
       try {
@@ -106,6 +123,10 @@
               videoModelDurationOptions = data.data.video_model_duration_options;
               console.log('[视频模型时长配置] 已加载:', videoModelDurationOptions);
             }
+            if(data.data.driver_status){
+              driverStatusConfig = data.data.driver_status;
+              console.log('[驱动状态] 已加载:', driverStatusConfig);
+            }
           }
         }
       } catch(error){
@@ -121,6 +142,16 @@
     // 获取视频模型时长选项配置（供节点使用）
     function getVideoModelDurationOptions(){
       return videoModelDurationOptions;
+    }
+    
+    // 获取驱动状态配置（供节点使用）
+    function getDriverStatusConfig(){
+      return driverStatusConfig;
+    }
+    
+    // 获取模型任务类型映射（供节点使用）
+    function getModelTaskTypeMap(){
+      return MODEL_TASK_TYPE_MAP;
     }
     
     // 计算视频生成算力（公共函数）

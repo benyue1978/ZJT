@@ -40,7 +40,10 @@ from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
 from model.migration import run_migrations, get_alembic_config
 from config.constant import (
-    TASK_COMPUTING_POWER, 
+    TaskTypeRegistry,
+    TaskCategory,
+    TaskProvider,
+    TaskTypeId,
     TASK_TYPE_GENERATE_VIDEO, 
     TASK_TYPE_GENERATE_AUDIO, 
     RECHARGE_PACKAGES, 
@@ -57,9 +60,6 @@ from config.constant import (
     TASK_STATUS_PROCESSING,
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
-    IMAGE_TO_VIDEO_TYPES,
-    IMAGE_EDIT_TYPES,
-    TASK_TYPE_NAME_MAP,
     GRID_SIZE_2X2,
     GRID_SIZE_3X3,
     GRID_VALID_SIZES,
@@ -241,6 +241,7 @@ SentryUtil.init_from_env()
 
 # Register all video drivers
 from task.visual_drivers import register_all_drivers
+from task.visual_drivers.driver_factory import VideoDriverFactory
 register_all_drivers()
 logger.info("Video drivers registered successfully")
 
@@ -870,12 +871,15 @@ async def image_edit(
             )
 
         #用uuid生成交易id
-        image_edit_type = 1
+        image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
         if model == "gemini-2.5-pro-image-preview":
-            image_edit_type = 1
+            image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
         elif model == "gemini-3-pro-image-preview":
-            image_edit_type = 7
-        computing_power = TASK_COMPUTING_POWER[image_edit_type]
+            image_edit_type = TaskTypeId.GEMINI_3_PRO_IMAGE
+        
+        # 从注册表获取算力配置
+        task_config = TaskTypeRegistry.get(image_edit_type)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
@@ -1008,11 +1012,13 @@ async def text_to_image(
             )
 
         # Determine computing power based on model
-        text_to_image_type = 1  # gemini-2.5-pro-image-preview: 2算力
+        text_to_image_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE  # gemini-2.5-pro-image-preview: 2算力
         if model == "gemini-3-pro-image-preview":
-            text_to_image_type = 7  # gemini-3-pro-image-preview: 6算力
+            text_to_image_type = TaskTypeId.GEMINI_3_PRO_IMAGE  # gemini-3-pro-image-preview: 6算力
         
-        computing_power = TASK_COMPUTING_POWER[text_to_image_type]
+        # 从注册表获取算力配置
+        task_config = TaskTypeRegistry.get(text_to_image_type)
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1166,7 +1172,8 @@ async def runninghub_status(
                     raise HTTPException(status_code=400, detail="用户ID不匹配")
                 #发起请求，增加算力
                 type = task_record.type
-                computing_power = TASK_COMPUTING_POWER[type]
+                task_config = TaskTypeRegistry.get(type)
+                computing_power = task_config.computing_power if task_config else 0
                 success, message, response_data = await async_make_perseids_request(
                     endpoint='user/calculate_computing_power',
                     method='POST',
@@ -1296,7 +1303,8 @@ async def ai_app_run(
                 status_code=400, 
                 detail="Authentication token is required"
             )
-        computing_power = TASK_COMPUTING_POWER[2]
+        task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
@@ -1492,29 +1500,41 @@ async def ai_app_run_image(
 
         # Determine task type and computing power based on video_model
         if video_model == "ltx2":
-            task_type = 10  # LTX2.0 图生视频
-            computing_power = TASK_COMPUTING_POWER[task_type]
+            task_type = TaskTypeId.LTX2_IMAGE_TO_VIDEO  # LTX2.0 图生视频
+            task_config = TaskTypeRegistry.get(task_type)
+            computing_power = task_config.computing_power if task_config else 0
         elif video_model == "wan22":
-            task_type = 11  # Wan2.2 图生视频
-            # Wan2.2根据时长区分算力：5秒=12，10秒=24
-            wan22_power_map = TASK_COMPUTING_POWER[task_type]
-            computing_power = wan22_power_map.get(duration_seconds, 12)
+            task_type = TaskTypeId.WAN22_IMAGE_TO_VIDEO  # Wan2.2 图生视频
+            # Wan2.2根据时长区分算力
+            task_config = TaskTypeRegistry.get(task_type)
+            if task_config and isinstance(task_config.computing_power, dict):
+                computing_power = task_config.computing_power.get(duration_seconds, 6)
+            else:
+                computing_power = 0
         elif video_model == "kling":
-            task_type = 12  # 可灵图生视频
-            # 可灵根据时长区分算力：5秒=38，10秒=55
-            kling_power_map = TASK_COMPUTING_POWER[task_type]
-            computing_power = kling_power_map.get(duration_seconds, 38)
+            task_type = TaskTypeId.KLING_IMAGE_TO_VIDEO  # 可灵图生视频
+            # 可灵根据时长区分算力
+            task_config = TaskTypeRegistry.get(task_type)
+            if task_config and isinstance(task_config.computing_power, dict):
+                computing_power = task_config.computing_power.get(duration_seconds, 38)
+            else:
+                computing_power = 0
         elif video_model == "vidu":
-            task_type = 14  # Vidu 图生视频
-            # Vidu根据时长区分算力：5秒=16
-            vidu_power_map = TASK_COMPUTING_POWER[task_type]
-            computing_power = vidu_power_map.get(duration_seconds, 16)
+            task_type = TaskTypeId.VIDU_IMAGE_TO_VIDEO  # Vidu 图生视频
+            # Vidu根据时长区分算力
+            task_config = TaskTypeRegistry.get(task_type)
+            if task_config and isinstance(task_config.computing_power, dict):
+                computing_power = task_config.computing_power.get(duration_seconds, 16)
+            else:
+                computing_power = 0
         elif video_model == "veo3":
-            task_type = 15  # VEO3 图生视频
-            computing_power = TASK_COMPUTING_POWER[task_type]
+            task_type = TaskTypeId.VEO3_IMAGE_TO_VIDEO  # VEO3 图生视频
+            task_config = TaskTypeRegistry.get(task_type)
+            computing_power = task_config.computing_power if task_config else 0
         else:
-            task_type = 3   # Sora2 图生视频
-            computing_power = TASK_COMPUTING_POWER[task_type]
+            task_type = TaskTypeId.SORA2_IMAGE_TO_VIDEO   # Sora2 图生视频
+            task_config = TaskTypeRegistry.get(task_type)
+            computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1574,24 +1594,24 @@ async def ai_app_run_image(
                     try:
                         # Determine type and ratio based on video_model
                         if video_model == "ltx2":
-                            # LTX2.0 图生视频: type=10
+                            # LTX2.0 图生视频
                             # 现在 LTX2.0 也支持比例选择（横屏/竖屏）
-                            task_type = 10  # LTX2.0 图生视频
+                            task_type = TaskTypeId.LTX2_IMAGE_TO_VIDEO
                         elif video_model == "wan22":
-                            # Wan2.2 图生视频: type=11
-                            task_type = 11
+                            # Wan2.2 图生视频
+                            task_type = TaskTypeId.WAN22_IMAGE_TO_VIDEO
                         elif video_model == "kling":
-                            # 可灵图生视频: type=12
-                            task_type = 12
+                            # 可灵图生视频
+                            task_type = TaskTypeId.KLING_IMAGE_TO_VIDEO
                         elif video_model == "vidu":
-                            # Vidu 图生视频: type=14
-                            task_type = 14
+                            # Vidu 图生视频
+                            task_type = TaskTypeId.VIDU_IMAGE_TO_VIDEO
                         elif video_model == "veo3":
-                            # VEO3 图生视频: type=15
-                            task_type = 15
+                            # VEO3 图生视频
+                            task_type = TaskTypeId.VEO3_IMAGE_TO_VIDEO
                         else:
-                            # Sora2 图生视频: type=3
-                            task_type = 3
+                            # Sora2 图生视频
+                            task_type = TaskTypeId.SORA2_IMAGE_TO_VIDEO
                         ratio_value = ratio
                         duration_value = duration_seconds
                         
@@ -1791,7 +1811,6 @@ async def get_computing_power_logs(
                 for log in response_data['logs']:
                     from datetime import datetime
                     import re
-                    from config.constant import TASK_TYPE_NAME_MAP
                     
                     # 获取基础字段
                     processed_log = {
@@ -1813,12 +1832,14 @@ async def get_computing_power_logs(
                     transaction_id = log.get('transaction_id')
                     if transaction_id and transaction_id in tools_map:
                         tool = tools_map[transaction_id]
-                        if tool.type and tool.type in TASK_TYPE_NAME_MAP:
-                            task_type_name = TASK_TYPE_NAME_MAP[tool.type]
-                            if processed_log['note']:
-                                processed_log['note'] = f"{task_type_name} - {processed_log['note']}"
-                            else:
-                                processed_log['note'] = task_type_name
+                        if tool.type:
+                            task_config = TaskTypeRegistry.get(tool.type)
+                            if task_config:
+                                task_type_name = task_config.name
+                                if processed_log['note']:
+                                    processed_log['note'] = f"{task_type_name} - {processed_log['note']}"
+                                else:
+                                    processed_log['note'] = task_type_name
                     
                     # 格式化时间为年月日时分秒
                     if processed_log['created_at']:
@@ -2347,7 +2368,8 @@ async def get_ai_tools_history(
                             )
                             updated_count += 1
                             # 累计需要补回的算力
-                            computing_power = TASK_COMPUTING_POWER[task.type]
+                            task_config = TaskTypeRegistry.get(task.type)
+                            computing_power = task_config.computing_power if task_config else 0
                             total_refund_power += computing_power
                             logger.info(f"Upscale task {task.project_id} failed, will refund {computing_power} computing power")
                     
@@ -2474,16 +2496,20 @@ async def get_ai_tools_history(
 async def get_computing_power_config(request: Request):
     """
     获取算力配置
-    返回各个任务类型的算力消耗配置和视频模型时长选项
+    返回各个任务类型的算力消耗配置、视频模型时长选项和驱动可用状态
     """
     try:
+        # 获取 driver 可用状态
+        driver_status = VideoDriverFactory.get_driver_availability()
+        
         return JSONResponse(
             content={
                 'success': True,
                 'message': '获取成功',
                 'data': {
-                    'task_computing_power': TASK_COMPUTING_POWER,
-                    'video_model_duration_options': VIDEO_MODEL_DURATION_OPTIONS
+                    'task_computing_power': TaskTypeRegistry.get_computing_power_map(),
+                    'video_model_duration_options': VIDEO_MODEL_DURATION_OPTIONS,
+                    'driver_status': driver_status
                 }
             }
         )
@@ -2511,9 +2537,9 @@ async def get_task_type_config(request: Request):
                 'success': True,
                 'message': '获取成功',
                 'data': {
-                    'image_to_video_types': IMAGE_TO_VIDEO_TYPES,
-                    'image_edit_types': IMAGE_EDIT_TYPES,
-                    'task_type_name_map': TASK_TYPE_NAME_MAP
+                    'image_to_video_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_TO_VIDEO),
+                    'image_edit_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_EDIT),
+                    'task_type_name_map': TaskTypeRegistry.get_name_map()
                 }
             }
         )
@@ -2692,7 +2718,8 @@ async def image_upscale(
         
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
-        computing_power = TASK_COMPUTING_POWER[4]
+        task_config = TaskTypeRegistry.get(TaskTypeId.IMAGE_ENHANCE)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             # Check if computing power is sufficient
@@ -2829,7 +2856,8 @@ async def video_enhance(
             )
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
-        computing_power = TASK_COMPUTING_POWER[5]
+        task_config = TaskTypeRegistry.get(TaskTypeId.VIDEO_ENHANCE)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             # Check if computing power is sufficient
@@ -3001,7 +3029,8 @@ async def video_remix(
             )
         
         # 计算所需算力（使用视频生成的算力标准）
-        computing_power = TASK_COMPUTING_POWER[2]  # 2: AI视频生成
+        task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)  # AI视频生成
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -3184,7 +3213,8 @@ async def api_create_character(
             )
         
         # 计算所需算力
-        computing_power = TASK_COMPUTING_POWER[8]  # 8: 创建角色卡
+        task_config = TaskTypeRegistry.get(TaskTypeId.CHARACTER_CARD)  # 创建角色卡
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -3329,8 +3359,9 @@ async def digital_human_generate(
         audio_url = await asyncio.to_thread(_save_uploaded_image, audio)  # Reuse the same function for audio
         
         # Task type for digital human
-        task_type = 13
-        computing_power = TASK_COMPUTING_POWER[task_type]
+        task_type = TaskTypeId.DIGITAL_HUMAN
+        task_config = TaskTypeRegistry.get(task_type)
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -3638,7 +3669,8 @@ async def api_character_status(
                         user_id_from_token = response_data.get('user_id')
                         if task_record.user_id != user_id_from_token:
                             raise HTTPException(status_code=400, detail="用户ID不匹配")
-                        computing_power = TASK_COMPUTING_POWER.get(task_record.type, 0)
+                        task_config = TaskTypeRegistry.get(task_record.type)
+                        computing_power = task_config.computing_power if task_config else 0
                         if computing_power > 0:
                             success, message, _ = await async_make_perseids_request(
                                 endpoint='user/calculate_computing_power',
@@ -4485,7 +4517,8 @@ async def get_grid_split_image(
             )
         
         # 3. 验证类型（图片编辑类型）
-        if ai_tool.type not in IMAGE_EDIT_TYPES:
+        task_config = TaskTypeRegistry.get(ai_tool.type)
+        if not task_config or task_config.category != TaskCategory.IMAGE_EDIT:
             return JSONResponse(
                 status_code=400,
                 content={"code": -1, "message": "该AI工具不是图片编辑类型"}

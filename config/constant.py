@@ -1,6 +1,246 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dataclasses import dataclass
+from typing import Optional, Union, Dict, List
+
+
+class TaskTypeId:
+    """任务类型ID常量"""
+    # 图片编辑
+    GEMINI_2_5_FLASH_IMAGE = 1          # Gemini 2.5 Flash 图片编辑（标准版）
+    GEMINI_3_PRO_IMAGE = 7              # Gemini 3 Pro 图片编辑（加强版）
+    
+    # 文生视频
+    SORA2_TEXT_TO_VIDEO = 2             # Sora2 文生视频
+    
+    # 图生视频
+    SORA2_IMAGE_TO_VIDEO = 3            # Sora2 图生视频
+    LTX2_IMAGE_TO_VIDEO = 10            # LTX2.0 图生视频
+    WAN22_IMAGE_TO_VIDEO = 11           # Wan2.2 图生视频
+    KLING_IMAGE_TO_VIDEO = 12           # 可灵图生视频
+    VIDU_IMAGE_TO_VIDEO = 14            # Vidu 图生视频
+    VEO3_IMAGE_TO_VIDEO = 15            # VEO3.1 图生视频
+    
+    # 图片/视频 增强
+    IMAGE_ENHANCE = 4                   # 图片高清放大
+    VIDEO_ENHANCE = 5                   # AI视频高清修复
+    
+    # 其他
+    CHARACTER_CARD = 8                  # 创建角色卡
+    
+    # 音频
+    AUDIO_GENERATE = 9                  # 音频生成
+    
+    # 数字人
+    DIGITAL_HUMAN = 13                  # 数字人生成
+
+
+class TaskCategory:
+    """任务分类常量"""
+    IMAGE_EDIT = 'image_edit'           # 图片编辑
+    TEXT_TO_VIDEO = 'text_to_video'     # 文生视频
+    IMAGE_TO_VIDEO = 'image_to_video'   # 图生视频
+    VISUAL_ENHANCE = 'visual_enhance'   # 视觉增强
+    AUDIO = 'audio'                     # 音频
+    DIGITAL_HUMAN = 'digital_human'     # 数字人
+    OTHER = 'other'                     # 其他
+
+
+class TaskProvider:
+    """任务供应商常量"""
+    DUOMI = 'duomi'           # 多米供应商
+    RUNNINGHUB = 'runninghub' # RunningHub 供应商
+    VIDU = 'vidu'             # Vidu 官方
+    LOCAL = 'local'           # 本地处理
+
+
+class DriverKey:
+    """业务驱动名称常量"""
+    # Sora2 相关
+    SORA2_TEXT_TO_VIDEO = 'sora2_text_to_video'       # Sora2 文生视频
+    SORA2_IMAGE_TO_VIDEO = 'sora2_image_to_video'     # Sora2 图生视频
+    
+    # Kling 相关
+    KLING_IMAGE_TO_VIDEO = 'kling_image_to_video'     # 可灵图生视频
+    
+    # Gemini 相关
+    GEMINI_IMAGE_EDIT = 'gemini_image_edit'           # Gemini 图片编辑（标准版）
+    GEMINI_IMAGE_EDIT_PRO = 'gemini_image_edit_pro'   # Gemini 图片编辑（加强版）
+    
+    # VEO3 相关
+    VEO3_IMAGE_TO_VIDEO = 'veo3_image_to_video'       # VEO3 图生视频
+    
+    # LTX2 相关
+    LTX2_IMAGE_TO_VIDEO = 'ltx2_image_to_video'       # LTX2 图生视频
+    
+    # Wan22 相关
+    WAN22_IMAGE_TO_VIDEO = 'wan22_image_to_video'     # Wan2.2 图生视频
+    
+    # Vidu 相关
+    VIDU_IMAGE_TO_VIDEO = 'vidu_image_to_video'       # Vidu 图生视频
+    
+    # 数字人
+    DIGITAL_HUMAN = 'digital_human'                   # 数字人生成
+
+
+class DriverImplementation:
+    """驱动实现类名常量"""
+    # Sora2
+    SORA2_DUOMI_V1 = 'sora2_duomi_v1'
+    
+    # Kling
+    KLING_DUOMI_V1 = 'kling_duomi_v1'
+    
+    # Gemini
+    GEMINI_DUOMI_V1 = 'gemini_duomi_v1'
+    GEMINI_PRO_DUOMI_V1 = 'gemini_pro_duomi_v1'
+    
+    # VEO3
+    VEO3_DUOMI_V1 = 'veo3_duomi_v1'
+    
+    # LTX2
+    LTX2_RUNNINGHUB_V1 = 'ltx2_runninghub_v1'
+    
+    # Wan22
+    WAN22_RUNNINGHUB_V1 = 'wan22_runninghub_v1'
+    
+    # Digital Human
+    DIGITAL_HUMAN_RUNNINGHUB_V1 = 'digital_human_runninghub_v1'
+    
+    # Vidu
+    VIDU_DEFAULT = 'vidu_default'
+
+
+@dataclass
+class TaskTypeConfig:
+    """任务类型配置"""
+    id: int                                          # 任务类型ID
+    name: str                                        # 显示名称
+    category: str                                    # 分类：使用 TaskCategory 常量
+    provider: str                                    # 供应商：使用 TaskProvider 常量
+    driver_name: Optional[str] = None                # 业务驱动名称（可选）
+    computing_power: Union[int, Dict[int, int]] = 0  # 算力消耗（整数或按时长的字典）
+
+
+class TaskTypeRegistry:
+    """任务类型注册表 - 统一管理所有任务类型配置"""
+    
+    _configs: Dict[int, TaskTypeConfig] = {}
+    
+    @classmethod
+    def register(cls, config: TaskTypeConfig) -> None:
+        """注册任务类型配置"""
+        cls._configs[config.id] = config
+    
+    @classmethod
+    def get(cls, task_type: int) -> Optional[TaskTypeConfig]:
+        """获取指定任务类型的配置"""
+        return cls._configs.get(task_type)
+    
+    @classmethod
+    def get_all(cls) -> Dict[int, TaskTypeConfig]:
+        """获取所有任务类型配置"""
+        return cls._configs.copy()
+    
+    @classmethod
+    def get_by_category(cls, category: str) -> List[int]:
+        """获取指定分类的所有任务类型ID"""
+        return [c.id for c in cls._configs.values() if c.category == category]
+    
+    @classmethod
+    def get_by_provider(cls, provider: str) -> List[int]:
+        """获取指定供应商的所有任务类型ID"""
+        return [c.id for c in cls._configs.values() if c.provider == provider]
+    
+    @classmethod
+    def get_name_map(cls) -> Dict[int, str]:
+        """获取任务类型ID到名称的映射"""
+        return {c.id: c.name for c in cls._configs.values()}
+    
+    @classmethod
+    def get_driver_mapping(cls) -> Dict[int, str]:
+        """获取任务类型ID到业务驱动名称的映射"""
+        return {c.id: c.driver_name for c in cls._configs.values() if c.driver_name}
+    
+    @classmethod
+    def get_computing_power_map(cls) -> Dict[int, Union[int, Dict[int, int]]]:
+        """获取任务类型ID到算力消耗的映射"""
+        return {c.id: c.computing_power for c in cls._configs.values()}
+
+
+# ============ 注册所有任务类型 ============
+
+# 图片编辑
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.GEMINI_2_5_FLASH_IMAGE, name='图片编辑', category=TaskCategory.IMAGE_EDIT,
+    provider=TaskProvider.DUOMI, driver_name=DriverKey.GEMINI_IMAGE_EDIT, computing_power=2
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.GEMINI_3_PRO_IMAGE, name='图片编辑 (Pro)', category=TaskCategory.IMAGE_EDIT,
+    provider=TaskProvider.DUOMI, driver_name=DriverKey.GEMINI_IMAGE_EDIT_PRO, computing_power=6
+))
+
+# 文生视频
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.SORA2_TEXT_TO_VIDEO, name='Sora2文生视频', category=TaskCategory.TEXT_TO_VIDEO,
+    provider=TaskProvider.DUOMI, driver_name=DriverKey.SORA2_TEXT_TO_VIDEO, computing_power=18
+))
+
+# 图生视频
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.SORA2_IMAGE_TO_VIDEO, name='图片生成视频 (Sora2)', category=TaskCategory.IMAGE_TO_VIDEO,
+    provider=TaskProvider.DUOMI, driver_name=DriverKey.SORA2_IMAGE_TO_VIDEO, computing_power=18
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.LTX2_IMAGE_TO_VIDEO, name='图片生成视频 (LTX2.0)', category=TaskCategory.IMAGE_TO_VIDEO,
+    provider=TaskProvider.RUNNINGHUB, driver_name=DriverKey.LTX2_IMAGE_TO_VIDEO, computing_power=6
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.WAN22_IMAGE_TO_VIDEO, name='图片生成视频 (Wan2.2)', category=TaskCategory.IMAGE_TO_VIDEO,
+    provider=TaskProvider.RUNNINGHUB, driver_name=DriverKey.WAN22_IMAGE_TO_VIDEO, computing_power={5: 6, 10: 12}
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.KLING_IMAGE_TO_VIDEO, name='图片生成视频 (可灵)', category=TaskCategory.IMAGE_TO_VIDEO,
+    provider=TaskProvider.DUOMI, driver_name=DriverKey.KLING_IMAGE_TO_VIDEO, computing_power={5: 38, 10: 70}
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.VIDU_IMAGE_TO_VIDEO, name='图片生成视频 (Vidu)', category=TaskCategory.IMAGE_TO_VIDEO,
+    provider=TaskProvider.VIDU, driver_name=DriverKey.VIDU_IMAGE_TO_VIDEO, computing_power={5: 16, 8: 22}
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.VEO3_IMAGE_TO_VIDEO, name='图片生成视频 (VEO3.1)', category=TaskCategory.IMAGE_TO_VIDEO,
+    provider=TaskProvider.DUOMI, driver_name=DriverKey.VEO3_IMAGE_TO_VIDEO, computing_power=6
+))
+
+# 数字人
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.DIGITAL_HUMAN, name='数字人生成', category=TaskCategory.DIGITAL_HUMAN,
+    provider=TaskProvider.RUNNINGHUB, driver_name=DriverKey.DIGITAL_HUMAN, computing_power=12
+))
+
+# 图片/视频增强
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.IMAGE_ENHANCE, name='图片高清放大', category=TaskCategory.VISUAL_ENHANCE,
+    provider=TaskProvider.LOCAL, driver_name=None, computing_power=1
+))
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.VIDEO_ENHANCE, name='AI视频高清修复', category=TaskCategory.VISUAL_ENHANCE,
+    provider=TaskProvider.LOCAL, driver_name=None, computing_power=10
+))
+
+# 角色卡
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.CHARACTER_CARD, name='创建角色卡', category=TaskCategory.OTHER,
+    provider=TaskProvider.LOCAL, driver_name=None, computing_power=20
+))
+
+# 音频
+TaskTypeRegistry.register(TaskTypeConfig(
+    id=TaskTypeId.AUDIO_GENERATE, name='AI音频生成', category=TaskCategory.AUDIO,
+    provider=TaskProvider.LOCAL, driver_name=None, computing_power=5
+))
+
 
 class Action:
     """资源操作类型常量"""
@@ -50,109 +290,88 @@ class TaskType:
 TASK_TYPE_GENERATE_VIDEO = TaskType.GENERATE_VIDEO
 TASK_TYPE_GENERATE_AUDIO = TaskType.GENERATE_AUDIO
 
-# 1: 图片编辑, 2: Sora2文生视频, 3: Sora2图生视频, 4: 高清放大, 5: ai视频高清修复, 6: 图生视频高清修复，7：图片编辑(nano-banana-pro), 8: 创建角色卡, 
-# 9: AI音频生成, 10: LTX2.0图生视频, 11: Wan2.2图生视频（5秒=12，10秒=24）, 12: 可灵图生视频（5秒=38，10秒=55）, 13: 数字人生成, 14: Vidu图生视频（5秒=8）, 15: VEO3图生视频（8秒=6）
-TASK_COMPUTING_POWER = {
-    1: 2,
-    2: 18, #原算力8
-    3: 18, #原算力8
-    4: 1,
-    5: 10,
-    6: 10,
-    7: 6,
-    8: 20,
-    9: 5,
-    10: 6,
-    11: {5: 6, 10: 12},  # Wan2.2根据时长区分算力，原先是5:12 10:24，现在由于sora挂掉，需要它先半价。
-    12: {5: 38, 10: 70},  # 可灵根据时长区分算力
-    13: 12,  # 数字人生成
-    14: {5: 16, 8: 22},  # Vidu根据时长区分算力
-    15: 6,  # VEO3固定算力
-}
+# ============ 从 TaskTypeRegistry 动态生成的向后兼容常量 ============
+# 
+# 新代码请直接使用 TaskTypeRegistry 的方法，参见文件末尾的替代方案说明
+#
 
-# 视频驱动映射配置
-# 任务类型 -> 业务驱动名称 -> 具体实现驱动
-# 通过修改这个配置可以随时切换供应商或驱动版本
-VIDEO_DRIVER_MAPPING = {
-    1: "gemini_image_edit",           # 图片编辑（标准版）
-    2: "sora2_text_to_video",          # Sora2 文生视频
-    3: "sora2_image_to_video",         # Sora2 图生视频
-    7: "gemini_image_edit_pro",        # 图片编辑（加强版）
-    10: "ltx2_image_to_video",         # LTX2.0 图生视频
-    11: "wan22_image_to_video",        # Wan2.2 图生视频
-    12: "kling_image_to_video",        # 可灵图生视频
-    13: "digital_human",               # 数字人生成
-    14: "vidu_image_to_video",         # Vidu 图生视频
-    15: "veo3_image_to_video",         # VEO3 图生视频
-}
+# 算力配置（已废弃，请使用 TaskTypeRegistry.get_computing_power_map()）
+TASK_COMPUTING_POWER = TaskTypeRegistry.get_computing_power_map()
+
+# 视频驱动映射配置（已废弃，请使用 TaskTypeRegistry.get_driver_mapping()）
+# 任务类型 -> 业务驱动名称
+VIDEO_DRIVER_MAPPING = TaskTypeRegistry.get_driver_mapping()
 
 # 业务驱动名称到具体实现驱动的映射
 # 修改这里可以切换不同的供应商或驱动版本
 # 格式：业务驱动名称 -> 实现驱动类名
 DRIVER_IMPLEMENTATION_MAPPING = {
     # Sora2 相关驱动
-    "sora2_text_to_video": "sora2_duomi_v1",      # 使用多米供应商的 Sora2 v1 版本
-    "sora2_image_to_video": "sora2_duomi_v1",     # 使用多米供应商的 Sora2 v1 版本
+    DriverKey.SORA2_TEXT_TO_VIDEO: DriverImplementation.SORA2_DUOMI_V1,      # 使用多米供应商的 Sora2 v1 版本
+    DriverKey.SORA2_IMAGE_TO_VIDEO: DriverImplementation.SORA2_DUOMI_V1,     # 使用多米供应商的 Sora2 v1 版本
     
     # Kling 相关驱动
-    "kling_image_to_video": "kling_duomi_v1",     # 使用多米供应商的 Kling v1 版本
+    DriverKey.KLING_IMAGE_TO_VIDEO: DriverImplementation.KLING_DUOMI_V1,     # 使用多米供应商的 Kling v1 版本
     
     # Gemini 相关驱动
-    "gemini_image_edit": "gemini_duomi_v1",       # 使用多米供应商的 Gemini v1 版本（标准版）
-    "gemini_image_edit_pro": "gemini_pro_duomi_v1",  # 使用多米供应商的 Gemini Pro v1 版本（加强版）
+    DriverKey.GEMINI_IMAGE_EDIT: DriverImplementation.GEMINI_DUOMI_V1,       # 使用多米供应商的 Gemini v1 版本（标准版）
+    DriverKey.GEMINI_IMAGE_EDIT_PRO: DriverImplementation.GEMINI_PRO_DUOMI_V1,  # 使用多米供应商的 Gemini Pro v1 版本（加强版）
     
     # VEO3 相关驱动
-    "veo3_image_to_video": "veo3_duomi_v1",       # 使用多米供应商的 VEO3 v1 版本
+    DriverKey.VEO3_IMAGE_TO_VIDEO: DriverImplementation.VEO3_DUOMI_V1,       # 使用多米供应商的 VEO3 v1 版本
     
     # RunningHub 相关驱动
-    "ltx2_image_to_video": "ltx2_runninghub_v1",  # 使用 RunningHub 的 LTX2 v1 版本
-    "wan22_image_to_video": "wan22_runninghub_v1", # 使用 RunningHub 的 Wan22 v1 版本
-    "digital_human": "digital_human_runninghub_v1", # 使用 RunningHub 的数字人 v1 版本
+    DriverKey.LTX2_IMAGE_TO_VIDEO: DriverImplementation.LTX2_RUNNINGHUB_V1,  # 使用 RunningHub 的 LTX2 v1 版本
+    DriverKey.WAN22_IMAGE_TO_VIDEO: DriverImplementation.WAN22_RUNNINGHUB_V1, # 使用 RunningHub 的 Wan22 v1 版本
+    DriverKey.DIGITAL_HUMAN: DriverImplementation.DIGITAL_HUMAN_RUNNINGHUB_V1, # 使用 RunningHub 的数字人 v1 版本
     
     # Vidu 相关驱动
-    "vidu_image_to_video": "vidu_default",         # 使用 Vidu 官方 API
+    DriverKey.VIDU_IMAGE_TO_VIDEO: DriverImplementation.VIDU_DEFAULT,         # 使用 Vidu 官方 API
 }
 
 # 视频模型时长选项配置
-# 注意：时长选项必须与 TASK_COMPUTING_POWER 中对应任务类型的 key 保持一致
-# ltx2 -> 任务类型10, wan22 -> 任务类型11, kling -> 任务类型12, vidu -> 任务类型14, sora2 -> 任务类型3
-VIDEO_MODEL_DURATION_OPTIONS = {
-    'ltx2': [5, 8, 10],  # LTX2.0 固定算力，支持5/8/10秒
-    'wan22': list(TASK_COMPUTING_POWER[11].keys()),  # 从算力配置中自动获取时长选项
-    'kling': list(TASK_COMPUTING_POWER[12].keys()),  # 从算力配置中自动获取时长选项
-    'vidu': list(TASK_COMPUTING_POWER[14].keys()),   # 从算力配置中自动获取时长选项
-    'sora2': [15, 10],  # Sora2 固定算力，支持10/15秒
-    'veo3': [8],  # VEO3 固定算力，支持8秒
-}
+# 注意：时长选项从算力配置中自动获取
+def _build_duration_options():
+    """构建视频模型时长选项"""
+    power = TASK_COMPUTING_POWER
+    return {
+        'ltx2': [5, 8, 10],  # LTX2.0 固定算力，支持5/8/10秒
+        'wan22': list(power[11].keys()) if isinstance(power.get(11), dict) else [5, 10],
+        'kling': list(power[12].keys()) if isinstance(power.get(12), dict) else [5, 10],
+        'vidu': list(power[14].keys()) if isinstance(power.get(14), dict) else [5, 8],
+        'sora2': [15, 10],  # Sora2 固定算力
+        'veo3': [8],  # VEO3 固定算力
+    }
 
-# AI Tools 类型分类配置
-# 图生视频任务类型列表
-IMAGE_TO_VIDEO_TYPES = [3, 10, 11, 12, 14, 15]
+VIDEO_MODEL_DURATION_OPTIONS = _build_duration_options()
 
-# 图片编辑任务类型列表
-IMAGE_EDIT_TYPES = [1, 7]
+# ============ 向后兼容常量（已废弃，请使用新 API） ============
+# 
+# 以下常量保留仅为向后兼容，新代码请使用 TaskTypeRegistry 的方法：
+#
+# 替代方案：
+#   IMAGE_TO_VIDEO_TYPES  -> TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_TO_VIDEO)
+#   IMAGE_EDIT_TYPES      -> TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_EDIT)
+#   RUNNINGHUB_TASK_TYPES -> TaskTypeRegistry.get_by_provider(TaskProvider.RUNNINGHUB)
+#   TASK_TYPE_NAME_MAP    -> TaskTypeRegistry.get_name_map()
+#   TASK_COMPUTING_POWER  -> TaskTypeRegistry.get_computing_power_map()
+#   VIDEO_DRIVER_MAPPING  -> TaskTypeRegistry.get_driver_mapping()
+#
+# 查询单个任务类型：
+#   TaskTypeRegistry.get(task_type_id)  -> TaskTypeConfig 对象
+#
 
-# RunningHub 平台任务类型列表
-RUNNINGHUB_TASK_TYPES = [10, 11, 13]
+# 图生视频任务类型列表（已废弃）
+IMAGE_TO_VIDEO_TYPES = TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_TO_VIDEO)
 
-# 任务类型名称映射
-TASK_TYPE_NAME_MAP = {
-    1: '图片编辑',
-    2: 'Sora2文生视频',
-    3: '图片生成视频 (Sora2)',
-    4: '视频高清放大',
-    5: 'AI视频高清修复',
-    6: '图生视频高清修复',
-    7: '图片编辑 (Pro)',
-    8: '创建角色卡',
-    9: 'AI音频生成',
-    10: '图片生成视频 (LTX2.0)',
-    11: '图片生成视频 (Wan2.2)',
-    12: '图片生成视频 (可灵)',
-    13: '数字人生成',
-    14: '图片生成视频 (Vidu)',
-    15: '图片生成视频 (VEO3.1)'
-}
+# 图片编辑任务类型列表（已废弃）
+IMAGE_EDIT_TYPES = TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_EDIT)
+
+# RunningHub 平台任务类型列表（已废弃）
+RUNNINGHUB_TASK_TYPES = TaskTypeRegistry.get_by_provider(TaskProvider.RUNNINGHUB)
+
+# 任务类型名称映射（已废弃）
+TASK_TYPE_NAME_MAP = TaskTypeRegistry.get_name_map()
 
 class AIToolStatus:
     """AI工具状态常量"""

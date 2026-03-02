@@ -1,3 +1,38 @@
+    // ============ 驱动状态检查 ============
+    
+    // 通用函数：根据 driver 状态禁用 select 选项
+    function applyDriverStatusToSelect(selectEl) {
+      if(!selectEl) return;
+      
+      const driverStatus = getDriverStatusConfig();
+      const modelTaskTypeMap = getModelTaskTypeMap();
+      
+      if(!driverStatus || Object.keys(driverStatus).length === 0) return;
+      
+      selectEl.querySelectorAll('option').forEach(option => {
+        const taskType = modelTaskTypeMap[option.value];
+        if(taskType && driverStatus[taskType] && driverStatus[taskType].available === false) {
+          option.disabled = true;
+          if(!option.textContent.includes('(未配置)')) {
+            option.textContent += ' (未配置)';
+          }
+        }
+      });
+    }
+    
+    // 检查指定模型是否可用
+    function isModelAvailable(modelValue) {
+      const driverStatus = getDriverStatusConfig();
+      const modelTaskTypeMap = getModelTaskTypeMap();
+      
+      if(!driverStatus || Object.keys(driverStatus).length === 0) return true;
+      
+      const taskType = modelTaskTypeMap[modelValue];
+      if(!taskType) return true;
+      
+      return driverStatus[taskType]?.available !== false;
+    }
+    
     // ============ 宫格提示词生成 ============
 
     function buildGridPrompt(batchNodes, startIdx, gridLayout, gridSize) {
@@ -1260,6 +1295,9 @@
         const newDetailBtn = nodeBody.querySelector('.shot-group-detail-btn');
         const newGenerateBtn = nodeBody.querySelector('.shot-group-generate-btn');
         const newModelSelect = nodeBody.querySelector('.shot-group-model');
+        
+        // 应用驱动状态禁用未配置的分镜模型选项
+        if(newModelSelect) applyDriverStatusToSelect(newModelSelect);
 
         if(newDetailBtn){
           newDetailBtn.addEventListener('click', (e) => {
@@ -2745,6 +2783,8 @@
       }
       
       videoModelSelect.value = node.data.videoModel;
+      // 应用驱动状态禁用未配置的选项
+      applyDriverStatusToSelect(videoModelSelect);
       // 初始化时根据模型设置时长和比例选项
       updateDurationOptions(node.data.videoModel);
       updateRatioOptions(node.data.videoModel);
@@ -3771,6 +3811,9 @@
       const confirmShotBtn = el.querySelector('.image-confirm-shot-btn');
 
       if(ratioEl) ratioEl.value = node.data.ratio;
+      
+      // 应用驱动状态禁用未配置的图片模型选项
+      if(modelEl) applyDriverStatusToSelect(modelEl);
 
       // 检查是否连接到分镜节点，显示/隐藏确认按钮
       function updateConfirmButtonVisibility(){
@@ -4518,6 +4561,9 @@
       node.data.splitMultiDialogue = false;
       node.data.narrationAsDialogue = false;
       node.data.gridModel = 'gemini-2.5-pro-image-preview';
+      
+      // 应用驱动状态禁用未配置的宫格生图模型选项
+      if(gridModelSelect) applyDriverStatusToSelect(gridModelSelect);
 
       // 更新字符计数器
       function updateCharCount(length) {
@@ -6111,6 +6157,9 @@
       const modelSelect = el.querySelector('.shot-group-model');
       const inputPort = el.querySelector('.port.input');
       const outputPort = el.querySelector('.port.output');
+      
+      // 应用驱动状态禁用未配置的分镜模型选项
+      if(modelSelect) applyDriverStatusToSelect(modelSelect);
 
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -6220,6 +6269,9 @@
       // 初始化视频模型和时长
       if(videoModelEl) videoModelEl.value = node.data.videoModel;
       if(videoDurationEl) videoDurationEl.value = node.data.videoDuration;
+      
+      // 应用驱动状态禁用未配置的选项
+      if(videoModelEl) applyDriverStatusToSelect(videoModelEl);
 
       // 根据模型更新时长选项
       function updateVideoDurationOptions(videoModel) {

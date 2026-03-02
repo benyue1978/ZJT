@@ -2014,11 +2014,14 @@
         upscaleProjectIds: {},
         upscaleResults: {},
         upscaleStatusIntervals: {},
+        driverStatus: {}  // 驱动可用状态
       }
     },
     mounted() {
       // Get auth_token from localStorage (set by App component)
       this.authToken = localStorage.getItem('auth_token') || '';
+      // 获取驱动状态
+      this.fetchDriverStatus();
     },
     computed: {
       canSubmit() { return this.files.length > 0 && this.files.length <= 5 && !!this.prompt && !this.loading },
@@ -2040,10 +2043,18 @@
         ];
       },
       modelOptions() {
-        return [
-          { value: 'gemini-2.5-pro-image-preview', label: '标准版 (2算力)' },
-          { value: 'gemini-3-pro-image-preview', label: '加强版 (6算力)' }
+        const allOptions = [
+          { value: 'gemini-2.5-pro-image-preview', label: '标准版 (2算力)', taskType: 1 },
+          { value: 'gemini-3-pro-image-preview', label: '加强版 (6算力)', taskType: 7 }
         ];
+        return allOptions.map(opt => {
+          const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
+          return {
+            value: opt.value,
+            label: isAvailable ? opt.label : opt.label + ' (未配置)',
+            disabled: !isAvailable
+          };
+        });
       },
       imageSizeOptions() {
         return [
@@ -2064,6 +2075,16 @@
       }
     },
     methods: {
+      async fetchDriverStatus() {
+        try {
+          const response = await axios.get('/api/computing-power-config');
+          if (response.data.success && response.data.data.driver_status) {
+            this.driverStatus = response.data.data.driver_status;
+          }
+        } catch (error) {
+          console.error('获取驱动状态异常:', error);
+        }
+      },
       onFile(e){ 
         const selectedFiles = Array.from(e.target.files || []);
         const remainingSlots = 5 - this.files.length;
@@ -2477,7 +2498,7 @@
           <div class="field">
             <label class="label">模型选择</label>
             <select class="input" v-model="model">
-              <option v-for="opt in modelOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              <option v-for="opt in modelOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.label }}</option>
             </select>
           </div>
 
@@ -2521,14 +2542,14 @@
             <img :src="result.file_url" :alt="'result-'+i" />
             <div style="padding: 8px; text-align: center;">
               <button class="btn secondary" @click="downloadImage(result.file_url, i)">下载图片</button>
-              <button class="btn" @click="upscaleImage(result.project_id, i)" :disabled="upscalingImages[i]" style="margin-left: 8px;">
+              <button class="btn" @click="upscaleImage(result.project_id, i)" :disabled="upscalingImages[i]" style="margin-left: 8px; display: none;">
                 {{ upscalingImages[i] ? '高清放大中...' : '高清放大' }}
               </button>
               <div class="muted" style="margin-top: 4px; font-size: 11px;">耗时: {{ result.task_cost_time }}s</div>
             </div>
             
             <!-- Upscaled Image (shown below original) -->
-            <div v-if="upscaleResults[i]" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+            <div v-if="upscaleResults[i]" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: none;">
               <div style="margin-bottom: 8px; font-weight: bold; color: #10b981; text-align: center;">高清放大结果</div>
               <img :src="upscaleResults[i].file_url" :alt="'upscale-result-'+i" />
               <div style="padding: 8px; text-align: center;">
@@ -2581,7 +2602,7 @@
                 </div>
                 <div v-if="item.result_url" style="margin-top: 8px;">
                   <a :href="item.result_url" target="_blank" class="btn secondary" style="display: inline-block; text-decoration: none;">查看结果</a>
-                  <button v-if="item.type == 1" class="btn" @click="upscaleHistoryImage(item)" style="margin-left: 8px;">高清放大</button>
+                  <button v-if="item.type == 1" class="btn" @click="upscaleHistoryImage(item)" style="margin-left: 8px; display: none;">高清放大</button>
                 </div>
               </div>
               
@@ -2623,18 +2644,29 @@
         historyLoading: false,
         historyPage: 1,
         historyTotal: 0,
+        driverStatus: {}  // 驱动可用状态
       }
     },
     mounted() {
       this.authToken = localStorage.getItem('auth_token') || '';
+      // 获取驱动状态
+      this.fetchDriverStatus();
     },
     computed: {
       canSubmit() { return !!this.prompt.trim() && !this.loading },
       modelOptions() {
-        return [
-          { value: 'gemini-3-pro-image-preview', label: 'nano-banana-pro 加强版 (6算力)' },
-          { value: 'gemini-2.5-pro-image-preview', label: 'nano-banana 标准版 (2算力)' }
+        const allOptions = [
+          { value: 'gemini-3-pro-image-preview', label: 'nano-banana-pro 加强版 (6算力)', taskType: 7 },
+          { value: 'gemini-2.5-pro-image-preview', label: 'nano-banana 标准版 (2算力)', taskType: 1 }
         ];
+        return allOptions.map(opt => {
+          const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
+          return {
+            value: opt.value,
+            label: isAvailable ? opt.label : opt.label + ' (未配置)',
+            disabled: !isAvailable
+          };
+        });
       },
       aspectRatioOptions() {
         return [
@@ -2677,6 +2709,16 @@
       }
     },
     methods: {
+      async fetchDriverStatus() {
+        try {
+          const response = await axios.get('/api/computing-power-config');
+          if (response.data.success && response.data.data.driver_status) {
+            this.driverStatus = response.data.data.driver_status;
+          }
+        } catch (error) {
+          console.error('获取驱动状态异常:', error);
+        }
+      },
       async submit(){
         if(!this.canSubmit) return;
         
@@ -2927,7 +2969,7 @@
           <div class="field">
             <label class="label">模型选择</label>
             <select class="input" v-model="model">
-              <option v-for="opt in modelOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              <option v-for="opt in modelOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.label }}</option>
             </select>
           </div>
 
@@ -3061,13 +3103,14 @@
         enhancingVideos: {},  // Track enhancement status by index
         enhanceTaskIds: {},   // Track enhancement task IDs by index
         taskComputingPower: {},  // 从接口获取的算力配置
-        taskTypeConfig: null  // 从接口获取的任务类型配置
+        taskTypeConfig: null,  // 从接口获取的任务类型配置
+        driverStatus: {}  // 驱动可用状态
       }
     },
     mounted() {
       // Get auth_token from localStorage (set by App component)
       this.authToken = localStorage.getItem('auth_token') || '';
-      // 获取算力配置
+      // 获取算力配置（包含驱动状态）
       this.fetchComputingPowerConfig();
       // 获取任务类型配置
       this.fetchTaskTypeConfig();
@@ -3104,14 +3147,22 @@
         return '';
       },
       videoModelOptions() {
-        return [
-          { value: 'sora2', label: 'Sora2' },
-          { value: 'ltx2', label: 'LTX2.0' },
-          { value: 'wan22', label: 'Wan2.2' },
-          { value: 'kling', label: '可灵' },
-          { value: 'vidu', label: 'Vidu' },
-          { value: 'veo3', label: 'VEO3.1' }
+        const allOptions = [
+          { value: 'sora2', label: 'Sora2', taskType: 3 },
+          { value: 'ltx2', label: 'LTX2.0', taskType: 10 },
+          { value: 'wan22', label: 'Wan2.2', taskType: 11 },
+          { value: 'kling', label: '可灵', taskType: 12 },
+          { value: 'vidu', label: 'Vidu', taskType: 14 },
+          { value: 'veo3', label: 'VEO3.1', taskType: 15 }
         ];
+        return allOptions.map(opt => {
+          const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
+          return {
+            value: opt.value,
+            label: isAvailable ? opt.label : opt.label + ' (未配置)',
+            disabled: !isAvailable
+          };
+        });
       },
       modelOptions() {
         // Wan2.2、LTX2.0、Sora2、可灵都只支持横屏和竖屏
@@ -3210,6 +3261,10 @@
           const response = await axios.get('/api/computing-power-config');
           if (response.data.success) {
             this.taskComputingPower = response.data.data.task_computing_power;
+            // 保存驱动状态
+            if (response.data.data.driver_status) {
+              this.driverStatus = response.data.data.driver_status;
+            }
           } else {
             console.error('获取算力配置失败:', response.data.message);
           }
@@ -3645,7 +3700,7 @@
           <div class="field">
             <label class="label">视频模型</label>
             <select class="input" v-model="videoModel">
-              <option v-for="opt in videoModelOptions" :key="opt.value" :value="opt.value">
+              <option v-for="opt in videoModelOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
                 {{ opt.label }}
               </option>
             </select>

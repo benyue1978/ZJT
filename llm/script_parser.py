@@ -8,7 +8,7 @@ import json
 import os
 from typing import Dict, Any, Optional
 from llm.gemini_client import get_gemini_client
-from config_util import get_config_path
+from config.config_util import get_config_path
 
 # ============================================================
 # 日志开关配置
