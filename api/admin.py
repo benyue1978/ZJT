@@ -436,17 +436,39 @@ async def admin_batch_update_configs(
     for item in request.configs:
         try:
             config = SystemConfigModel.get_by_key(env, item.key)
+
+            # 如果配置不存在，尝试从默认配置中获取定义并创建
             if not config:
-                errors.append(f"{item.key}: 配置不存在")
+                config_def = get_default_config_by_key(item.key)
+                if not config_def:
+                    errors.append(f"{item.key}: 配置不存在且无默认定义")
+                    continue
+
+                # 创建新配置
+                config_id = SystemConfigModel.create(
+                    env=env,
+                    config_key=item.key,
+                    config_value=item.value,
+                    value_type=config_def['value_type'],
+                    description=config_def['description'],
+                    editable=1 if config_def['editable'] else 0,
+                    is_sensitive=1 if config_def['is_sensitive'] else 0,
+                    updated_by=admin.id
+                )
+                results.append({
+                    "key": item.key,
+                    "status": "created"
+                })
+                logger.info(f"Auto-created config {item.key} with id {config_id}")
                 continue
-            
+
             if not config.editable:
                 errors.append(f"{item.key}: 该配置不允许修改")
                 continue
-            
+
             old_value = config.config_value
             new_value = item.value
-            
+
             # 跳过未修改的配置
             if old_value == new_value:
                 results.append({
@@ -454,10 +476,10 @@ async def admin_batch_update_configs(
                     "status": "unchanged"
                 })
                 continue
-            
+
             # 更新配置
             SystemConfigModel.update_value(config.id, new_value, admin.id)
-            
+
             results.append({
                 "key": item.key,
                 "status": "updated"
@@ -466,9 +488,12 @@ async def admin_batch_update_configs(
             logger.error(f"Failed to update config {item.key}: {e}")
             errors.append(f"{item.key}: {str(e)}")
     
+    updated_count = len([r for r in results if r['status'] == 'updated'])
+    created_count = len([r for r in results if r['status'] == 'created'])
+
     return {
         "code": 0,
-        "message": f"批量更新完成，成功更新 {len([r for r in results if r['status'] == 'updated'])} 条配置",
+        "message": f"批量更新完成，新建 {created_count} 条，更新 {updated_count} 条配置",
         "data": {
             "results": results,
             "errors": errors
