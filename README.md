@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 ### 方式 1：Windows 双击启动（推荐）
 
-**📌 详细说明请查看：[Windows启动说明.md](Windows启动说明.md)**
+**📌 详细说明请查看：[Windows启动开发说明.md](docs/Windows启动开发说明.md)**
 
 项目提供了英文版启动脚本（推荐使用，无编码问题）：
 

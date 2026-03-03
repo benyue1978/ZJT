@@ -4016,9 +4016,9 @@ async def create_wechat_payment(request: Request, payment_request: WechatPayRequ
                 order_id=order_id,
                 total_fee=total_fee,
                 body=body,
-                openid=request.openid,
+                openid=payment_request.openid,
                 notify_url=notify_url,
-                payer_client_ip=request.payment_ip or "127.0.0.1"
+                payer_client_ip=payment_request.payment_ip or "127.0.0.1"
             )
         else:
             # 外部浏览器使用Native扫码支付
@@ -4030,7 +4030,7 @@ async def create_wechat_payment(request: Request, payment_request: WechatPayRequ
                 total_fee=total_fee,
                 body=body,
                 notify_url=notify_url,
-                payer_client_ip=request.payment_ip or "127.0.0.1"
+                payer_client_ip=payment_request.payment_ip or "127.0.0.1"
             )
         
         # 保存订单记录到数据库

@@ -19,17 +19,14 @@ server:
   https_port: 5174
   https:
     enabled: false
-    certfile: "secret/ssh.perseids.cn_bundle.pem"
-    keyfile: "secret/ssh.perseids.cn.key"
+    certfile: "secret/xxx.pem"
+    keyfile: "secret/xxx.key"
   comfyui_base_url_inner: http://localhost:9003
 # Default timeout settings
 timeout:
   request_timeout: 10000
   status_check_timeout: 900
   status_check_interval: 10
-
-authentication:
-  url: "http://192.168.10.212:8082/api/v1"
 
 # SMS configuration (短信服务配置)
 sms:
@@ -44,12 +41,11 @@ sms:
       access_key_secret: "eKRGvkHCxxxxxxxx"
       sign_name: "公司名称"
       template_code: "SMS_29225xxxx"
-      broadcast_template_code: "SMS_48972xxxx"
       region_id: "cn-hangzhou"
     # API代理示例：使用HTTP API发送短信
     api_agent:
       driver: "perseids" 
-      api_url: "http://192.168.10.212:8082/api/v1/live/send_verify_code_simple"  # 短信API接口地址
+      api_url: "https://ailive.perseids.cn:9443/api/v1/live/send_verify_code_simple"  # 短信API接口地址
       method: "POST"  # 请求方法，默认POST
 
 # Database configuration
@@ -61,9 +57,6 @@ database:
   database: "zjt"
   charset: "utf8mb4"
 
-# AI Tools configuration
-ai_tools:
-  token: "b8733e482d43474XXXXX"
 
 duomi:
   token: "5q26ybqAXXXXX"
@@ -103,7 +96,7 @@ llm:
     model: "qwen-plus"
   google:
     api_key: "sk_xxxxx"
-    gemini_base_url: "https://api.aicodemirror.com"
+    gemini_base_url: "https://api.jiekou.ai"
 
 # TTS (Text-to-Speech) configuration
 tts:
@@ -121,10 +114,15 @@ test_mode:
     text_to_image: "https://cdn3.dmiapi.com/attachments/gemini/20260107/636584241e053a19c784b4c1ac6a4c83.png?e=1768198099&token=mTvq9hVVEUusCokO8WegAYo2IjxRSvr97Q4j2lrx:cPKvpbphxp-XZGU8630BEA_zcos="  # 文生图的测试图片URL
 
 # Anthropic Claude API configuration (script_writer 智能体使用)
-anthropic:
-  api_key: "sk-ant-api03-your-actual-key-here"
-  base_url: "https://api.aicodemirror.com/api/claudecode"
-  auth_token: "sk-ant-api03-your-actual-key-here"
+# Google Gemini API configuration
+google:
+  api_key: "sk_xxxxxxxxxxx"
+  gemini_base_url: "https://api.jiekou.ai"
+
+# JIEKOU API configuration
+jiekou:
+  api_key: "sk_xxxxxxxxxx"
+  base_url: "https://api.jiekou.ai"
 
 # Task queue management
 task_queue:
