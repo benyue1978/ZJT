@@ -122,10 +122,60 @@ def load_config():
         with open(config_file, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
             logger.info(f"已加载配置文件: {config_file}")
-            return config
+            return config, config_file
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}")
-        return None
+        return None, None
+
+
+def check_and_update_ffmpeg_paths(config, config_file):
+    """
+    检查并更新配置文件中的 ffmpeg/ffprobe 路径
+    确保路径指向当前项目目录下的正确位置
+    
+    Args:
+        config: 配置字典
+        config_file: 配置文件路径
+    Returns:
+        dict: 更新后的配置
+    """
+    try:
+        current_dir = get_current_dir()
+        current_dir_forward_slash = current_dir.replace('\\', '/')
+        
+        expected_ffmpeg = f"{current_dir_forward_slash}/bin/ffmpeg/ffmpeg.exe"
+        expected_ffprobe = f"{current_dir_forward_slash}/bin/ffmpeg/ffprobe.exe"
+        
+        current_ffmpeg = config.get('ffmpeg', '')
+        current_ffprobe = config.get('ffprobe', '')
+        
+        need_update = False
+        
+        # 检查 ffmpeg 路径
+        if current_ffmpeg != expected_ffmpeg:
+            logger.info(f"更新 ffmpeg 路径: {current_ffmpeg} -> {expected_ffmpeg}")
+            config['ffmpeg'] = expected_ffmpeg
+            need_update = True
+        
+        # 检查 ffprobe 路径
+        if current_ffprobe != expected_ffprobe:
+            logger.info(f"更新 ffprobe 路径: {current_ffprobe} -> {expected_ffprobe}")
+            config['ffprobe'] = expected_ffprobe
+            need_update = True
+        
+        # 如果有更新，写回配置文件
+        if need_update:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+            logger.info("配置文件已更新")
+        else:
+            logger.info("ffmpeg/ffprobe 路径已是最新")
+        
+        return config
+        
+    except Exception as e:
+        logger.error(f"检查/更新 ffmpeg 路径失败: {e}")
+        return config
 
 
 def check_mysql_path():
@@ -688,7 +738,7 @@ def stop_mysql_gracefully():
             logger.warning(f"mysqladmin 不存在: {mysqladmin}")
             return False
 
-        config = load_config()
+        config, _ = load_config()
         password = config['database']['password'] if config and 'database' in config else ""
         port = get_mysql_port()
 
@@ -779,10 +829,13 @@ def main():
     logger.info(f"Windows 启动脚本 (环境: {env})")
     logger.info("=" * 50)
 
-    config = load_config()
+    config, config_file = load_config()
     if config is None:
         logger.error("无法加载配置文件，退出")
         sys.exit(1)
+
+    # 检查并更新 ffmpeg/ffprobe 路径
+    config = check_and_update_ffmpeg_paths(config, config_file)
 
     if 'database' not in config or 'password' not in config['database']:
         logger.error("配置文件中缺少 database.password 配置")
