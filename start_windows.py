@@ -42,6 +42,36 @@ mysql_process = None
 app_process = None
 is_shutting_down = False
 
+# 是否由托盘启动器启动（托盘启动器会自行处理浏览器打开）
+# 支持命令行参数 --tray 或环境变量 TRAY_MODE=1
+tray_mode = '--tray' in sys.argv or os.environ.get('TRAY_MODE') == '1'
+
+
+def wait_for_service(port, timeout=60):
+    """
+    等待服务可用
+    
+    Args:
+        port: 服务端口
+        timeout: 超时时间（秒）
+    
+    Returns:
+        bool: 服务是否可用
+    """
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('127.0.0.1', port))
+            sock.close()
+            if result == 0:
+                return True
+        except:
+            pass
+        time.sleep(1)
+    return False
+
 
 def get_current_dir():
     """
@@ -869,11 +899,20 @@ def main():
         logger.error("应用服务启动失败，退出")
         sys.exit(1)
 
-    # 从配置文件读取端口号并打开浏览器
+    # 从配置文件读取端口号
     server_port = config.get('server', {}).get('port', 9003)
     url = f"http://localhost:{server_port}"
-    logger.info(f"正在打开浏览器: {url}")
-    webbrowser.open(url)
+    
+    # 等待服务真正可用后再打开浏览器（托盘模式由托盘启动器处理）
+    if not tray_mode:
+        logger.info(f"等待服务就绪 (端口 {server_port})...")
+        if wait_for_service(server_port, timeout=60):
+            # 额外等待 1 秒确保服务完全就绪
+            time.sleep(1)
+            logger.info(f"服务已就绪，正在打开浏览器: {url}")
+            webbrowser.open(url)
+        else:
+            logger.warning(f"等待服务超时，请手动访问: {url}")
 
     logger.info("所有服务已就绪，开始监控...")
     try:
