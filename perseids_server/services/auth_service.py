@@ -183,7 +183,7 @@ class AuthService:
         # 判断是否是第一个用户，如果是则设为管理员
         total_count = UsersModel.get_total_count()
         is_first_user = total_count == 0
-        user_role = "admin" if is_first_user else "Package_free"
+        user_role = "admin" if is_first_user else "user"
         logger.info(f"注册检查: 当前用户总数={total_count}, 是否首个用户={is_first_user}, 分配角色={user_role}")
         
         # 创建用户
