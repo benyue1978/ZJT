@@ -456,12 +456,7 @@ async def admin_batch_update_configs(
                 continue
             
             # 更新配置
-            SystemConfigModel.update_value(
-                env=env,
-                config_key=item.key,
-                new_value=new_value,
-                updated_by=admin.id
-            )
+            SystemConfigModel.update_value(config.id, new_value, admin.id)
             
             results.append({
                 "key": item.key,
