@@ -6,13 +6,16 @@ import os
 import sys
 import logging
 from pathlib import Path
- 
+
+# Windows 系统下确保使用 UTF-8 编码读取迁移文件
+os.environ.setdefault('PYTHONUTF8', '1')
+
 logger = logging.getLogger(__name__)
- 
+
 # 项目根目录
 APP_DIR = Path(__file__).parent.parent
- 
- 
+
+
 def get_alembic_config():
     """获取 Alembic 配置"""
     from config.config_util import get_config_value

@@ -52,18 +52,70 @@ def get_current_dir():
         return os.path.dirname(os.path.abspath(__file__))
 
 
+def create_config_from_example(config_file):
+    """
+    从 config.example.yml 创建配置文件，并更新 ffmpeg/ffprobe 路径
+    Args:
+        config_file: 目标配置文件路径
+    Returns:
+        bool: 是否成功创建
+    """
+    try:
+        current_dir = get_current_dir()
+        example_file = os.path.join(current_dir, "config.example.yml")
+        
+        if not os.path.exists(example_file):
+            logger.error(f"模板配置文件不存在: {example_file}")
+            return False
+        
+        logger.info(f"从 {example_file} 创建配置文件: {config_file}")
+        
+        with open(example_file, 'r', encoding='utf-8') as f:
+            config_content = f.read()
+        
+        current_dir_forward_slash = current_dir.replace('\\', '/')
+        
+        config_content = config_content.replace(
+            'ffmpeg: "bin/ffmpeg/ffmpeg"',
+            f'ffmpeg: "{current_dir_forward_slash}/bin/ffmpeg/ffmpeg.exe"'
+        )
+        config_content = config_content.replace(
+            'ffprobe: "bin/ffmpeg/ffprobe"',
+            f'ffprobe: "{current_dir_forward_slash}/bin/ffmpeg/ffprobe.exe"'
+        )
+        
+        with open(config_file, 'w', encoding='utf-8') as f:
+            f.write(config_content)
+        
+        logger.info(f"配置文件创建成功: {config_file}")
+        logger.info(f"已更新 ffmpeg 路径为: {current_dir_forward_slash}/bin/ffmpeg/ffmpeg.exe")
+        logger.info(f"已更新 ffprobe 路径为: {current_dir_forward_slash}/bin/ffmpeg/ffprobe.exe")
+        return True
+        
+    except Exception as e:
+        logger.error(f"创建配置文件失败: {e}")
+        return False
+
+
 def load_config():
     """
     加载配置文件
     根据环境变量 comfyui_env 加载对应的配置文件
     默认使用 config_prod.yml
+    如果配置文件不存在，则从 config.example.yml 自动创建
     """
     env = os.getenv("comfyui_env", "prod")
     config_file = os.path.join(get_current_dir(), f"config_{env}.yml")
 
     if not os.path.exists(config_file):
-        logger.error(f"配置文件不存在: {config_file}")
-        return None
+        logger.warning(f"配置文件不存在: {config_file}")
+        logger.info("尝试从 config.example.yml 创建配置文件...")
+        
+        if not create_config_from_example(config_file):
+            logger.error("无法创建配置文件")
+            return None
+        
+        logger.info("配置文件已自动创建，请根据实际情况修改配置")
 
     try:
         with open(config_file, 'r', encoding='utf-8') as f:
@@ -537,11 +589,16 @@ def start_app_service():
 
         logger.info(f"执行命令: {' '.join(cmd)}")
 
+        # 设置 PYTHONUTF8=1 确保 Python 使用 UTF-8 编码读取包含中文的迁移文件
+        subprocess_env = os.environ.copy()
+        subprocess_env['PYTHONUTF8'] = '1'
+
         app_process = subprocess.Popen(
             cmd,
             cwd=current_dir,
             stdout=sys.stdout,
-            stderr=sys.stderr
+            stderr=sys.stderr,
+            env=subprocess_env
         )
 
         time.sleep(3)

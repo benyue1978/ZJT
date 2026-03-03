@@ -4,6 +4,10 @@ setlocal enabledelayedexpansion
 title ComfyUI Server Startup
 color 0A
 
+REM 设置 UTF-8 编码，解决中文路径和文件编码问题
+set PYTHONUTF8=1
+chcp 65001 >nul 2>&1
+
 if "%comfyui_env%"=="" (
     set comfyui_env=prod
 )
@@ -54,13 +58,10 @@ echo.
 
 echo [3/5] Checking config file...
 if not exist "config_%comfyui_env%.yml" (
-    echo [ERROR] Config file not found: config_%comfyui_env%.yml
-    echo Please create config file based on config.example.yml
-    echo.
-    pause
-    exit /b 1
+    echo [INFO] Config file not found, will be auto-created from config.example.yml
+) else (
+    echo [OK] config_%comfyui_env%.yml found
 )
-echo [OK] config_%comfyui_env%.yml
 echo.
 
 echo [4/5] Checking MySQL...
