@@ -12,7 +12,7 @@ runninghub:
   max_concurrent_slots: 3  # RunningHub 最大并发槽位数量
 # Server configuration
 server:
-  host: "http://localhost:12000"
+  host: "http://localhost:9003"
   is_local: true  # 是否为本地环境，如果是本地环境，进行图片生成以及视频生成时，将参考图片上传到图床中。
   https_host: "https://localhost:12443"
   port: 9003                # 如需自定义端口可保留
@@ -21,7 +21,6 @@ server:
     enabled: false
     certfile: "secret/xxx.pem"
     keyfile: "secret/xxx.key"
-  comfyui_base_url_inner: http://localhost:9003
 # Default timeout settings
 timeout:
   request_timeout: 10000
@@ -45,7 +44,7 @@ sms:
     # API代理示例：使用HTTP API发送短信
     api_agent:
       driver: "perseids" 
-      api_url: "https://ailive.perseids.cn:9443/api/v1/live/send_verify_code_simple"  # 短信API接口地址
+      api_url: "https://ailive.perseids.cn:11443/api/v1/live/send_verify_code_simple"  # 短信API接口地址
       method: "POST"  # 请求方法，默认POST
 
 # Database configuration
