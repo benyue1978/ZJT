@@ -27,6 +27,7 @@ import atexit
 import signal
 import shutil
 import yaml
+import webbrowser
 
 import mysql.connector
 from mysql.connector import Error as MysqlError
@@ -814,6 +815,12 @@ def main():
     if not success:
         logger.error("应用服务启动失败，退出")
         sys.exit(1)
+
+    # 从配置文件读取端口号并打开浏览器
+    server_port = config.get('server', {}).get('port', 9003)
+    url = f"http://localhost:{server_port}"
+    logger.info(f"正在打开浏览器: {url}")
+    webbrowser.open(url)
 
     logger.info("所有服务已就绪，开始监控...")
     try:
