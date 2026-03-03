@@ -283,4 +283,6 @@ done:
 1. 【feature】【p2】支持角色的音频自动生成。
 1. 【feature】【p2】历史对话记录能否保留，需要将 @chat_app 的session 相关信息以文件形式保存。
 1. 【feature】【p3】删除 剧本、道具、角色、场景的功能实现。
+1. 【feature】火柴人傀儡编辑（新）
+1. 【feature】衣橱功能生成（新）
 
