@@ -1,5 +1,7 @@
 # ZhiJuTong - AI Short Drama Production Platform
 
+![ZhiJuTong](files/广告图.png)
+
 English | [中文](README.md)
 
 ZhiJuTong is an AI-powered short drama production platform that provides an all-in-one solution for script writing, character management, video generation, and audio synthesis.
