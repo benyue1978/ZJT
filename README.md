@@ -1,5 +1,14 @@
 # 智剧通 AI短剧制作平台
 
+智剧通是一个基于 AI 的短剧制作平台，提供剧本创作、角色管理、视频生成、音频合成等一站式短剧制作解决方案。
+
+## 主要功能
+
+- **剧本创作** - AI 辅助剧本编写、角色设计、场景规划
+- **视频生成** - 支持图生视频、文生视频、视频编辑
+- **音频合成** - TTS 语音合成、背景音乐生成
+- **工作流编排** - 可视化工作流编辑器，支持节点拖拽连接
+- **任务管理** - 后台任务队列、进度跟踪、定时任务
 
 ## 运行环境
 - Python 3.9+（建议 3.10.12）
@@ -21,35 +30,34 @@ pip install -r requirements.txt
 
 ## 启动后端
 
-### 方式 1：Windows 双击启动（推荐）
+### 方式 1：点我启动.exe（推荐）
+
+**最简单的启动方式**，双击 `点我启动.exe` 即可：
+
+- ✅ 系统托盘图标显示启动状态
+- ✅ 服务就绪后自动打开浏览器
+- ✅ 右键菜单支持：打开浏览器、查看日志、退出
+- ✅ 退出时自动停止所有服务（包括 MySQL）
+- ✅ 单实例检测，防止重复启动
+
+**快速开始**：
+1. 确保已安装 Python 3.10+ 和 uv
+2. 将 MySQL 解压到 `bin/mysql` 目录
+3. 复制 `config.example.yml` 为 `config.yml` 并配置（首次启动会自动创建）
+4. 双击 `点我启动.exe` 即可
+
+### 方式 2：批处理脚本启动
 
 **📌 详细说明请查看：[Windows启动开发说明.md](docs/Windows启动开发说明.md)**
 
-项目提供了英文版启动脚本（推荐使用，无编码问题）：
-
-#### 1. start.bat - 启动服务（显示日志）
+#### start.bat - 启动服务（显示日志）
 - ✅ 显示详细的启动日志和运行状态
 - ✅ 适合首次启动和问题排查
-- ✅ 纯英文界面，无乱码问题
 - 📝 双击即可运行
 
-#### 2. start_silent.vbs - 静默启动
-- ✅ 后台运行，无控制台窗口
-- ✅ 界面简洁，不占用桌面空间
+#### stop.bat - 停止服务
+- ✅ 一键停止所有服务（MySQL + Python）
 - 📝 双击即可运行
-
-#### 3. stop.bat - 停止服务
-- ✅ 一键停止所有服务
-- 📝 双击即可运行
-
-**快速开始**：
-1. 确保已安装 Python 3.10+
-2. 将 MySQL 解压到 `bin/mysql` 目录
-3. 复制 `config.example.yml` 为 `config_prod.yml` 并配置
-4. 双击 `start.bat` 即可启动
-5. （可选）双击 `create_shortcuts.vbs` 创建桌面快捷方式
-
-**注意**：项目中也有中文版本的启动脚本（启动.bat等），但由于Windows批处理文件编码问题，可能会出现乱码。建议使用英文版本。详见 `Windows启动文件说明.txt`
 
 `start_windows.py` 会自动：
 1. 检查 Python 和 uv 环境
@@ -58,7 +66,7 @@ pip install -r requirements.txt
 4. 启动 Web 服务和定时任务
 5. 监控服务状态，异常时自动重启
 
-### 方式 2：使用 uv 启动（命令行）
+### 方式 3：使用 uv 启动（命令行）
 
 [uv](https://docs.astral.sh/uv/) 是一个快速的 Python 包管理器，会自动管理依赖和虚拟环境。
 
@@ -77,26 +85,30 @@ uv run start_windows.py
 uv run start_windows.py
 ```
 
-### 方式 3：手动启动（Linux/macOS）
+### 方式 4：手动启动（Linux/macOS）
 
 ```bash
 # 激活虚拟环境后
 python3 server.py
 ```
 
-默认监听 `http://0.0.0.0:5173`，并以静态站点形式提供 `web/` 目录。你的浏览器可直接访问：
-- 前端首页：`http://127.0.0.1:5173/`
-- API：`POST http://127.0.0.1:5173/api/qwen-image-edit`
+默认监听端口为配置文件中的 `server.port`（默认 9003）。浏览器访问：
+- 前端首页：`http://localhost:9003/`
+- API 文档：`http://localhost:9003/docs`
 
-## 前端使用说明
-1. 打开首页后点击“图片AI编辑功能”。
-2. 选择图片文件，输入提示词。
-3. 可选：设置 ComfyUI 服务地址（例如 `http://192.168.1.100:8188/`），并点击“保存”。为空时使用后端默认值（环境变量 `COMFYUI_SERVER` 或 `http://127.0.0.1:8188/`）。
-4. 点击“提交任务”，等待生成结果，结果图片会在页面下方展示。
+## 配置说明
 
-## 配置项
-- 环境变量 `COMFYUI_SERVER`：不在前端传 `server` 字段时，后端默认的 ComfyUI 地址。
-- 表单字段 `timeout`：后端轮询历史的超时时间（秒），默认 180。
+配置文件位于项目根目录，按环境区分：
+- `config.yml` - 生产环境配置
+- `config_dev.yml` - 开发环境配置
+- `config.example.yml` - 配置模板
+
+主要配置项：
+- `server.port` - 服务监听端口（默认 9003）
+- `database.*` - MySQL 数据库连接配置
+- `comfyui.server` - ComfyUI 服务地址
+- `llm.*` - 大语言模型 API 配置
+- `tts.*` - 语音合成服务配置
 
 ### 测试模式配置
 
@@ -123,39 +135,31 @@ test_mode:
 ## 目录结构
 ```
 comfyui_server/
-├─ server.py                  # FastAPI 后端
+├─ 点我启动.exe               # Windows 托盘启动器（推荐）
+├─ start.bat                  # Windows 启动脚本
+├─ stop.bat                   # Windows 停止脚本
+├─ launcher.py                # 启动器源码
+├─ start_windows.py           # Windows 启动逻辑
+├─ server.py                  # FastAPI 后端主入口
+├─ run_prod.py                # 生产环境启动器
+├─ run_dev.py                 # 开发环境启动器
 ├─ requirements.txt           # Python 依赖
-├─ README.md                  # 使用说明
-├─ alembic.ini                # Alembic 数据库迁移配置
-├─ alembic/                   # Alembic 迁移脚本目录
-│  ├─ env.py                  # 迁移环境配置
-│  ├─ script.py.mako          # 迁移脚本模板
-│  └─ versions/               # 迁移版本目录
-└─ web/
-│  └─ index.html              # 前端（Vue + Router + Axios）
-files/
-├─ tmp/                    # 临时文件（可定期清理）
-│  ├─ tts/                 # TTS音频临时文件
-│  ├─ jianying_export/     # 剪映导出临时文件
-│  └─ pic/                 # 图片临时文件
-└─ script_writer/                    # 剧本创作系统数据根目录
-   └─ {user_id}/                     # 用户ID目录
-      └─ {world_id}/                 # 世界ID目录（每个用户可以有多个世界）
-         ├─ characters/              # 角色卡目录
-         │  └─ character_*.json      # 角色JSON文件
-         ├─ locations/               # 场景目录
-         │  └─ location_*.json       # 场景JSON文件
-         ├─ props/                   # 道具目录
-         │  └─ prop_*.json           # 道具JSON文件
-         ├─ scripts/                 # 剧本目录
-         │  └─ script_*.json         # 剧本JSON文件
-         ├─ worlds/                  # 世界信息目录
-         │  └─ world_*.json          # 世界设定JSON文件
-         ├─ task_status/             # 任务状态目录
-         │  └─ task_status.json      # 任务状态跟踪文件
-         ├─ user_long_input/         # 长文本输入目录
-         │  └─ HH:mm:ss.txt          # 超过5000字的用户输入文件
-         └─ script_problem.json      # 剧本问题/审核报告文件
+├─ config.example.yml         # 配置模板
+├─ LICENSE                    # 开源协议
+├─ alembic/                   # 数据库迁移脚本
+├─ api/                       # API 路由模块
+├─ model/                     # 数据模型
+├─ task/                      # 后台任务
+├─ llm/                       # LLM 集成
+├─ utils/                     # 工具函数
+├─ script_writer_core/        # 剧本创作核心
+├─ web/                       # 前端静态文件
+├─ static/                    # 静态资源
+├─ templates/                 # 模板文件
+├─ bin/                       # 二进制工具（MySQL、ffmpeg）
+├─ files/                     # 用户文件存储
+├─ logs/                      # 日志目录
+└─ docs/                      # 文档
 ```
 
 ## 数据库迁移
@@ -281,8 +285,25 @@ ccr code
 ```
 
 ## 常见问题
-- 若前端长时间无结果，请检查：
-  - ComfyUI 是否在运行，且地址正确（端口、协议、是否可达）。
-  - 模板中的节点编号与类型是否与当前 ComfyUI 工作流一致（本示例使用 `78` 与 `108`）。
-  - 后端日志中是否出现 `Failed to upload image` 或 `Timed out waiting for ComfyUI result`。
-- 若需调试底层 ComfyUI 调用流程，可参考 `comfyui_参考代码.py`。
+
+### 启动相关
+- **点我启动.exe 提示已在运行** - 检查系统托盘是否已有图标，或在任务管理器中结束相关进程
+- **服务启动失败** - 检查 `logs/` 目录下的日志文件
+- **MySQL 启动失败** - 确保 `bin/mysql` 目录存在且完整
+
+### 服务相关
+- **前端无法访问** - 检查配置文件中的端口是否被占用
+- **数据库连接失败** - 检查 MySQL 是否正常运行，配置是否正确
+- **ComfyUI 调用失败** - 检查 ComfyUI 服务是否运行，地址配置是否正确
+
+## 开源协议
+
+本项目采用修改版 Apache License 2.0 协议，详见 [LICENSE](LICENSE)。
+
+主要条款：
+- ✅ 允许商业使用
+- ✅ 允许修改和分发
+- ❌ 未经授权不能运营多租户服务
+- ❌ 不能移除前端 LOGO 和版权信息
+
+© 2025 智剧通. All rights reserved.
