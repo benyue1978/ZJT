@@ -22,6 +22,8 @@ Fully automates the entire script and storyboard workflow - one-click script nod
 
 ![Workflow Automation](files/工作流.png)
 
+![Timeline](files/时间轴.png)
+
 ### 2. AI Agents for Hit Scripts
 
 Professional AI agent team collaboratively operates the script intelligence - supports conversational script creation, continuation, and novel adaptation throughout the entire process. Automatically completes outline, script, character, scene and prop design generation with compliance verification. Intelligent generation of suspense hooks and emotional curve analysis precisely controls audience emotions, efficiently improving short drama completion rates.
@@ -53,8 +55,6 @@ Successfully completed short drama production and launch on Hongguo platform - v
 ### 7. Ready-to-Use with Zero Barriers
 
 Built-in free image hosting, curated prompt library, and TTS voice service. No complex configuration needed - register and start creating.
-
-![TTS Voice Service](files/tts.png)
 
 ### 8. Enterprise-Grade Stability
 
