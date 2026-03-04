@@ -3,11 +3,11 @@ LTX2 RunningHub v1 版本驱动实现
 """
 from typing import Dict, Any, Optional
 import traceback
-import os
-import yaml
+import asyncio
 from .base_video_driver import BaseVideoDriver
-from config_util import get_config_path
+from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.file_storage import RunningHubFileStorage
 
 
 class Ltx2RunninghubV1Driver(BaseVideoDriver):
@@ -20,17 +20,27 @@ class Ltx2RunninghubV1Driver(BaseVideoDriver):
         super().__init__(driver_name="ltx2_runninghub_v1", driver_type=10)
 
         # 加载配置
-        config_path = get_config_path()
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-
-        self._api_key = config["runninghub"]["api_key"]
-        self._host = config["runninghub"]["host"]
+        self._api_key = get_dynamic_config_value("runninghub", "api_key", default="")
+        self._host = get_dynamic_config_value("runninghub", "host", default="")
         self._webapp_id = "2011014079896358914"  # LTX2.0 webapp ID
-        self._timeout = config["timeout"]["request_timeout"]
+        self._timeout = get_dynamic_config_value("timeout", "request_timeout", default=30)
+
+        # 是否为本地环境
+        self._is_local = get_dynamic_config_value("server", "is_local", default=False)
+        self._config = get_config()
+
+        # 初始化 RunningHub 文件存储
+        self._storage = RunningHubFileStorage(
+            host=self._host,
+            api_key=self._api_key,
+            config=self._config,
+            logger=self.logger
+        )
+        
+        self._validate_required({
+            "RunningHub API Key": self._api_key,
+            "RunningHub Host": self._host,
+        })
 
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
@@ -143,12 +153,23 @@ class Ltx2RunninghubV1Driver(BaseVideoDriver):
         Returns:
             Dict[str, Any]: 请求参数字典
         """
+        # 处理图片路径 - 如果是本地环境，上传到 RunningHub
+        image_path = ai_tool.image_path
+        if self._is_local and image_path:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到 RunningHub: {image_path}")
+            result = asyncio.run(self._storage.upload_file("", image_path))
+            if result.success:
+                image_path = result.key
+                self.logger.info(f"图片上传完成，使用 fileName: {image_path}")
+            else:
+                self.logger.warning(f"图片上传失败: {result.error}")
+
         # Build node info list for LTX2.0 v2
         node_info_list = [
             {
                 "nodeId": "67",
                 "fieldName": "image",
-                "fieldValue": ai_tool.image_path,
+                "fieldValue": image_path,
                 "description": "图像image"
             },
             {

@@ -193,3 +193,18 @@
       }
     }
 
+    // 获取版本信息
+    async function getEditionInfo() {
+      try {
+        const response = await fetch('/api/edition');
+        const result = await response.json();
+        if (result.code === 0 && result.data) {
+          return result.data;
+        }
+        return { mode: 'community', mode_label: '社区版' };
+      } catch (error) {
+        console.error('Failed to get edition info:', error);
+        return { mode: 'community', mode_label: '社区版' };
+      }
+    }
+

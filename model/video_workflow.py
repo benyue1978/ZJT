@@ -4,6 +4,7 @@ Video Workflow Model - Database operations for video_workflow table
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
+from config.constant import Edition
 import logging
 import json
 
@@ -156,8 +157,13 @@ class VideoWorkflowModel:
             order_direction = 'DESC'
         
         # Build WHERE clause
-        where_conditions = ["user_id = %s"]
-        params = [user_id]
+        where_conditions = []
+        params = []
+        
+        # 商业版才按 user_id 过滤
+        if Edition.is_enterprise():
+            where_conditions.append("user_id = %s")
+            params.append(user_id)
         
         if status is not None:
             where_conditions.append("status = %s")
@@ -167,7 +173,7 @@ class VideoWorkflowModel:
             where_conditions.append("name LIKE %s")
             params.append(f"%{keyword}%")
         
-        where_clause = " AND ".join(where_conditions)
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         # Get total count
         count_sql = f"SELECT COUNT(*) as total FROM video_workflow WHERE {where_clause}"
@@ -356,4 +362,28 @@ class VideoWorkflowModel:
             return affected_rows
         except Exception as e:
             logger.error(f"Failed to delete video workflow records for user {user_id}: {e}")
+            raise
+    
+    # ==================== 管理员方法 ====================
+    
+    @staticmethod
+    def count_active_recent_days(days: int = 3) -> int:
+        """
+        统计最近N天有更新的工作流数量
+        
+        Args:
+            days: 天数（默认3天）
+        
+        Returns:
+            活跃工作流数量
+        """
+        sql = """
+            SELECT COUNT(*) as count FROM video_workflow 
+            WHERE update_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """
+        try:
+            result = execute_query(sql, (days,), fetch_one=True)
+            return result['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Failed to count active workflows in recent {days} days: {e}")
             raise

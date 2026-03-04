@@ -3,9 +3,10 @@ from apscheduler.triggers.interval import IntervalTrigger
 import logging
 import asyncio
 import os
-import fcntl
+import sys
 from task.visual_task import generate_video_task
 from task.audio_task import generate_audio_task
+from task.token_task import process_token_task
 from functools import partial
 
 
@@ -37,19 +38,24 @@ def _run_async_task(async_func, *args, **kwargs):
 def _acquire_scheduler_lock():
     """获取调度器文件锁，防止多个进程重复运行"""
     global _lock_fd, _LOCK_FILE
-    
+
     # 获取项目根目录
     current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _LOCK_FILE = os.path.join(current_dir, "scheduler.lock")
-    
+
     try:
         _lock_fd = open(_LOCK_FILE, 'w')
-        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if sys.platform == 'win32':
+            import msvcrt
+            msvcrt.locking(_lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         _lock_fd.write(str(os.getpid()))
         _lock_fd.flush()
         logger.info(f"Scheduler lock acquired. PID: {os.getpid()}")
         return True
-    except IOError:
+    except (IOError, OSError):
         logger.warning("Another scheduler instance is already running. Skipping scheduler initialization.")
         return False
 
@@ -59,7 +65,12 @@ def _release_scheduler_lock():
     global _lock_fd
     if _lock_fd:
         try:
-            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+            if sys.platform == 'win32':
+                import msvcrt
+                msvcrt.locking(_lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(_lock_fd, fcntl.LOCK_UN)
             _lock_fd.close()
             logger.info("Scheduler lock released.")
         except Exception as e:
@@ -82,6 +93,7 @@ def init_scheduler(app):
     # 创建一个带有app参数的任务函数
     task_with_app_video = partial(generate_video_task, app=app)
     task_with_app_audio = partial(_run_async_task, generate_audio_task, app=app)
+    task_with_app_token = partial(process_token_task, app=app)
     
     logger.info('启用视频生成任务')
     scheduler.add_job(
@@ -100,6 +112,18 @@ def init_scheduler(app):
         trigger=IntervalTrigger(seconds=7),
         id='generate_audio',
         name='Generate audio every 7 seconds',
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True
+    )
+
+    # Token日志处理任务
+    logger.info('启用Token日志处理任务')
+    scheduler.add_job(
+        func=task_with_app_token,
+        trigger=IntervalTrigger(seconds=6),
+        id='process_token',
+        name='Process token logs every 6 seconds',
         replace_existing=True,
         max_instances=1,
         coalesce=True

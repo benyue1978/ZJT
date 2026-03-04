@@ -1,12 +1,10 @@
 import requests
-import yaml
 import time
-import os
 import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
-from config_util import get_config_path
+from config.config_util import get_config, get_dynamic_config_value
 from logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -41,26 +39,18 @@ class RunningHubClient:
     WEBAPP_ID = "1960639129312780290"
     QUICK_CREATE_CODE = "005"
     
-    def __init__(self, config_path: str = "config.yml", api_key: str = None):
+    def __init__(self, config_path: str = None, api_key: str = None):
         """
         Initialize RunningHub API client
         
         Args:
-            config_path: Path to YAML configuration file
+            config_path: Deprecated, ignored. Uses unified config system.
             api_key: Optional API key to override the one in config file
         """
-        self.config = self._load_config(config_path)
-        self.host = self.config["runninghub"]["host"]
-        self.api_key = api_key if api_key is not None else self.config["runninghub"]["api_key"]
-        self.request_timeout = self.config["timeout"]["request_timeout"]
-        
-    def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from YAML file"""
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-        
-        with open(config_path, 'r', encoding='utf-8') as file:
-            return yaml.safe_load(file)
+        self.config = get_config()
+        self.host = get_dynamic_config_value("runninghub", "host", default="")
+        self.api_key = api_key if api_key is not None else get_dynamic_config_value("runninghub", "api_key", default="")
+        self.request_timeout = get_dynamic_config_value("timeout", "request_timeout", default=30)
     
     def _make_request(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -370,17 +360,8 @@ def run_ai_app_task(
         requests.RequestException: If request fails
         ValueError: If response format is invalid
     """
-    # Auto-detect config file based on environment if not specified
-    config_path = get_config_path(config_path)
-    
     # Load config to get host
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
-    
-    with open(config_path, 'r', encoding='utf-8') as file:
-        config = yaml.safe_load(file)
-    
-    host = config["runninghub"]["host"]
+    host = get_dynamic_config_value("runninghub", "host", default="")
     endpoint = "/task/openapi/ai-app/run"
     url = f"{host}{endpoint}"
     
@@ -401,11 +382,12 @@ def run_ai_app_task(
     logger.info(f"[RunningHub API] Request Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
     
     try:
+        timeout = get_dynamic_config_value("timeout", "request_timeout", default=30)
         response = requests.post(
             url,
             json=payload,
             headers=headers,
-            timeout=config["timeout"]["request_timeout"]
+            timeout=timeout
         )
         response.raise_for_status()
         

@@ -8,6 +8,13 @@ from .ai_audio import AIAudioModel, AIAudio
 from .payment_orders import PaymentOrdersModel, PaymentOrder
 from .runninghub_slots import RunningHubSlotsModel, RunningHubSlot
 from .database import get_db_connection, execute_query, execute_update, execute_insert
+from .users import UsersModel, User
+from .user_tokens import UserTokensModel, UserToken
+from .computing_power import ComputingPowerModel, ComputingPower
+from .computing_power_log import ComputingPowerLogModel, ComputingPowerLog
+from .verify_codes import VerifyCodesModel, VerifyCode
+from .login_log import LoginLogModel, LoginLog
+from .token_log import TokenLogModel, TokenLog
 
 __all__ = [
     'AIToolsModel',
@@ -25,5 +32,19 @@ __all__ = [
     'get_db_connection',
     'execute_query',
     'execute_update',
-    'execute_insert'
+    'execute_insert',
+    'UsersModel',
+    'User',
+    'UserTokensModel',
+    'UserToken',
+    'ComputingPowerModel',
+    'ComputingPower',
+    'ComputingPowerLogModel',
+    'ComputingPowerLog',
+    'VerifyCodesModel',
+    'VerifyCode',
+    'LoginLogModel',
+    'LoginLog',
+    'TokenLogModel',
+    'TokenLog',
 ]

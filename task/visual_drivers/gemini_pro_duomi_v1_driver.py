@@ -3,11 +3,10 @@ Gemini Pro 多米供应商 v1 版本驱动实现（加强版）
 """
 from typing import Dict, Any, Optional
 import traceback
-import os
-import yaml
 from .base_video_driver import BaseVideoDriver
-from config_util import get_config_path
+from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
 
 class GeminiProDuomiV1Driver(BaseVideoDriver):
@@ -20,16 +19,17 @@ class GeminiProDuomiV1Driver(BaseVideoDriver):
         super().__init__(driver_name="gemini_pro_duomi_v1", driver_type=7)
         
         # 加载配置
-        config_path = get_config_path()
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-        
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-        
-        self._token = config["duomi"]["token"]
+        self._token = get_dynamic_config_value("duomi", "token", default="")
         self._base_url = "https://duomiapi.com"
-        self._timeout = config["timeout"]["request_timeout"]
+        self._timeout = get_dynamic_config_value("timeout", "request_timeout", default=30)
+
+        # 是否为本地环境
+        self._is_local = get_dynamic_config_value("server", "is_local", default=False)
+        self._config = get_config()
+        
+        self._validate_required({
+            "Duomi API Token": self._token,
+        })
 
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
@@ -161,7 +161,13 @@ class GeminiProDuomiV1Driver(BaseVideoDriver):
             image_urls = ai_tool.image_path.split(',') if ',' in ai_tool.image_path else [ai_tool.image_path]
         else:
             image_urls = None
-        
+
+        # 如果是本地环境，将本地图片上传到图床
+        if self._is_local and image_urls:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到图床: {image_urls}")
+            image_urls = upload_local_images_to_cdn_sync(image_urls, self._config)
+            self.logger.info(f"图片上传完成，CDN链接: {image_urls}")
+
         payload = {
             "model": "gemini-3-pro-image-preview",
             "prompt": ai_tool.prompt,

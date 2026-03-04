@@ -4,12 +4,27 @@ Index TTS Utility - Functions for interacting with TTS API
 import logging
 import httpx
 import traceback
+import os
 from typing import Optional, List
+import yaml
+from config.config_util import get_config_path
 
 logger = logging.getLogger(__name__)
 
-# TTS API configuration - should be set via environment or config
-TTS_API_URL = "http://192.168.10.243:6007"  # Default, should be configured
+def get_tts_api_url() -> str:
+    """
+    从配置文件获取 TTS API URL
+    Returns:
+        str: TTS API URL
+    """
+    try:
+        config_file = get_config_path()
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        return config.get("tts", {}).get("api_url", "http://47.98.190.124")
+    except Exception as e:
+        logger.warning(f"Failed to read TTS API URL from config: {e}, using default")
+        return "http://47.98.190.124"
 
 async def generate_audio(
     text: str,
@@ -48,15 +63,76 @@ async def generate_audio(
             - audio_path_or_error: Audio file path on success, error message on failure
     """
     try:
-        # Prepare request data
+        # Get TTS API URL from config
+        tts_api_url = get_tts_api_url()
+        
+        # Step 1: Upload reference audio to TTS server if it's a local file path
+        uploaded_spk_audio_path = spk_audio_path
+        if spk_audio_path and os.path.isfile(spk_audio_path):
+            logger.info(f"Uploading reference audio to TTS server: {spk_audio_path}")
+            upload_url = f"{tts_api_url}/upload_reference"
+            
+            async with httpx.AsyncClient() as client:
+                with open(spk_audio_path, 'rb') as audio_file:
+                    files = {'file': (os.path.basename(spk_audio_path), audio_file, 'audio/wav')}
+                    upload_response = await client.post(
+                        upload_url,
+                        files=files,
+                        timeout=60
+                    )
+                
+                if upload_response.status_code == 200:
+                    upload_data = upload_response.json()
+                    if upload_data.get("status") == "ok":
+                        uploaded_spk_audio_path = upload_data.get("file_path")
+                        logger.info(f"Reference audio uploaded successfully: {uploaded_spk_audio_path}")
+                    else:
+                        error_msg = "Failed to upload reference audio: non-ok status"
+                        logger.error(error_msg)
+                        return False, error_msg
+                else:
+                    error_msg = f"Failed to upload reference audio: HTTP {upload_response.status_code}"
+                    logger.error(error_msg)
+                    return False, error_msg
+        
+        # Step 2: Upload emotion reference audio if provided and is a local file
+        uploaded_emo_ref_path = emo_ref_path
+        if emo_ref_path and os.path.isfile(emo_ref_path):
+            logger.info(f"Uploading emotion reference audio to TTS server: {emo_ref_path}")
+            upload_url = f"{tts_api_url}/upload_reference"
+            
+            async with httpx.AsyncClient() as client:
+                with open(emo_ref_path, 'rb') as audio_file:
+                    files = {'file': (os.path.basename(emo_ref_path), audio_file, 'audio/wav')}
+                    upload_response = await client.post(
+                        upload_url,
+                        files=files,
+                        timeout=60
+                    )
+                
+                if upload_response.status_code == 200:
+                    upload_data = upload_response.json()
+                    if upload_data.get("status") == "ok":
+                        uploaded_emo_ref_path = upload_data.get("file_path")
+                        logger.info(f"Emotion reference audio uploaded successfully: {uploaded_emo_ref_path}")
+                    else:
+                        error_msg = "Failed to upload emotion reference audio: non-ok status"
+                        logger.error(error_msg)
+                        return False, error_msg
+                else:
+                    error_msg = f"Failed to upload emotion reference audio: HTTP {upload_response.status_code}"
+                    logger.error(error_msg)
+                    return False, error_msg
+        
+        # Step 3: Prepare request data with uploaded paths
         if emo_vec is None:
             emo_vec = [0] * 8
         
         data = {
             "text": text,
-            "spk_audio_path": spk_audio_path,
+            "spk_audio_path": uploaded_spk_audio_path,
             "emo_control_method": emo_control_method,
-            "emo_ref_path": emo_ref_path,
+            "emo_ref_path": uploaded_emo_ref_path,
             "emo_weight": emo_weight,
             "emo_vec": emo_vec,
             "emo_text": emo_text,
@@ -64,8 +140,8 @@ async def generate_audio(
             "max_text_tokens_per_sentence": max_text_tokens_per_sentence
         }
         
-        # Make POST request to TTS API
-        url = f"{TTS_API_URL}/tts_url"
+        # Step 4: Make POST request to TTS API
+        url = f"{tts_api_url}/tts_url"
         logger.info(f"Calling TTS API: {url}")
         logger.debug(f"Request data: {data}")
         
@@ -110,7 +186,7 @@ async def generate_audio(
         return False, error_msg
     
     except httpx.ConnectError:
-        error_msg = f"Failed to connect to TTS API at {TTS_API_URL}"
+        error_msg = f"Failed to connect to TTS API at {tts_api_url}"
         logger.error(error_msg)
         return False, error_msg
     

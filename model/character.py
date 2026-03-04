@@ -4,8 +4,8 @@ Character Model - Database operations for character table
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
+from config.constant import Edition
 import logging
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +154,29 @@ class CharacterModel:
             raise
     
     @staticmethod
+    def get_by_name(world_id: int, name: str) -> Optional[Character]:
+        """
+        Get character record by world ID and name
+        
+        Args:
+            world_id: World ID
+            name: Character name
+        
+        Returns:
+            Character object or None
+        """
+        sql = "SELECT * FROM `character` WHERE world_id = %s AND name = %s LIMIT 1"
+        
+        try:
+            result = execute_query(sql, (world_id, name), fetch_one=True)
+            if result:
+                return Character(**result)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get character by name '{name}' for world {world_id}: {e}")
+            raise
+    
+    @staticmethod
     def list_by_world(
         world_id: int,
         page: int = 1,
@@ -252,14 +275,19 @@ class CharacterModel:
         if order_direction.upper() not in valid_directions:
             order_direction = 'DESC'
         
-        where_conditions = ["user_id = %s"]
-        params = [user_id]
+        where_conditions = []
+        params = []
+        
+        # 商业版才按 user_id 过滤
+        if Edition.is_enterprise():
+            where_conditions.append("user_id = %s")
+            params.append(user_id)
         
         if keyword:
             where_conditions.append("name LIKE %s")
             params.append(f"%{keyword}%")
         
-        where_clause = " AND ".join(where_conditions)
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         count_sql = f"SELECT COUNT(*) as total FROM `character` WHERE {where_clause}"
         count_result = execute_query(count_sql, tuple(params), fetch_one=True)

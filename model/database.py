@@ -5,31 +5,16 @@ import pymysql
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
 import os
-import yaml
 import logging
-import sys
 
 logger = logging.getLogger(__name__)
 
-# Load database configuration from config file
-APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, APP_DIR)
-from config_util import get_config_path
-config_file = os.path.join(APP_DIR, get_config_path())
+# Load database configuration using unified config utility
+from config.config_util import get_config_value
 
-# Load database configuration from config file
-if not os.path.exists(config_file):
-    raise FileNotFoundError(f"Configuration file not found: {config_file}")
-
-try:
-    with open(config_file, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-        if not config or 'database' not in config:
-            raise ValueError(f"Database configuration not found in {config_file}")
-        DB_CONFIG = config['database']
-except Exception as e:
-    logger.error(f"Failed to load database config from file: {e}")
-    raise
+DB_CONFIG = get_config_value('database', default={})
+if not DB_CONFIG:
+    raise ValueError("Database configuration not found in config file")
 
 # Override with environment variables if set
 DB_CONFIG['host'] = os.environ.get('DB_HOST', DB_CONFIG.get('host'))

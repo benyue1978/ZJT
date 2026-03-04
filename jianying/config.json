@@ -1,7 +1,6 @@
 {
+  "_note": "FFmpeg 路径已从主配置文件 (config_dev.yml/config_prod.yml) 的 bin 配置项读取，此文件中的 ffmpeg 配置已不再使用",
   "ffmpeg": {
-    "ffmpeg_path": "/usr/bin/ffmpeg",
-    "ffprobe_path": "/usr/bin/ffprobe",
     "timeout": 30,
     "fallback_enabled": true
   },

@@ -1,10 +1,44 @@
 """
 剪映配置管理模块
+使用主配置的 bin 配置项获取 ffmpeg 路径
 """
 
 import json
 import os
+import sys
+import yaml
 from typing import Dict, Any, Optional
+
+# 添加项目根目录到路径，以便导入 config_util
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
+
+from config.config_util import resolve_bin_path, get_config_path
+
+
+def get_main_config() -> Dict[str, Any]:
+    """
+    加载主配置文件
+
+    Returns:
+        主配置字典
+    """
+    try:
+        # 获取项目根目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 使用 config_util 的 get_config_path 获取配置文件名
+        config_file = get_config_path()
+        config_path = os.path.join(current_dir, config_file)
+
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"加载主配置文件失败: {e}")
+
+    return {}
 
 
 class JianyingConfig:
@@ -26,20 +60,39 @@ class JianyingConfig:
         self._config = self._load_config()
     
     def _load_config(self) -> Dict[str, Any]:
-        """加载配置文件"""
+        """加载配置文件，并从主配置补充 ffmpeg 路径"""
+        # 先从主配置获取默认配置（包含正确的 ffmpeg 路径）
+        config = self._get_default_config()
+        
+        # 尝试加载 jianying/config.json，合并其他配置项
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                json_config = json.load(f)
+                # 合并配置：保留 json 中的其他配置，但 ffmpeg 路径已从主配置读取
+                if 'ffmpeg' in json_config:
+                    # 只保留 timeout 和 fallback_enabled，路径保持从主配置读取的值
+                    config['ffmpeg']['timeout'] = json_config['ffmpeg'].get('timeout', 30)
+                    config['ffmpeg']['fallback_enabled'] = json_config['ffmpeg'].get('fallback_enabled', True)
+                if 'media' in json_config:
+                    config['media'] = json_config['media']
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"配置文件加载失败: {e}")
-            return self._get_default_config()
+            print(f"配置文件加载失败，使用默认配置: {e}")
+        
+        return config
     
     def _get_default_config(self) -> Dict[str, Any]:
-        """获取默认配置"""
+        """获取默认配置，使用主配置的 bin 配置项"""
+        # 从主配置获取 ffmpeg 路径
+        main_config = get_main_config()
+        bin_config = main_config.get("bin", {})
+        
+        ffmpeg_path = bin_config.get("ffmpeg", "ffmpeg")
+        ffprobe_path = bin_config.get("ffprobe", "ffprobe")
+        
         return {
             "ffmpeg": {
-                "ffmpeg_path": "ffmpeg",
-                "ffprobe_path": "ffprobe",
+                "ffmpeg_path": ffmpeg_path,
+                "ffprobe_path": ffprobe_path,
                 "timeout": 30,
                 "fallback_enabled": True
             },
@@ -100,13 +153,19 @@ class JianyingConfig:
     
     @property
     def ffmpeg_path(self) -> str:
-        """获取ffmpeg路径"""
-        return self.get('ffmpeg.ffmpeg_path', 'ffmpeg')
+        """获取ffmpeg路径（自动解析相对路径）"""
+        raw_path = self.get('ffmpeg.ffmpeg_path', 'ffmpeg')
+        # 获取项目根目录用于解析相对路径
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        return resolve_bin_path(raw_path, app_dir)
     
     @property
     def ffprobe_path(self) -> str:
-        """获取ffprobe路径"""
-        return self.get('ffmpeg.ffprobe_path', 'ffprobe')
+        """获取ffprobe路径（自动解析相对路径）"""
+        raw_path = self.get('ffmpeg.ffprobe_path', 'ffprobe')
+        # 获取项目根目录用于解析相对路径
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        return resolve_bin_path(raw_path, app_dir)
     
     @property
     def ffmpeg_timeout(self) -> int:

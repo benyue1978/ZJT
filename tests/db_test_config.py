@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, APP_DIR)
 
-from config_util import get_config_path
+from config.config_util import get_config_path
 
 
 def get_unit_test_config_path():

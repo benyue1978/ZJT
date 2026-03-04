@@ -1,134 +1,139 @@
-# ComfyUI Qwen Image Edit Demo
+# 智剧通 AI短剧制作平台
 
-一个最小可用的前后端示例：
-- 前端：`web/index.html`（Vue 3 + Vue Router + Axios，CDN 版）
-- 后端：`server.py`（FastAPI）
-- 工作流模板：`qwen_image_edit_api.json`
+![智剧通](files/广告图.png)
 
-前端首页为工具列表，第一项是“图片AI编辑功能”。进入后可上传图片、填写提示词，后端会据此修改模板中：
-- `"78".inputs.image`（`LoadImage` 节点）
-- `"108".inputs.prompt`（`TextEncodeQwenImageEdit` 节点）
+[English](README_EN.md) | 中文
 
-随后由后端调用 ComfyUI 的 `/upload/image` 与 `/prompt` 接口，并轮询 `/history/{prompt_id}` 拿到结果图片 URL。
+智剧通是一个基于 AI 的短剧制作平台，提供剧本创作、角色管理、视频生成、音频合成等一站式短剧制作解决方案。
 
-## 运行环境
-- Python 3.9+（建议 3.10/3.11）
-- 需有可访问的 ComfyUI 实例（默认 `http://127.0.0.1:8188/`），并启用上传与历史接口：
-  - `POST /upload/image`
-  - `POST /prompt`
-  - `GET  /history/{prompt_id}`
-  - `GET  /view?filename=...`
+## 目录
 
-## 安装依赖
-在项目根目录（与 `requirements.txt` 同级）执行：
+- [主要功能](#主要功能)
+- [📦 用户指南](#-用户指南)
+  - [快速开始（Windows）](#快速开始windows)
+  - [常见问题（用户）](#常见问题用户)
+- [🛠️ 开发者指南](#️-开发者指南)
+- [开源协议](#开源协议)
+- [联系我们](#联系我们)
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+## 主要功能
 
-如使用国内镜像，可在最后一行追加 `-i https://pypi.tuna.tsinghua.edu.cn/simple`。
+### 1. 全流程自动化剧本与分镜制作
 
-## 启动后端
-```bash
-# 激活虚拟环境后
-python3 server.py
-```
-默认监听 `http://0.0.0.0:5173`，并以静态站点形式提供 `web/` 目录。你的浏览器可直接访问：
-- 前端首页：`http://127.0.0.1:5173/`
-- API：`POST http://127.0.0.1:5173/api/qwen-image-edit`
+实现剧本、分镜制作全流程自动化，一键拆分剧本节点、自动解析填充提示词，智能匹配场景、角色与道具；自动生成并适配多宫格分镜图，保障分镜一致性且节省算力，零基础可完成核心创作。支持配置角色形象图，确保角色跨分镜、场景形象统一，彻底解决 AI 短剧角色 "脸崩" 问题，大幅提升成片质感。
 
-## 前端使用说明
-1. 打开首页后点击“图片AI编辑功能”。
-2. 选择图片文件，输入提示词。
-3. 可选：设置 ComfyUI 服务地址（例如 `http://192.168.1.100:8188/`），并点击“保存”。为空时使用后端默认值（环境变量 `COMFYUI_SERVER` 或 `http://127.0.0.1:8188/`）。
-4. 点击“提交任务”，等待生成结果，结果图片会在页面下方展示。
+![全流程自动化](files/工作流.png)
 
-## 配置项
-- 环境变量 `COMFYUI_SERVER`：不在前端传 `server` 字段时，后端默认的 ComfyUI 地址。
-- 表单字段 `timeout`：后端轮询历史的超时时间（秒），默认 180。
+![时间轴](files/时间轴.png)
 
-### 测试模式配置
+### 2. AI 智能体打造爆款剧本
 
-项目支持测试模式，用于在不调用真实外部 API 的情况下测试完整业务流程。详细说明请参考 `docs/test_mode_guide.md`。
+由专业智能体团队协同运作的剧本智能体，支持对话式完成剧本新建、续写与小说改编全流程；自动完成大纲、剧本、角色、场景道具的设计生成及合规校验，操作极简。智能生成悬念钩子与情感曲线分析，精准把控观众情绪，高效提升短剧完播率。
 
-快速启用测试模式：
+![AI 智能体](files/智能体生成剧本.png)
 
-1. 在 `config.yml` 中配置：
-```yaml
-test_mode:
-  enabled: true  # 启用测试模式
-  mock_videos:
-    image_to_video: "http://localhost:5178/upload/test_video.mp4"
-    text_to_video: "http://localhost:5178/upload/test_video.mp4"
-  mock_images:
-    image_edit: "http://localhost:5178/upload/test_image.png"
-    text_to_image: "http://localhost:5178/upload/test_image.png"
-```
+### 3. 专业级无限画布创作
 
-2. 准备测试资源文件并放置在 `upload/` 目录下
+搭载兼具便捷性与专业性的无限画布，为剧本分镜创作提供灵活专业的创作空间，高效适配多宫格分镜的生成、拆分与布局，让分镜创作更专业、操作更省心。
 
-3. 重启服务即可使用测试模式
+![无限画布](files/无限画布.png)
 
-## 目录结构
-```
-comfyui_server/
-├─ server.py                  # FastAPI 后端
-├─ requirements.txt           # Python 依赖
-├─ README.md                  # 使用说明
-├─ qwen_image_edit_api.json   # 工作流模板（会被动态替换 78.image 与 108.prompt）
-└─ web/
-   └─ index.html              # 前端（Vue + Router + Axios）
-```
+### 4. 无界化团队协同
 
-## 自动化测试
+免安装，浏览器端直接使用；支持局域网部署与公网远程协作，团队成员随时随地实时共创。
 
-本项目包含基于 Claude Code + Playwright MCP  + Claude Code Router 的自动化测试框架。
+### 5. 灵活算力与密钥管理
 
-### 环境准备
+支持多供应商密钥配置，内置多用户独立算力计费体系，可绑定个人微信支付，适配多样创作需求。
 
-详细配置请参考 `auto_test/SETUP.md`，主要步骤：
+![算力管理](files/算力.png)
+
+### 6. 实战验证 + 免费开源
+
+已完成红果平台短剧制作与上线，视频、图片生成稳定性经真实项目检验。源码开源，支持用户自主开发、个性化定制功能。
+
+![实战验证](files/红果漫剧.png)
+
+### 7. 开箱即用零门槛
+
+内置免费图床、精选提示词库、TTS 语音服务，无需繁琐配置，注册即可创作。
+
+### 8. 工程级稳定可靠
+
+全接口单元测试覆盖，系统稳定性强，保障创作过程不中断。
+
+---
+
+# 📦 用户指南
+
+> 如果你只是想使用智剧通，请阅读本章节。
+
+📖 **完整教程**：[飞书文档](https://bq3mlz1jiae.feishu.cn/wiki/W1h2wCK3mi1CgDk36LEcVqggnLe)
+
+🌐 **在线演示**：[ailive.perseids.cn](http://ailive.perseids.cn)
+
+## 快速开始（Windows）
 
 
-### 运行测试
+### 启动服务
 
-```powershell
-cd auto_test
-```
+**双击 `点我启动.exe` 即可**：
 
-**方式 1：交互式运行**
+- ✅ 系统托盘图标显示启动状态
+- ✅ 服务就绪后自动打开浏览器
+- ✅ 右键菜单支持：打开浏览器、查看日志、退出
+- ✅ 退出时自动停止所有服务
 
-# 通过claude code router运行智能体测试
+首次启动会自动创建配置文件 `config.yml`，一般无需修改。
 
-cd auto_test
+### 访问地址
 
-```
-ccr code
-```
+- 前端首页：`http://localhost:9003/`
 
-**方式 2：使用调度器**
-```
-ccr code
-/orchestrator
-```
+### 停止服务
 
+- 右键系统托盘图标 → 退出
+- 或双击 `stop.bat`
 
-### 测试模式
+## 常见问题（用户）
 
-启动时会询问是否使用测试模式（URL 带 `?test=1` 参数）：
-- **测试模式**：使用模拟接口，速度快，无成本
-- **真实模式**：使用真实接口，速度慢，有成本
+- **点我启动.exe 提示已在运行** - 检查系统托盘是否已有图标
+- **无法打开网页** - 等待启动完成，或检查端口是否被占用
+- **服务异常** - 查看 `logs/` 目录下的日志文件
 
-### 查看测试进度
+---
 
-```
-/check-status
-```
+# 🛠️ 开发者指南
 
-## 常见问题
-- 若前端长时间无结果，请检查：
-  - ComfyUI 是否在运行，且地址正确（端口、协议、是否可达）。
-  - 模板中的节点编号与类型是否与当前 ComfyUI 工作流一致（本示例使用 `78` 与 `108`）。
-  - 后端日志中是否出现 `Failed to upload image` 或 `Timed out waiting for ComfyUI result`。
-- 若需调试底层 ComfyUI 调用流程，可参考 `comfyui_参考代码.py`。
+如果你需要修改代码或参与开发，请阅读 **[开发者文档](docs/README.md)**，包含：
+
+- 环境要求与安装依赖
+- 多种启动方式（Windows/Linux/macOS）
+- 配置说明
+- 目录结构
+- 常见问题
+
+---
+
+## 开源协议
+
+本项目采用修改版 Apache License 2.0 协议，详见 [LICENSE](LICENSE)。
+
+主要条款：
+- ✅ 允许商业使用
+- ✅ 允许修改和分发
+- ❌ 未经授权不能运营多空间服务
+- ❌ 不能移除前端 LOGO 和版权信息
+
+## 联系我们
+
+如有问题或建议，欢迎通过以下方式联系：
+
+📧 **邮箱**：jeffstric@qq.com
+
+| 微信群 | 个人微信 |
+|:---:|:---:|
+| <img src="http://ailive.perseids.cn/upload/assert/wx_group.jpg" width="200" alt="群二维码"> | <img src="files/二维码.jpg" width="200" alt="个人二维码"> |
+| 扫码加入交流群 | 扫码添加作者 |
+
+© 2025 智剧通. All rights reserved.

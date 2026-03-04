@@ -5,7 +5,8 @@
 from typing import Optional
 import logging
 from .base_video_driver import BaseVideoDriver
-from config.constant import VIDEO_DRIVER_MAPPING, DRIVER_IMPLEMENTATION_MAPPING
+from .exceptions import DriverConfigError
+from config.constant import VIDEO_DRIVER_MAPPING, DRIVER_IMPLEMENTATION_MAPPING, DriverImplementation
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,10 @@ class VideoDriverFactory:
         try:
             logger.info(f"Creating driver: type={driver_type} -> business={business_driver_name} -> implementation={implementation_driver_name}")
             return driver_class()
+        except DriverConfigError as e:
+            logger.warning(f"Driver {implementation_driver_name} 配置不完整: {e.message}")
+            logger.info(f"缺少配置: {', '.join(e.missing_configs)}")
+            return None
         except Exception as e:
             logger.error(f"Failed to create driver instance for {implementation_driver_name}: {str(e)}")
             return None
@@ -139,6 +144,57 @@ class VideoDriverFactory:
             bool: 是否已注册
         """
         return driver_name in cls._registered_drivers
+    
+    @classmethod
+    def get_driver_availability(cls) -> dict:
+        """
+        获取所有 driver 的可用状态
+        
+        Returns:
+            dict: 任务类型 -> 可用状态
+                {
+                    "3": {"available": True, "missing_configs": []},
+                    "10": {"available": False, "missing_configs": ["RunningHub API Key"]},
+                    ...
+                }
+        """
+        result = {}
+        for task_type, business_name in VIDEO_DRIVER_MAPPING.items():
+            impl_name = DRIVER_IMPLEMENTATION_MAPPING.get(business_name)
+            if not impl_name:
+                result[str(task_type)] = {
+                    "available": False,
+                    "missing_configs": ["未配置实现驱动"]
+                }
+                continue
+            
+            driver_class = cls._registered_drivers.get(impl_name)
+            if not driver_class:
+                result[str(task_type)] = {
+                    "available": False,
+                    "missing_configs": ["驱动未注册"]
+                }
+                continue
+            
+            try:
+                driver_class()  # 尝试创建实例验证配置
+                result[str(task_type)] = {
+                    "available": True,
+                    "missing_configs": []
+                }
+            except DriverConfigError as e:
+                result[str(task_type)] = {
+                    "available": False,
+                    "missing_configs": e.missing_configs
+                }
+            except Exception as e:
+                logger.warning(f"检查 driver {impl_name} 可用性时出错: {e}")
+                result[str(task_type)] = {
+                    "available": False,
+                    "missing_configs": [str(e)]
+                }
+        
+        return result
 
 
 def register_all_drivers():
@@ -155,63 +211,63 @@ def register_all_drivers():
     try:
         from .sora2_duomi_v1_driver import Sora2DuomiV1Driver
         # 注册 Sora2 多米供应商 v1 版本
-        VideoDriverFactory.register_driver("sora2_duomi_v1", Sora2DuomiV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.SORA2_DUOMI_V1, Sora2DuomiV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import Sora2DuomiV1Driver: {e}")
     
     try:
         from .kling_duomi_v1_driver import KlingDuomiV1Driver
         # 注册 Kling 多米供应商 v1 版本
-        VideoDriverFactory.register_driver("kling_duomi_v1", KlingDuomiV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.KLING_DUOMI_V1, KlingDuomiV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import KlingDuomiV1Driver: {e}")
     
     try:
         from .gemini_duomi_v1_driver import GeminiDuomiV1Driver
         # 注册 Gemini 多米供应商 v1 版本（标准版）
-        VideoDriverFactory.register_driver("gemini_duomi_v1", GeminiDuomiV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.GEMINI_DUOMI_V1, GeminiDuomiV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import GeminiDuomiV1Driver: {e}")
     
     try:
         from .gemini_pro_duomi_v1_driver import GeminiProDuomiV1Driver
         # 注册 Gemini Pro 多米供应商 v1 版本（加强版）
-        VideoDriverFactory.register_driver("gemini_pro_duomi_v1", GeminiProDuomiV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.GEMINI_PRO_DUOMI_V1, GeminiProDuomiV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import GeminiProDuomiV1Driver: {e}")
     
     try:
         from .veo3_duomi_v1_driver import Veo3DuomiV1Driver
         # 注册 VEO3 多米供应商 v1 版本
-        VideoDriverFactory.register_driver("veo3_duomi_v1", Veo3DuomiV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.VEO3_DUOMI_V1, Veo3DuomiV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import Veo3DuomiV1Driver: {e}")
     
     try:
         from .ltx2_runninghub_v1_driver import Ltx2RunninghubV1Driver
         # 注册 LTX2 RunningHub v1 版本
-        VideoDriverFactory.register_driver("ltx2_runninghub_v1", Ltx2RunninghubV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.LTX2_RUNNINGHUB_V1, Ltx2RunninghubV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import Ltx2RunninghubV1Driver: {e}")
     
     try:
         from .wan22_runninghub_v1_driver import Wan22RunninghubV1Driver
         # 注册 Wan22 RunningHub v1 版本
-        VideoDriverFactory.register_driver("wan22_runninghub_v1", Wan22RunninghubV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.WAN22_RUNNINGHUB_V1, Wan22RunninghubV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import Wan22RunninghubV1Driver: {e}")
     
     try:
         from .digital_human_runninghub_v1_driver import DigitalHumanRunninghubV1Driver
         # 注册 Digital Human RunningHub v1 版本
-        VideoDriverFactory.register_driver("digital_human_runninghub_v1", DigitalHumanRunninghubV1Driver)
+        VideoDriverFactory.register_driver(DriverImplementation.DIGITAL_HUMAN_RUNNINGHUB_V1, DigitalHumanRunninghubV1Driver)
     except ImportError as e:
         logger.warning(f"Failed to import DigitalHumanRunninghubV1Driver: {e}")
     
     try:
         from .vidu_default_driver import ViduDefaultDriver
         # 注册 Vidu 默认驱动
-        VideoDriverFactory.register_driver("vidu_default", ViduDefaultDriver)
+        VideoDriverFactory.register_driver(DriverImplementation.VIDU_DEFAULT, ViduDefaultDriver)
     except ImportError as e:
         logger.warning(f"Failed to import ViduDefaultDriver: {e}")
     

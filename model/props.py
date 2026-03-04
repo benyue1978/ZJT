@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import logging
 from .database import execute_query, execute_update, execute_insert
+from config.constant import Edition
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +211,10 @@ class PropsModel:
         if other_info is not None:
             update_fields.append("other_info = %s")
             params.append(other_info)
+        
+        if user_id is not None:
+            update_fields.append("user_id = %s")
+            params.append(user_id)
         
         if not update_fields:
             logger.warning(f"No fields to update for props {props_id}")

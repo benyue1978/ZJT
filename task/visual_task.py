@@ -6,8 +6,7 @@ from datetime import datetime, timedelta
 import uuid
 from perseids_client import make_perseids_request
 from config.constant import TASK_COMPUTING_POWER
-import yaml
-from config_util import get_config_path
+from config.config_util import get_dynamic_config_value
 
 from duomi_api_requset import (
     create_ai_image,
@@ -32,7 +31,6 @@ from vidu_api_requset import (
 from model import TasksModel, AIToolsModel, RunningHubSlotsModel
 from config.constant import (
     TASK_TYPE_GENERATE_VIDEO,
-    AUTHENTICATION_ID,
     AI_TOOL_STATUS_PENDING,
     AI_TOOL_STATUS_PROCESSING,
     AI_TOOL_STATUS_COMPLETED,
@@ -47,20 +45,23 @@ from config.constant import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load test mode configuration
-config_path = get_config_path()
-with open(config_path, 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-test_mode_config = config.get("test_mode", {})
-TEST_MODE_ENABLED = test_mode_config.get("enabled", False)
+def _is_test_mode_enabled():
+    """动态获取测试模式状态"""
+    return get_dynamic_config_value("test_mode", "enabled", default=False)
 
-# Load task queue configuration
-task_queue_config = config.get("task_queue", {})
-MAX_RETRY_COUNT = task_queue_config.get("max_retry_count", 30)
-TASK_EXPIRE_DAYS = task_queue_config.get("task_expire_days", 7)
-ENABLE_EXPIRE_CHECK = task_queue_config.get("enable_expire_check", True)
+def _get_max_retry_count():
+    """动态获取最大重试次数"""
+    return get_dynamic_config_value("task_queue", "max_retry_count", default=30)
 
-if TEST_MODE_ENABLED:
+def _get_task_expire_days():
+    """动态获取任务过期天数"""
+    return get_dynamic_config_value("task_queue", "task_expire_days", default=7)
+
+def _is_expire_check_enabled():
+    """动态获取是否启用过期检查"""
+    return get_dynamic_config_value("task_queue", "enable_expire_check", default=True)
+
+if _is_test_mode_enabled():
     logger.info("=" * 60)
     logger.info("TEST MODE ENABLED - Using mock API responses")
     logger.info("=" * 60)
@@ -100,7 +101,7 @@ def _submit_new_task(ai_tool):
     ai_tool_type = ai_tool.type
     task_id = ai_tool.id
     
-    if TEST_MODE_ENABLED:
+    if _is_test_mode_enabled():
         logger.info(f"[TEST MODE] [DRIVER] Submitting task {task_id} (type: {ai_tool_type})")
     
     try:
@@ -209,7 +210,7 @@ def _check_task_status(ai_tool):
         logger.error(f"AI tool {task_id} has no project_id while status=AI_TOOL_STATUS_PROCESSING")
         return False
     
-    if TEST_MODE_ENABLED and isinstance(project_id, str) and project_id.startswith("mock_task_"):
+    if _is_test_mode_enabled() and isinstance(project_id, str) and project_id.startswith("mock_task_"):
         logger.info(f"[TEST MODE] [DRIVER] Checking status for mock task {project_id}")
     
     try:
@@ -360,13 +361,12 @@ def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
         
         if computing_power:
             transaction_id = str(uuid.uuid4())
-            logger.info(f"Refunding {user_id} , {AUTHENTICATION_ID}")
+            logger.info(f"Refunding computing power for user {user_id}")
             success, message, response_data = make_perseids_request(
                 endpoint='get_auth_token_by_user_id',
                 method='POST',
                 data={
-                    "user_id": user_id,
-                    "authentication_id": AUTHENTICATION_ID
+                    "user_id": user_id
                 }
             )
 
@@ -435,14 +435,14 @@ def _check_task_expiration(task):
     Returns:
         bool: True表示任务已过期
     """
-    if not ENABLE_EXPIRE_CHECK:
+    if not _is_expire_check_enabled():
         return False
     
     if not task.created_at:
         return False
     
     task_age = datetime.now() - task.created_at
-    if task_age.days >= TASK_EXPIRE_DAYS:
+    if task_age.days >= _get_task_expire_days():
         logger.warning(f"Task {task.task_id} expired (created {task_age.days} days ago)")
         return True
     
@@ -459,8 +459,8 @@ def _check_max_retry_exceeded(task):
     Returns:
         bool: True表示超过最大重试次数
     """
-    if task.try_count and task.try_count >= MAX_RETRY_COUNT:
-        logger.warning(f"Task {task.task_id} exceeded max retry count ({task.try_count}/{MAX_RETRY_COUNT})")
+    if task.try_count and task.try_count >= _get_max_retry_count():
+        logger.warning(f"Task {task.task_id} exceeded max retry count ({task.try_count}/{_get_max_retry_count()})")
         return True
     
     return False
@@ -505,7 +505,7 @@ def process_task_with_retry(task_type, process_func):
                     
                     # 释放 RunningHub 槽位
                     ai_tool = AIToolsModel.get_by_id(task.task_id)
-                    if ai_tool and ai_tool.type in [10, 11]:
+                    if ai_tool and ai_tool.type in RUNNINGHUB_TASK_TYPES:
                         if ai_tool.project_id:
                             RunningHubSlotsModel.release_slot_by_project_id(ai_tool.project_id)
                         else:
@@ -519,7 +519,7 @@ def process_task_with_retry(task_type, process_func):
                 if _check_max_retry_exceeded(task):
                     # 标记任务为失败
                     TasksModel.update_by_task_id(task.task_id, status=TASK_STATUS_FAILED)
-                    AIToolsModel.update(task.task_id, status=AI_TOOL_STATUS_FAILED, message=f"超过最大重试次数({MAX_RETRY_COUNT})")
+                    AIToolsModel.update(task.task_id, status=AI_TOOL_STATUS_FAILED, message=f"超过最大重试次数({_get_max_retry_count()})")
                     
                     # 获取 AI 工具详情用于退还算力和释放槽位
                     ai_tool = AIToolsModel.get_by_id(task.task_id)
@@ -533,8 +533,7 @@ def process_task_with_retry(task_type, process_func):
                                     endpoint='get_auth_token_by_user_id',
                                     method='POST',
                                     data={
-                                        "user_id": ai_tool.user_id,
-                                        "authentication_id": AUTHENTICATION_ID
+                                        "user_id": ai_tool.user_id
                                     }
                                 )
                                 if success:
@@ -556,7 +555,7 @@ def process_task_with_retry(task_type, process_func):
                             logger.error(f"Failed to refund computing power for task {task.task_id}: {e}")
                         
                         # 释放 RunningHub 槽位
-                        if ai_tool.type in [10, 11, 13]:
+                        if ai_tool.type in RUNNINGHUB_TASK_TYPES:
                             if ai_tool.project_id:
                                 RunningHubSlotsModel.release_slot_by_project_id(ai_tool.project_id)
                             else:

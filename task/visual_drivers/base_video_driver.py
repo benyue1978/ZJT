@@ -5,9 +5,44 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import logging
+import os
+import json
+import traceback
+from datetime import datetime
 import requests
+from .exceptions import DriverConfigError
 
 logger = logging.getLogger(__name__)
+
+
+def _setup_api_logger():
+    """设置 API 请求日志记录器"""
+    api_logger = logging.getLogger("api_requests")
+    if not api_logger.handlers:
+        # 确保 logs 目录存在
+        log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+
+        # 创建文件处理器
+        file_handler = logging.FileHandler(
+            os.path.join(log_dir, "api_requests.log"),
+            encoding="utf-8"
+        )
+        file_handler.setLevel(logging.INFO)
+
+        # 设置日志格式
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler.setFormatter(formatter)
+        api_logger.addHandler(file_handler)
+        api_logger.setLevel(logging.INFO)
+
+    return api_logger
+
+
+# 初始化 API 日志记录器
+api_logger = _setup_api_logger()
 
 
 class BaseVideoDriver(ABC):
@@ -135,31 +170,95 @@ class BaseVideoDriver(ABC):
         """
         pass
     
-    def _request(self, url: str, method: str = "POST", json: dict = None, headers: dict = None) -> dict:
+    def _request(self, url: str, method: str = "POST", json: dict = None, headers: dict = None, **kwargs) -> dict:
         """
         统一 HTTP 请求方法。所有外部 API 调用都通过此方法。
-        
+        请求和响应会记录到 logs/api_requests.log
+
         Args:
             url: 请求URL
             method: HTTP方法，默认POST
             json: 请求体（JSON格式）
             headers: 请求头
-        
+
         Returns:
             dict: API响应的JSON数据
-        
+
         Raises:
             requests.RequestException: 请求失败时抛出
         """
-        self.logger.info(f"[{self.driver_name}] {method} {url}")
-        self.logger.info(f"[{self.driver_name}] Payload: {json}")
-        
-        response = requests.request(method, url, json=json, headers=headers)
-        response.raise_for_status()
-        result = response.json()
-        
-        self.logger.info(f"[{self.driver_name}] Response: {result}")
-        return result
+        # 记录请求日志
+        request_time = datetime.now().isoformat()
+        api_logger.info(f"========== API 请求开始 ==========")
+        api_logger.info(f"Driver: {self.driver_name}")
+        api_logger.info(f"Time: {request_time}")
+        api_logger.info(f"Method: {method}")
+        api_logger.info(f"URL: {url}")
+        api_logger.info(f"Headers: {self._mask_sensitive_headers(headers)}")
+        api_logger.info(f"Payload: {self._mask_sensitive_payload(json)}")
+
+        try:
+            response = requests.request(method, url, json=json, headers=headers, **kwargs)
+            response_time = datetime.now().isoformat()
+
+            # 记录响应日志
+            api_logger.info(f"Response Time: {response_time}")
+            api_logger.info(f"Status Code: {response.status_code}")
+            api_logger.info(f"Response Headers: {dict(response.headers)}")
+
+            try:
+                result = response.json()
+                api_logger.info(f"Response Body: {result}")
+            except:
+                result = {}
+                api_logger.info(f"Response Body (raw): {response.text[:1000]}")
+
+            api_logger.info(f"========== API 请求结束 ==========")
+
+            response.raise_for_status()
+            return result
+
+        except Exception as e:
+            api_logger.error(f"Request Error: {str(e)}")
+            api_logger.error(f"Traceback: {traceback.format_exc()}")
+            api_logger.info(f"========== API 请求失败 ==========")
+            raise
+
+    def _mask_sensitive_headers(self, headers: dict) -> dict:
+        """脱敏请求头中的敏感信息"""
+        if not headers:
+            return {}
+        masked = headers.copy()
+        for key in masked:
+            if key.lower() in ["authorization", "x-api-key", "api-key"]:
+                value = masked[key]
+                if len(value) > 20:
+                    masked[key] = value[:10] + "***" + value[-4:]
+                else:
+                    masked[key] = "***"
+        return masked
+
+    def _mask_sensitive_payload(self, payload: dict) -> dict:
+        """脱敏请求体中的敏感信息（递归处理嵌套字典）"""
+        if not payload:
+            return {}
+
+        sensitive_keys = ["apikey", "api_key", "secret", "password", "token", "key"]
+        masked = {}
+        for key, value in payload.items():
+            if key.lower() in sensitive_keys:
+                str_value = str(value)
+                if len(str_value) > 10:
+                    masked[key] = str_value[:4] + "***" + str_value[-4:]
+                else:
+                    masked[key] = "***"
+            elif isinstance(value, dict):
+                masked[key] = self._mask_sensitive_payload(value)
+            elif isinstance(value, list):
+                masked[key] = [self._mask_sensitive_payload(item) if isinstance(item, dict) else item for item in value]
+            else:
+                masked[key] = value
+        return masked
     
     @abstractmethod
     def build_create_request(self, ai_tool) -> Dict[str, Any]:
@@ -231,6 +330,26 @@ class BaseVideoDriver(ABC):
             }
         """
         pass
+    
+    def _validate_required(self, configs: Dict[str, str]) -> None:
+        """
+        验证必要配置是否存在
+        
+        Args:
+            configs: 配置字典，格式为 {"配置名称": 配置值}
+        
+        Raises:
+            DriverConfigError: 当有配置缺失时抛出
+        
+        Example:
+            self._validate_required({
+                "Duomi API Token": self._token,
+                "RunningHub API Key": self._api_key,
+            })
+        """
+        missing = [name for name, value in configs.items() if not value]
+        if missing:
+            raise DriverConfigError(self.driver_name, missing)
     
     def validate_parameters(self, ai_tool) -> tuple[bool, Optional[str]]:
         """

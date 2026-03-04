@@ -3,11 +3,10 @@ Gemini 多米供应商 v1 版本驱动实现（标准版）
 """
 from typing import Dict, Any, Optional
 import traceback
-import os
-import yaml
 from .base_video_driver import BaseVideoDriver
-from config_util import get_config_path
+from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
 
 class GeminiDuomiV1Driver(BaseVideoDriver):
@@ -20,21 +19,22 @@ class GeminiDuomiV1Driver(BaseVideoDriver):
         super().__init__(driver_name="gemini_duomi_v1", driver_type=1)
         
         # 加载配置
-        config_path = get_config_path()
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-        
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-        
-        self._token = config["duomi"]["token"]
+        self._token = get_dynamic_config_value("duomi", "token", default="")
         self._base_url = "https://duomiapi.com"
-        self._timeout = config["timeout"]["request_timeout"]
+        self._timeout = get_dynamic_config_value("timeout", "request_timeout", default=30)
+
+        # 是否为本地环境
+        self._is_local = get_dynamic_config_value("server", "is_local", default=False)
+        self._config = get_config()
+        
+        self._validate_required({
+            "Duomi API Token": self._token,
+        })
     
     def _send_alert(self, alert_type: str, message: str, context: Optional[Dict[str, Any]] = None):
         """
         发送报警信息
-        
+
         Args:
             alert_type: 报警类型，如 "INVALID_RESPONSE_FORMAT", "UNEXPECTED_EXCEPTION"
             message: 报警消息
@@ -46,7 +46,7 @@ class GeminiDuomiV1Driver(BaseVideoDriver):
             level=AlertLevel.ERROR,
             context=context
         )
-    
+
     def _validate_submit_response(self, result: Any) -> tuple[bool, Optional[str]]:
         """
         验证 submit_task API 响应格式
@@ -149,10 +149,10 @@ class GeminiDuomiV1Driver(BaseVideoDriver):
     def build_create_request(self, ai_tool) -> Dict[str, Any]:
         """
         构建创建 Gemini 任务的完整请求参数
-        
+
         Args:
             ai_tool: AITool 对象
-        
+
         Returns:
             Dict[str, Any]: 请求参数字典
         """
@@ -161,7 +161,13 @@ class GeminiDuomiV1Driver(BaseVideoDriver):
             image_urls = ai_tool.image_path.split(',') if ',' in ai_tool.image_path else [ai_tool.image_path]
         else:
             image_urls = None
-        
+
+        # 如果是本地环境，将本地图片上传到图床
+        if self._is_local and image_urls:
+            self.logger.info(f"本地环境检测到图片路径，准备上传到图床: {image_urls}")
+            image_urls = upload_local_images_to_cdn_sync(image_urls, self._config)
+            self.logger.info(f"图片上传完成，CDN链接: {image_urls}")
+
         payload = {
             "model": "gemini-2.5-pro-image-preview",
             "prompt": ai_tool.prompt,
@@ -169,7 +175,7 @@ class GeminiDuomiV1Driver(BaseVideoDriver):
             "image_urls": image_urls,
             "image_size": ai_tool.image_size or "1K"
         }
-        
+
         return {
             "url": f"{self._base_url}/api/gemini/nano-banana-edit",
             "method": "POST",

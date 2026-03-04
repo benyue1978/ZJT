@@ -1,17 +1,9 @@
-import os
-import yaml
 from openai import OpenAI
-from config_util import get_config_path
+from config.config_util import get_config_value
 
-APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-config_file = get_config_path()
-with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-
-qwen_config = config.get('llm', {}).get('qwen', {})
-API_KEY = qwen_config.get('api_key')
-BASE_URL = qwen_config.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1")
-DEFAULT_MODEL = qwen_config.get('model', "qwen-plus")
+API_KEY = get_config_value('llm', 'qwen', 'api_key', default='')
+BASE_URL = get_config_value('llm', 'qwen', 'base_url', default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+DEFAULT_MODEL = get_config_value('llm', 'qwen', 'model', default="qwen-plus")
 
 
 def call_qwen_chat(messages, model=None, temperature=0.7, max_tokens=None):

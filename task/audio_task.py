@@ -4,18 +4,9 @@ Video generation task processing
 import logging
 from datetime import datetime, timedelta
 import uuid
-from perseids_client import make_perseids_request
-from config.constant import TASK_COMPUTING_POWER
-
-from duomi_api_requset import (
-    create_ai_image,
-    create_image_to_video,
-    get_ai_task_result,
-)
 from model import TasksModel, AIAudioModel
 from config.constant import (
     TASK_TYPE_GENERATE_AUDIO,
-    AUTHENTICATION_ID,
     AI_AUDIO_STATUS_PENDING,
     AI_AUDIO_STATUS_PROCESSING,
     AI_AUDIO_STATUS_COMPLETED,
@@ -27,23 +18,25 @@ from config.constant import (
 )
 from utils.index_tts_util import generate_audio, validate_emotion_vector
 import os
-import yaml
-from config_util import get_config_path
+from config.config_util import get_dynamic_config_value
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load task queue configuration
-config_path = get_config_path()
-with open(config_path, 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
-task_queue_config = config.get("task_queue", {})
-MAX_RETRY_COUNT = task_queue_config.get("max_retry_count", 30)
-TASK_EXPIRE_DAYS = task_queue_config.get("task_expire_days", 7)
-ENABLE_EXPIRE_CHECK = task_queue_config.get("enable_expire_check", True)
+def _get_max_retry_count():
+    """动态获取最大重试次数"""
+    return get_dynamic_config_value("task_queue", "max_retry_count", default=30)
+
+def _get_task_expire_days():
+    """动态获取任务过期天数"""
+    return get_dynamic_config_value("task_queue", "task_expire_days", default=7)
+
+def _is_expire_check_enabled():
+    """动态获取是否启用过期检查"""
+    return get_dynamic_config_value("task_queue", "enable_expire_check", default=True)
 
 # Get upload directory path
-UPLOAD_DIR = "/nas/comfyui_upload/tts/result_audio/"
+UPLOAD_DIR = "/home/appuser/comfyui_upload/tts/result_audio/"
 
 
 async def _submit_new_task(ai_audio):
@@ -137,9 +130,10 @@ async def _submit_new_task(ai_audio):
         audio_file_path = audio_path_or_error or result_path
         
         logger.info(f"Task {task_id}: Audio saved to {audio_file_path}")
-        
+        upload_url = get_dynamic_config_value("tts", "upload_url")
+        result_url = f"{upload_url}{audio_filename}"
         # Update database with result
-        AIAudioModel.update(task_id, status=AI_AUDIO_STATUS_COMPLETED, result_url=result_path, message="音频生成成功")
+        AIAudioModel.update(task_id, status=AI_AUDIO_STATUS_COMPLETED, result_url=result_url, message="音频生成成功")
         TasksModel.update_by_task_id(task_id, status=TASK_STATUS_COMPLETED)
         
         logger.info(f"Task {task_id}: Audio generation completed successfully")
@@ -178,14 +172,14 @@ def _check_task_expiration(task):
     Returns:
         bool: True表示任务已过期
     """
-    if not ENABLE_EXPIRE_CHECK:
+    if not _is_expire_check_enabled():
         return False
     
     if not task.created_at:
         return False
     
     task_age = datetime.now() - task.created_at
-    if task_age.days >= TASK_EXPIRE_DAYS:
+    if task_age.days >= _get_task_expire_days():
         logger.warning(f"Task {task.task_id} expired (created {task_age.days} days ago)")
         return True
     
@@ -202,8 +196,8 @@ def _check_max_retry_exceeded(task):
     Returns:
         bool: True表示超过最大重试次数
     """
-    if task.try_count and task.try_count >= MAX_RETRY_COUNT:
-        logger.warning(f"Task {task.task_id} exceeded max retry count ({task.try_count}/{MAX_RETRY_COUNT})")
+    if task.try_count and task.try_count >= _get_max_retry_count():
+        logger.warning(f"Task {task.task_id} exceeded max retry count ({task.try_count}/{_get_max_retry_count()})")
         return True
     
     return False
@@ -274,7 +268,7 @@ async def process_task_with_retry(task_type, process_func):
                 # 检查是否超过最大重试次数
                 if _check_max_retry_exceeded(task):
                     TasksModel.update_by_task_id(task.task_id, status=TASK_STATUS_FAILED)
-                    AIAudioModel.update(task.task_id, status=AI_AUDIO_STATUS_FAILED, message=f"超过最大重试次数({MAX_RETRY_COUNT})")
+                    AIAudioModel.update(task.task_id, status=AI_AUDIO_STATUS_FAILED, message=f"超过最大重试次数({_get_max_retry_count()})")
                     expired_count += 1
                     logger.info(f"Task {task.task_id} marked as failed due to max retry exceeded")
                     continue

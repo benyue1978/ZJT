@@ -22,9 +22,12 @@ from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import mimetypes
 from pydantic import BaseModel
 from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
-from config_util import get_config_path
+from config.config_util import get_config_path, resolve_bin_path
 from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
+from model.users import UsersModel, User
+from model.user_tokens import UserTokensModel
+from model.computing_power import ComputingPowerModel
 from model.world import WorldModel
 from model.character import CharacterModel
 from model.location import LocationModel
@@ -35,12 +38,15 @@ from duomi_api_requset import create_video_remix, create_character as create_cha
 from PIL import Image
 from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
+from model.migration import run_migrations, get_alembic_config
 from config.constant import (
-    TASK_COMPUTING_POWER, 
+    TaskTypeRegistry,
+    TaskCategory,
+    TaskProvider,
+    TaskTypeId,
     TASK_TYPE_GENERATE_VIDEO, 
     TASK_TYPE_GENERATE_AUDIO, 
     RECHARGE_PACKAGES, 
-    AUTHENTICATION_ID, 
     VIDEO_MODEL_DURATION_OPTIONS,
     AI_TOOL_STATUS_PENDING,
     AI_TOOL_STATUS_PROCESSING,
@@ -54,21 +60,23 @@ from config.constant import (
     TASK_STATUS_PROCESSING,
     TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
-IMAGE_TO_VIDEO_TYPES,
-    IMAGE_EDIT_TYPES,
-    TASK_TYPE_NAME_MAP,
     GRID_SIZE_2X2,
     GRID_SIZE_3X3,
     GRID_VALID_SIZES,
     GRID_DEFAULT_SIZE_BY_TYPE,
     GRID_LOCK_TIMEOUT_SECONDS,
-    GRID_IMAGE_DOWNLOAD_TIMEOUT
+    GRID_IMAGE_DOWNLOAD_TIMEOUT,
+    FilePathConstants
 )
 from utils.wechat_pay_util import WechatPayUtil
+from config.constant import Edition, Action
 from utils.image_grid_splitter import ImageGridSplitter
 from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
 from utils import file_lock
+from perseids_server.utils.permission import require_permission, admin_required
+from api.admin import router as admin_router
+from api.system import router as system_router
 
 def _get_user_id_from_header(user_id: Optional[int]) -> int:
     if user_id is None:
@@ -97,6 +105,12 @@ def _write_and_validate_image(content: bytes, save_path: str):
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
         raise
+
+
+def _sync_write_file(file_path: str, content: bytes):
+    """同步写入文件（需在线程池中调用）"""
+    with open(file_path, 'wb') as f:
+        f.write(content)
 
 
 async def _validate_image_size(file: UploadFile, max_size_bytes: int = None) -> tuple[bool, str]:
@@ -130,13 +144,55 @@ async def _validate_image_size(file: UploadFile, max_size_bytes: int = None) -> 
     return True, ""
 
 
-def _ensure_world_owner(world_id: int, user_id: int):
+def _check_resource_permission(resource, user_id: int, action: str) -> bool:
+    """
+    统一资源权限检查
+    
+    Args:
+        resource: 资源对象（world, workflow, character等）
+        user_id: 用户ID
+        action: 操作类型 'view' | 'edit' | 'delete'
+    
+    Returns:
+        bool: 是否有权限
+    """
+    if Edition.is_community():
+        if action == Action.DELETE:
+            return getattr(resource, 'user_id', None) == user_id
+        return True
+    else:
+        return getattr(resource, 'user_id', None) == user_id
+
+
+def _ensure_resource_access(resource, user_id: int, action: str, resource_name: str = "资源"):
+    """
+    确保用户有权限访问资源，无权限则抛出异常
+    
+    Args:
+        resource: 资源对象
+        user_id: 用户ID
+        action: 操作类型 'view' | 'edit' | 'delete'
+        resource_name: 资源名称（用于错误提示）
+    
+    Returns:
+        resource: 原资源对象
+    
+    Raises:
+        HTTPException: 无权限时抛出403异常
+    """
+    if not _check_resource_permission(resource, user_id, action):
+        if action == Action.DELETE:
+            raise HTTPException(status_code=403, detail=f"仅创建者可删除该{resource_name}")
+        raise HTTPException(status_code=403, detail=f"无权访问该{resource_name}")
+    return resource
+
+
+def _ensure_world_access(world_id: int, user_id: int, action: str = Action.VIEW):
+    """检查用户对世界的访问权限"""
     world = WorldModel.get_by_id(world_id)
     if not world:
         raise HTTPException(status_code=404, detail="世界不存在")
-    if getattr(world, 'user_id', None) != user_id:
-        raise HTTPException(status_code=403, detail="无权访问该世界")
-    return world
+    return _ensure_resource_access(world, user_id, action, "世界")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(APP_DIR, "upload")
@@ -146,37 +202,57 @@ MP_VERIFY_ROUTE = "/MP_verify_lXQewBFqjUipl3B8.txt"
 
 
 # Load server configuration
-import yaml
-config_file = get_config_path()
-with open(os.path.join(APP_DIR, config_file), 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f)
+from config.config_util import get_config, get_config_value, get_dynamic_config_value
+
+
 # Choose appropriate host based on HTTPS configuration
-https_config = config["server"].get("https", {})
-if https_config.get("enabled", False) and "https_host" in config["server"]:
-    SERVER_HOST = config["server"]["https_host"]
-else:
-    SERVER_HOST = config["server"]["host"]
-API_KEY = config["runninghub"]["api_key"]
+https_enabled = get_config_value("server", "https", "enabled", default=False)
+if https_enabled:
+    SERVER_HOST = get_config_value("server", "https_host", default="")
+if not https_enabled or not SERVER_HOST:
+    SERVER_HOST = get_config_value("server", "host", default="0.0.0.0")
+API_KEY = get_dynamic_config_value("runninghub", "api_key", default="")
 
-SCRIPT_WRITER_URL = config["script_writer"]["url"]
+SCRIPT_WRITER_URL = get_config_value("script_writer", "url", default="")
 
-# 上传文件大小限制配置（单位：MB）
-MAX_IMAGE_SIZE_MB = config.get("upload", {}).get("max_image_size_mb", 10)
+def _get_max_image_size_mb():
+    """动态获取上传图片最大大小配置（MB）"""
+    return get_dynamic_config_value("upload", "max_image_size_mb", default=10)
+
+def _get_max_image_size_bytes():
+    """动态获取上传图片最大大小（字节）"""
+    return _get_max_image_size_mb() * 1024 * 1024
+
+# 兼容旧代码，默认值用于静态引用
+MAX_IMAGE_SIZE_MB = 10
 MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
 
-# 初始化微信支付工具
-wechat_pay_config = config.get("pay", {}).get("wxpay", {})
-wechat_pay_util = WechatPayUtil(
-    app_id=wechat_pay_config.get("appId"),
-    mch_id=wechat_pay_config.get("mchId"),
-    api_key=wechat_pay_config.get("api_key"),
-    APIv3_key=wechat_pay_config.get("APIv3_key")
-)
+def _get_wechat_pay_util():
+    """动态获取微信支付工具实例"""
+    return WechatPayUtil(
+        app_id=get_dynamic_config_value("pay", "wxpay", "appId", default=""),
+        mch_id=get_dynamic_config_value("pay", "wxpay", "mchId", default=""),
+        api_key=get_dynamic_config_value("pay", "wxpay", "api_key", default=""),
+        APIv3_key=get_dynamic_config_value("pay", "wxpay", "APIv3_key", default="")
+    )
+
+# 兼容旧代码，初始化时创建一个实例
+wechat_pay_util = _get_wechat_pay_util()
 
 # Default ComfyUI server address; can be overridden by request field
 DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
 
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
+
+# 导入并注册 script_writer API 路由
+from script_writer_api import router as script_writer_router
+app.include_router(script_writer_router)
+
+# 注册管理员 API 路由
+app.include_router(admin_router)
+
+# 注册系统状态 API 路由
+app.include_router(system_router)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -187,6 +263,7 @@ SentryUtil.init_from_env()
 
 # Register all video drivers
 from task.visual_drivers import register_all_drivers
+from task.visual_drivers.driver_factory import VideoDriverFactory
 register_all_drivers()
 logger.info("Video drivers registered successfully")
 
@@ -208,7 +285,8 @@ def _normalize_server(server: str) -> str:
 
 
 @app.get("/api/config/upload")
-async def get_upload_config():
+@require_permission("config:view_upload")
+async def get_upload_config(request: Request):
     """
     获取上传文件配置
     """
@@ -222,19 +300,66 @@ async def get_upload_config():
 
 
 @app.get("/api/config/debug-password")
-async def get_debug_password():
+@require_permission("config:view_debug_password")
+async def get_debug_password(request: Request):
     """
     获取前端 Debug 模式密码
     """
-    debug_password = config.get('frontend', {}).get('debug_password', 'debug123')
+    debug_password = get_dynamic_config_value('frontend', 'debug_password', default='debug123')
     return JSONResponse({
         "success": True,
         "password": debug_password
     })
 
 
+@app.get("/api/config/value")
+@require_permission("config:view")
+async def get_config_by_key(
+    request: Request,
+    key: str = Query(..., description="配置键，如 workflow.poll_status_interval")
+):
+    """
+    通用配置获取接口
+    根据 config/default_configs.py 中定义的 key 获取配置值
+    """
+    from config.default_configs import get_default_config_by_key
+    
+    # 检查是否是已定义的配置项
+    config_def = get_default_config_by_key(key)
+    if not config_def:
+        return JSONResponse(
+            status_code=400,
+            content={"code": -1, "message": f"未定义的配置项: {key}"}
+        )
+    
+    # 敏感配置不允许通过此接口获取
+    if config_def.get('is_sensitive'):
+        return JSONResponse(
+            status_code=403,
+            content={"code": -1, "message": "敏感配置不允许通过此接口获取"}
+        )
+    
+    # 从数据库读取动态配置（优先数据库，降级到 YAML）
+    from config.config_util import get_dynamic_config_value
+    keys = key.split('.')
+    value = get_dynamic_config_value(*keys, default=None)
+    
+    return JSONResponse({
+        "code": 0,
+        "message": "success",
+        "data": {
+            "key": key,
+            "value": value,
+            "value_type": config_def.get('value_type', 'string'),
+            "description": config_def.get('description')
+        }
+    })
+
+
 @app.get("/api/download")
+@require_permission("file:download")
 async def download_image(
+    request: Request,
     url: str = Query(..., description="Media URL to download"),
     filename: str = Query(None, description="Custom filename")
 ):
@@ -289,7 +414,8 @@ async def download_image(
 
 
 @app.get("/api/proxy-image")
-async def proxy_image(url: str = Query(..., description="Image URL to proxy")):
+@require_permission("file:proxy_image")
+async def proxy_image(request: Request, url: str = Query(..., description="Image URL to proxy")):
     """
     Proxy image requests to avoid CORS issues in Electron
     """
@@ -419,11 +545,10 @@ def _get_local_upload_file(asset_url: Optional[str], origin: Optional[str]) -> O
 
 def _save_uploaded_audio(upload_file: UploadFile) -> str:
     """
-    Save uploaded audio to /nas/comfyui_upload/tts/tmp_ref_audio directory and return the file path
+    Save uploaded audio to files/tmp/tts/tmp_ref_audio directory and return the file path
     """
-    # Ensure audio upload directory exists
-    audio_dir = "/nas/comfyui_upload/tts/tmp_ref_audio"
-    os.makedirs(audio_dir, exist_ok=True)
+    # Get audio directory (auto-creates if not exists)
+    audio_dir = FilePathConstants.get_tts_audio_dir(APP_DIR)
     
     # Generate unique filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -456,8 +581,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
         Exception: If audio processing fails
     """
     try:
-        ffmpeg_path = config.get("bin", {}).get("ffmpeg", "ffmpeg")
-        ffprobe_path = config.get("bin", {}).get("ffprobe", "ffprobe")
+        ffmpeg_path = resolve_bin_path(get_config_value("bin", "ffmpeg", default="ffmpeg"), APP_DIR)
+        ffprobe_path = resolve_bin_path(get_config_value("bin", "ffprobe", default="ffprobe"), APP_DIR)
         
         # Check audio duration using ffprobe
         duration_cmd = [
@@ -471,6 +596,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
             duration_cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='ignore',
             timeout=10
         )
         
@@ -506,6 +633,8 @@ def _trim_audio_if_needed(audio_path: str, max_duration: float = 20.0) -> str:
             trim_cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='ignore',
             timeout=30
         )
         
@@ -583,8 +712,9 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
         
         # Check video duration using ffprobe (async subprocess)
         try:
+            ffprobe_path = resolve_bin_path(config.get("bin", {}).get("ffprobe", "ffprobe"), APP_DIR)
             duration_cmd = [
-                'ffprobe', '-v', 'error',
+                ffprobe_path, '-v', 'error',
                 '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 video_path
@@ -597,7 +727,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
                 if proc.returncode == 0:
-                    duration = float(stdout.decode().strip())
+                    duration = float(stdout.decode('utf-8', errors='ignore').strip())
                     logger.info(f"Video duration: {duration:.2f}s")
                     
                     if duration > 20:
@@ -606,7 +736,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
                             detail=f"视频时长过长: {duration:.1f}秒, 限制为20秒"
                         )
                 else:
-                    logger.warning(f"Failed to get video duration: {stderr.decode()}")
+                    logger.warning(f"Failed to get video duration: {stderr.decode('utf-8', errors='ignore')}")
             except asyncio.TimeoutError:
                 proc.kill()
                 logger.warning("ffprobe timeout when checking duration")
@@ -614,8 +744,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
             logger.warning(f"Error checking video duration: {e}")
         
         # Extract audio using ffmpeg (async subprocess)
-        audio_dir = "/nas/comfyui_upload/tts/tmp_ref_audio"
-        os.makedirs(audio_dir, exist_ok=True)
+        audio_dir = FilePathConstants.get_tts_audio_dir(APP_DIR)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
@@ -625,8 +754,9 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
         logger.info(f"Extracting audio to: {audio_path}")
         
         # Use ffmpeg to extract audio
+        ffmpeg_path = resolve_bin_path(get_config_value("bin", "ffmpeg", default="ffmpeg"), APP_DIR)
         ffmpeg_cmd = [
-            'ffmpeg', '-i', video_path,
+            ffmpeg_path, '-i', video_path,
             '-vn',  # No video
             '-acodec', 'pcm_s16le',  # PCM 16-bit
             '-ar', '44100',  # Sample rate 44.1kHz
@@ -651,7 +781,7 @@ async def _download_and_extract_audio_from_video(video_url: str) -> str:
             )
         
         if proc.returncode != 0:
-            error_msg = stderr.decode()[:200] if stderr else "Unknown error"
+            error_msg = stderr.decode('utf-8', errors='ignore')[:200] if stderr else "Unknown error"
             logger.error(f"ffmpeg error: {error_msg}")
             raise HTTPException(
                 status_code=500,
@@ -778,7 +908,9 @@ def _concatenate_images(upload_files: List[UploadFile]) -> str:
 
 
 @app.post("/api/image-edit")
+@require_permission("image:edit")
 async def image_edit(
+    request: Request,
     image: List[UploadFile] = File(default=None),
     prompt: str = Form(...),
     ratio: str = Form("9:16", description="Model type: 9:16, 16:9, 1:1 ,3:4, 4:3"),
@@ -805,12 +937,15 @@ async def image_edit(
             )
 
         #用uuid生成交易id
-        image_edit_type = 1
+        image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
         if model == "gemini-2.5-pro-image-preview":
-            image_edit_type = 1
+            image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
         elif model == "gemini-3-pro-image-preview":
-            image_edit_type = 7
-        computing_power = TASK_COMPUTING_POWER[image_edit_type]
+            image_edit_type = TaskTypeId.GEMINI_3_PRO_IMAGE
+        
+        # 从注册表获取算力配置
+        task_config = TaskTypeRegistry.get(image_edit_type)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
@@ -921,7 +1056,9 @@ async def image_edit(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/text-to-image")
+@require_permission("image:text_to_image")
 async def text_to_image(
+    request: Request,
     prompt: str = Form(...),
     model: str = Form("gemini-2.5-pro-image-preview", description="Model type: gemini-3-pro-image-preview, gemini-2.5-pro-image-preview"),
     aspect_ratio: str = Form("9:16", description="Aspect ratio: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9"),
@@ -941,11 +1078,13 @@ async def text_to_image(
             )
 
         # Determine computing power based on model
-        text_to_image_type = 1  # gemini-2.5-pro-image-preview: 2算力
+        text_to_image_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE  # gemini-2.5-pro-image-preview: 2算力
         if model == "gemini-3-pro-image-preview":
-            text_to_image_type = 7  # gemini-3-pro-image-preview: 6算力
+            text_to_image_type = TaskTypeId.GEMINI_3_PRO_IMAGE  # gemini-3-pro-image-preview: 6算力
         
-        computing_power = TASK_COMPUTING_POWER[text_to_image_type]
+        # 从注册表获取算力配置
+        task_config = TaskTypeRegistry.get(text_to_image_type)
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1032,7 +1171,9 @@ async def text_to_image(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/runninghub-status/{project_id}")
+@require_permission("image:view_status")
 async def runninghub_status(
+    request: Request,
     project_id: str,
     auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
 ):
@@ -1097,7 +1238,8 @@ async def runninghub_status(
                     raise HTTPException(status_code=400, detail="用户ID不匹配")
                 #发起请求，增加算力
                 type = task_record.type
-                computing_power = TASK_COMPUTING_POWER[type]
+                task_config = TaskTypeRegistry.get(type)
+                computing_power = task_config.computing_power if task_config else 0
                 success, message, response_data = await async_make_perseids_request(
                     endpoint='user/calculate_computing_power',
                     method='POST',
@@ -1128,7 +1270,9 @@ async def runninghub_status(
 
 
 @app.get("/api/get-status/{ai_tool_id}")
+@require_permission("video:view_status")
 async def get_status(
+    request: Request,
     ai_tool_id: str,
     auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
 ):
@@ -1205,7 +1349,9 @@ async def get_status(
 
 
 @app.post("/api/ai-app-run")
+@require_permission("image:ai_app_run")
 async def ai_app_run(
+    request: Request,
     prompt: str = Form(..., description="Text prompt for the AI app"),
     ratio: str = Form("9:16", description="Model type: 9:16, 16:9"),
     duration_seconds: int = Form(15, description="Duration in seconds"),
@@ -1223,7 +1369,8 @@ async def ai_app_run(
                 status_code=400, 
                 detail="Authentication token is required"
             )
-        computing_power = TASK_COMPUTING_POWER[2]
+        task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             #发起请求，检查算力是否充足
@@ -1312,7 +1459,9 @@ async def ai_app_run(
         raise HTTPException(status_code=500, detail=f"Failed to submit AI app task: {str(e)}")
 
 @app.post("/api/ai-app-run-image")
+@require_permission("image:ai_app_run")
 async def ai_app_run_image(
+    request: Request,
     prompt: str = Form(..., description="Text prompt for the AI app"),
     images: List[UploadFile] = File(None, description="Image files for the AI app (1-5 images)"),
     image_urls: str = Form(None, description="Comma-separated image URLs (alternative to uploading files)"),
@@ -1417,29 +1566,41 @@ async def ai_app_run_image(
 
         # Determine task type and computing power based on video_model
         if video_model == "ltx2":
-            task_type = 10  # LTX2.0 图生视频
-            computing_power = TASK_COMPUTING_POWER[task_type]
+            task_type = TaskTypeId.LTX2_IMAGE_TO_VIDEO  # LTX2.0 图生视频
+            task_config = TaskTypeRegistry.get(task_type)
+            computing_power = task_config.computing_power if task_config else 0
         elif video_model == "wan22":
-            task_type = 11  # Wan2.2 图生视频
-            # Wan2.2根据时长区分算力：5秒=12，10秒=24
-            wan22_power_map = TASK_COMPUTING_POWER[task_type]
-            computing_power = wan22_power_map.get(duration_seconds, 12)
+            task_type = TaskTypeId.WAN22_IMAGE_TO_VIDEO  # Wan2.2 图生视频
+            # Wan2.2根据时长区分算力
+            task_config = TaskTypeRegistry.get(task_type)
+            if task_config and isinstance(task_config.computing_power, dict):
+                computing_power = task_config.computing_power.get(duration_seconds, 6)
+            else:
+                computing_power = 0
         elif video_model == "kling":
-            task_type = 12  # 可灵图生视频
-            # 可灵根据时长区分算力：5秒=38，10秒=55
-            kling_power_map = TASK_COMPUTING_POWER[task_type]
-            computing_power = kling_power_map.get(duration_seconds, 38)
+            task_type = TaskTypeId.KLING_IMAGE_TO_VIDEO  # 可灵图生视频
+            # 可灵根据时长区分算力
+            task_config = TaskTypeRegistry.get(task_type)
+            if task_config and isinstance(task_config.computing_power, dict):
+                computing_power = task_config.computing_power.get(duration_seconds, 38)
+            else:
+                computing_power = 0
         elif video_model == "vidu":
-            task_type = 14  # Vidu 图生视频
-            # Vidu根据时长区分算力：5秒=16
-            vidu_power_map = TASK_COMPUTING_POWER[task_type]
-            computing_power = vidu_power_map.get(duration_seconds, 16)
+            task_type = TaskTypeId.VIDU_IMAGE_TO_VIDEO  # Vidu 图生视频
+            # Vidu根据时长区分算力
+            task_config = TaskTypeRegistry.get(task_type)
+            if task_config and isinstance(task_config.computing_power, dict):
+                computing_power = task_config.computing_power.get(duration_seconds, 16)
+            else:
+                computing_power = 0
         elif video_model == "veo3":
-            task_type = 15  # VEO3 图生视频
-            computing_power = TASK_COMPUTING_POWER[task_type]
+            task_type = TaskTypeId.VEO3_IMAGE_TO_VIDEO  # VEO3 图生视频
+            task_config = TaskTypeRegistry.get(task_type)
+            computing_power = task_config.computing_power if task_config else 0
         else:
-            task_type = 3   # Sora2 图生视频
-            computing_power = TASK_COMPUTING_POWER[task_type]
+            task_type = TaskTypeId.SORA2_IMAGE_TO_VIDEO   # Sora2 图生视频
+            task_config = TaskTypeRegistry.get(task_type)
+            computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1499,24 +1660,24 @@ async def ai_app_run_image(
                     try:
                         # Determine type and ratio based on video_model
                         if video_model == "ltx2":
-                            # LTX2.0 图生视频: type=10
+                            # LTX2.0 图生视频
                             # 现在 LTX2.0 也支持比例选择（横屏/竖屏）
-                            task_type = 10  # LTX2.0 图生视频
+                            task_type = TaskTypeId.LTX2_IMAGE_TO_VIDEO
                         elif video_model == "wan22":
-                            # Wan2.2 图生视频: type=11
-                            task_type = 11
+                            # Wan2.2 图生视频
+                            task_type = TaskTypeId.WAN22_IMAGE_TO_VIDEO
                         elif video_model == "kling":
-                            # 可灵图生视频: type=12
-                            task_type = 12
+                            # 可灵图生视频
+                            task_type = TaskTypeId.KLING_IMAGE_TO_VIDEO
                         elif video_model == "vidu":
-                            # Vidu 图生视频: type=14
-                            task_type = 14
+                            # Vidu 图生视频
+                            task_type = TaskTypeId.VIDU_IMAGE_TO_VIDEO
                         elif video_model == "veo3":
-                            # VEO3 图生视频: type=15
-                            task_type = 15
+                            # VEO3 图生视频
+                            task_type = TaskTypeId.VEO3_IMAGE_TO_VIDEO
                         else:
-                            # Sora2 图生视频: type=3
-                            task_type = 3
+                            # Sora2 图生视频
+                            task_type = TaskTypeId.SORA2_IMAGE_TO_VIDEO
                         ratio_value = ratio
                         duration_value = duration_seconds
                         
@@ -1560,8 +1721,40 @@ async def ai_app_run_image(
         raise HTTPException(status_code=500, detail=f"Failed to submit AI app task: {str(e)}")
 
 
+@app.get('/api/user/role')
+async def get_user_role(auth_token: str = Header(None, alias="Authorization")):
+    """
+    获取用户角色
+    """
+    try:
+        if not auth_token:
+            return {"code": -1, "message": "未提供认证信息"}
+        
+        if auth_token.startswith("Bearer "):
+            auth_token = auth_token[7:]
+        
+        user_id = UserTokensModel.get_user_id_by_token(auth_token)
+        if not user_id:
+            return {"code": -1, "message": "无效或已过期的认证信息"}
+        
+        user = UsersModel.get_by_id(user_id)
+        if not user:
+            return {"code": -1, "message": "用户不存在"}
+        
+        return {
+            "code": 0,
+            "data": {
+                "role": user.role
+            }
+        }
+    except Exception as e:
+        logger.error(f'获取用户角色失败: {str(e)}')
+        return {"code": -1, "message": "服务器错误"}
+
+
 @app.get('/api/user/computing_power')
-async def get_computing_power(auth_token: str = Header(None, alias="Authorization")):
+@require_permission("computing:view_balance")
+async def get_computing_power(request: Request, auth_token: str = Header(None, alias="Authorization")):
     """
     查询用户算力
     """
@@ -1620,7 +1813,9 @@ async def get_computing_power(auth_token: str = Header(None, alias="Authorizatio
 
 
 @app.get('/api/user/computing_power_logs')
+@require_permission("computing:view_logs")
 async def get_computing_power_logs(
+    request: Request,
     auth_token: str = Header(None, alias="Authorization"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -1682,7 +1877,6 @@ async def get_computing_power_logs(
                 for log in response_data['logs']:
                     from datetime import datetime
                     import re
-                    from config.constant import TASK_TYPE_NAME_MAP
                     
                     # 获取基础字段
                     processed_log = {
@@ -1704,12 +1898,14 @@ async def get_computing_power_logs(
                     transaction_id = log.get('transaction_id')
                     if transaction_id and transaction_id in tools_map:
                         tool = tools_map[transaction_id]
-                        if tool.type and tool.type in TASK_TYPE_NAME_MAP:
-                            task_type_name = TASK_TYPE_NAME_MAP[tool.type]
-                            if processed_log['note']:
-                                processed_log['note'] = f"{task_type_name} - {processed_log['note']}"
-                            else:
-                                processed_log['note'] = task_type_name
+                        if tool.type:
+                            task_config = TaskTypeRegistry.get(tool.type)
+                            if task_config:
+                                task_type_name = task_config.name
+                                if processed_log['note']:
+                                    processed_log['note'] = f"{task_type_name} - {processed_log['note']}"
+                                else:
+                                    processed_log['note'] = task_type_name
                     
                     # 格式化时间为年月日时分秒
                     if processed_log['created_at']:
@@ -1759,7 +1955,8 @@ async def get_computing_power_logs(
 
 
 @app.get('/api/user/invitation_info')
-async def get_invitation_info(auth_token: str = Header(None, alias="Authorization")):
+@require_permission("user:view_invite_stats")
+async def get_invitation_info(request: Request, auth_token: str = Header(None, alias="Authorization")):
     """
     查询用户邀请人所获得的算力以及邀请人数量
     """
@@ -2065,12 +2262,13 @@ class LogoutRequest(BaseModel):
     auth_token: str
 
 @app.post('/api/auth/logout')
-async def logout(request: LogoutRequest):
+@require_permission("user:logout")
+async def logout(request: Request, logout_request: LogoutRequest):
     """
     用户登出接口
     """
     try:
-        auth_token = request.auth_token
+        auth_token = logout_request.auth_token
 
         if not auth_token:
             return JSONResponse(
@@ -2121,14 +2319,15 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 @app.post('/api/auth/reset_password')
-async def reset_password(request: ResetPasswordRequest):
+@require_permission("user:reset_password")
+async def reset_password(request: Request, reset_request: ResetPasswordRequest):
     """
     重置密码
     """
     try:
-        phone = request.phone
-        code = request.code
-        new_password = request.new_password
+        phone = reset_request.phone
+        code = reset_request.code
+        new_password = reset_request.new_password
 
         if not all([phone, code, new_password]):
             return JSONResponse(
@@ -2180,7 +2379,9 @@ async def reset_password(request: ResetPasswordRequest):
 
 
 @app.get('/api/ai-tools/history')
+@require_permission("ai_tools:view_history")
 async def get_ai_tools_history(
+    request: Request,
     user_id: int = Query(..., description="User ID"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Page size"),
@@ -2233,7 +2434,8 @@ async def get_ai_tools_history(
                             )
                             updated_count += 1
                             # 累计需要补回的算力
-                            computing_power = TASK_COMPUTING_POWER[task.type]
+                            task_config = TaskTypeRegistry.get(task.type)
+                            computing_power = task_config.computing_power if task_config else 0
                             total_refund_power += computing_power
                             logger.info(f"Upscale task {task.project_id} failed, will refund {computing_power} computing power")
                     
@@ -2356,19 +2558,24 @@ async def get_ai_tools_history(
 
 
 @app.get('/api/computing-power-config')
-async def get_computing_power_config():
+@require_permission("computing:manage_config")
+async def get_computing_power_config(request: Request):
     """
     获取算力配置
-    返回各个任务类型的算力消耗配置和视频模型时长选项
+    返回各个任务类型的算力消耗配置、视频模型时长选项和驱动可用状态
     """
     try:
+        # 获取 driver 可用状态
+        driver_status = VideoDriverFactory.get_driver_availability()
+        
         return JSONResponse(
             content={
                 'success': True,
                 'message': '获取成功',
                 'data': {
-                    'task_computing_power': TASK_COMPUTING_POWER,
-                    'video_model_duration_options': VIDEO_MODEL_DURATION_OPTIONS
+                    'task_computing_power': TaskTypeRegistry.get_computing_power_map(),
+                    'video_model_duration_options': VIDEO_MODEL_DURATION_OPTIONS,
+                    'driver_status': driver_status
                 }
             }
         )
@@ -2384,7 +2591,8 @@ async def get_computing_power_config():
 
 
 @app.get('/api/task-type-config')
-async def get_task_type_config():
+@require_permission("computing:view_task_config")
+async def get_task_type_config(request: Request):
     """
     获取任务类型配置
     返回图生视频、图片编辑等任务类型列表和类型名称映射
@@ -2395,9 +2603,9 @@ async def get_task_type_config():
                 'success': True,
                 'message': '获取成功',
                 'data': {
-                    'image_to_video_types': IMAGE_TO_VIDEO_TYPES,
-                    'image_edit_types': IMAGE_EDIT_TYPES,
-                    'task_type_name_map': TASK_TYPE_NAME_MAP
+                    'image_to_video_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_TO_VIDEO),
+                    'image_edit_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_EDIT),
+                    'task_type_name_map': TaskTypeRegistry.get_name_map()
                 }
             }
         )
@@ -2412,34 +2620,10 @@ async def get_task_type_config():
         )
 
 
-@app.get('/api/script-writer-url')
-async def get_script_writer_url():
-    """
-    获取短剧智能体服务地址
-    """
-    try:
-        return JSONResponse(
-            content={
-                'code': 0,
-                'message': '获取成功',
-                'data': {
-                    'url': SCRIPT_WRITER_URL
-                }
-            }
-        )
-    except Exception as e:
-        logger.error(f'获取短剧智能体服务地址失败: {str(e)}')
-        return JSONResponse(
-            status_code=500,
-            content={
-                'code': -1,
-                'message': '服务器错误'
-            }
-        )
-
-
 @app.get('/api/ai-tools/detail/{record_id}')
+@require_permission("ai_tools:view_history")
 async def get_ai_tool_detail(
+    request: Request,
     record_id: int,
     user_id: int = Header(None, alias="X-User-Id"),
     auth_token: str = Header(None, alias="Authorization")
@@ -2478,7 +2662,9 @@ async def get_ai_tool_detail(
 
 
 @app.post("/api/ai-script-generate")
+@require_permission("video:ai_script_gen")
 async def ai_script_generate(
+    request: Request,
     image1: UploadFile = File(..., description="第一张图片（必传）"),
     image2: UploadFile = File(None, description="第二张图片（可选）"),
     image3: UploadFile = File(None, description="第三张图片（可选）"),
@@ -2570,7 +2756,9 @@ async def ai_script_generate(
 
 
 @app.post("/api/image-upscale")
+@require_permission("image:upscale")
 async def image_upscale(
+    request: Request,
     project_id: str = Form(..., description="Project ID of the image to upscale"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
@@ -2596,7 +2784,8 @@ async def image_upscale(
         
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
-        computing_power = TASK_COMPUTING_POWER[4]
+        task_config = TaskTypeRegistry.get(TaskTypeId.IMAGE_ENHANCE)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             # Check if computing power is sufficient
@@ -2703,7 +2892,9 @@ async def image_upscale(
         raise HTTPException(status_code=500, detail=f"图片高清放大失败: {str(e)}")
         
 @app.post("/api/video-enhance")
+@require_permission("video:enhance")
 async def video_enhance(
+    request: Request,
     video: UploadFile = File(None, description="需要修复的视频文件"),
     video_url: str = Form(None, description="视频URL（如果提供则不需要上传文件）"),
     user_id: int = Form(None, description="User ID"),
@@ -2731,7 +2922,8 @@ async def video_enhance(
             )
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
-        computing_power = TASK_COMPUTING_POWER[5]
+        task_config = TaskTypeRegistry.get(TaskTypeId.VIDEO_ENHANCE)
+        computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
             # Check if computing power is sufficient
@@ -2759,23 +2951,55 @@ async def video_enhance(
                 )
         
         # Determine video URL - either from upload or from parameter
+        # 用于存入数据库的本地 URL
+        local_video_url = None
+        
         if video_url:
             # Use provided video URL directly
             final_video_url = video_url
+            local_video_url = video_url  # URL 情况下直接使用 URL
             logger.info(f"Using provided video URL: {video_url}")
         elif video:
-            # Save uploaded video and get URL
+            # 读取视频文件
             file_bytes = await video.read()
             
-            # Save video to upload directory
-            os.makedirs(UPLOAD_DIR, exist_ok=True)
-            video_filename = f"{uuid.uuid4()}_{video.filename}"
+            # 1. 先保存到本地
+            filename = video.filename or "video.mp4"
+            ext = os.path.splitext(filename)[1].lower()
+            video_filename = f"{uuid.uuid4()}{ext}"
             local_video_path = os.path.join(UPLOAD_DIR, video_filename)
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            
             await asyncio.to_thread(_sync_write_file, local_video_path, file_bytes)
             
             # Create accessible URL for frontend
-            final_video_url = f"{SERVER_HOST}/upload/{video_filename}"
-            logger.info(f"Uploaded video saved to: {final_video_url}")
+            local_video_url = f"{SERVER_HOST}/upload/{video_filename}"
+            logger.info(f"Video saved to local: {local_video_url}")
+            
+            # 2. 上传到 RunningHub 获取 fileName
+            from utils.file_storage import RunningHubFileStorage
+            from config.config_util import get_config, get_dynamic_config_value
+            
+            rh_host = get_dynamic_config_value("runninghub", "host", default="")
+            rh_api_key = get_dynamic_config_value("runninghub", "api_key", default="")
+            storage = RunningHubFileStorage(
+                host=rh_host,
+                api_key=rh_api_key,
+                config=get_config(),
+                logger=logger
+            )
+            
+            # 上传本地文件到 RunningHub
+            upload_result = await storage.upload_file("", local_video_path)
+            if not upload_result.success:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"视频上传失败: {upload_result.error}"
+                )
+            
+            # 使用 fileName 作为 comfyUI 节点的引用
+            final_video_url = upload_result.key
+            logger.info(f"Video uploaded to RunningHub, fileName: {final_video_url}")
         else:
             raise HTTPException(
                 status_code=400,
@@ -2843,7 +3067,7 @@ async def video_enhance(
                     prompt="视频高清修复",
                     user_id=user_id,
                     type=enhance_type,  # Use provided enhance_type
-                    image_path=final_video_url,
+                    image_path=local_video_url,  # 使用本地 URL 存入数据库
                     project_id=project_id,
                     transaction_id=transaction_id,
                     status=AI_TOOL_STATUS_PROCESSING
@@ -2866,7 +3090,9 @@ async def video_enhance(
 
 
 @app.post("/api/video-remix")
+@require_permission("video:remix")
 async def video_remix(
+    request: Request,
     video_id: str = Form(..., description="视频ID"),
     prompt: str = Form(..., description="重新编辑的提示词"),
     aspect_ratio: str = Form("16:9", description="视频比例: 16:9, 9:16, 1:1"),
@@ -2901,7 +3127,8 @@ async def video_remix(
             )
         
         # 计算所需算力（使用视频生成的算力标准）
-        computing_power = TASK_COMPUTING_POWER[2]  # 2: AI视频生成
+        task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)  # AI视频生成
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -3034,7 +3261,9 @@ async def video_remix(
 
 
 @app.post("/api/create-character")
+@require_permission("character:create_card")
 async def api_create_character(
+    request: Request,
     timestamps: str = Form(..., description="Time range (format: 'start,end', 1-3 seconds)"),
     url: Optional[str] = Form(None, description="Video URL (not for real people)"),
     from_task: Optional[str] = Form(None, description="Task ID or database record ID (supports real people)"),
@@ -3082,7 +3311,8 @@ async def api_create_character(
             )
         
         # 计算所需算力
-        computing_power = TASK_COMPUTING_POWER[8]  # 8: 创建角色卡
+        task_config = TaskTypeRegistry.get(TaskTypeId.CHARACTER_CARD)  # 创建角色卡
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -3193,7 +3423,9 @@ async def api_create_character(
 
 
 @app.post("/api/digital-human")
+@require_permission("digital_human:create")
 async def digital_human_generate(
+    request: Request,
     image: UploadFile = File(..., description="Input image for digital human"),
     text: str = Form(..., description="Text content for digital human to speak (max 1000 characters)"),
     audio: UploadFile = File(..., description="Reference audio file"),
@@ -3225,8 +3457,9 @@ async def digital_human_generate(
         audio_url = await asyncio.to_thread(_save_uploaded_image, audio)  # Reuse the same function for audio
         
         # Task type for digital human
-        task_type = 13
-        computing_power = TASK_COMPUTING_POWER[task_type]
+        task_type = TaskTypeId.DIGITAL_HUMAN
+        task_config = TaskTypeRegistry.get(task_type)
+        computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -3314,7 +3547,9 @@ async def digital_human_generate(
 
 
 @app.post("/api/audio-generate")
+@require_permission("audio:generate")
 async def audio_generate(
+    request: Request,
     text: str = Form(..., description="Text to generate audio from"),
     ref_audio: Optional[UploadFile] = File(None, description="Reference audio file for voice cloning"),
     emo_ref_audio: Optional[UploadFile] = File(None, description="Emotion reference audio file"),
@@ -3400,7 +3635,8 @@ async def audio_generate(
 
 
 @app.get("/api/audio-status/{audio_id}")
-async def audio_status(audio_id: int):
+@require_permission("audio:view_status")
+async def audio_status(request: Request, audio_id: int):
     """
     查询音频生成任务状态。
     
@@ -3415,22 +3651,12 @@ async def audio_status(audio_id: int):
             raise HTTPException(status_code=404, detail=f"未找到音频任务 {audio_id}")
         
         if record.status == AI_AUDIO_STATUS_COMPLETED and record.result_url:
-            file_path = record.result_url
-            if not os.path.isfile(file_path):
-                logger.error(f"Audio file not found for task {audio_id}: {file_path}")
-                raise HTTPException(status_code=500, detail="音频文件不存在，请稍后重试")
-            
-            filename = os.path.basename(file_path)
-            media_type, _ = mimetypes.guess_type(file_path)
-            headers = {
-                "X-Audio-Status": "SUCCESS"
-            }
-            return FileResponse(
-                path=file_path,
-                filename=filename,
-                media_type=media_type or "audio/wav",
-                headers=headers
-            )
+            # 直接返回 result_url 给前端
+            return JSONResponse({
+                "audio_id": record.id,
+                "status": "SUCCESS",
+                "result_url": record.result_url
+            })
         elif record.status == AI_AUDIO_STATUS_FAILED:
             return JSONResponse({
                 "audio_id": record.id,
@@ -3452,7 +3678,9 @@ async def audio_status(audio_id: int):
 
 
 @app.get("/api/character-status/{task_id}")
+@require_permission("character:view_status")
 async def api_character_status(
+    request: Request,
     task_id: str,
     auth_token: Optional[str] = Query(None, description="Auth token for computing power refund")
 ):
@@ -3529,7 +3757,8 @@ async def api_character_status(
                         user_id_from_token = response_data.get('user_id')
                         if task_record.user_id != user_id_from_token:
                             raise HTTPException(status_code=400, detail="用户ID不匹配")
-                        computing_power = TASK_COMPUTING_POWER.get(task_record.type, 0)
+                        task_config = TaskTypeRegistry.get(task_record.type)
+                        computing_power = task_config.computing_power if task_config else 0
                         if computing_power > 0:
                             success, message, _ = await async_make_perseids_request(
                                 endpoint='user/calculate_computing_power',
@@ -3596,10 +3825,9 @@ async def get_wechat_openid(code: str):
         包含openid的响应
     """
     try:
-        # 从配置文件读取微信配置
-        wechat_config = config.get("pay", {}).get("wxpay", {})
-        app_id = wechat_config.get("appId")
-        app_secret = wechat_config.get("appSecret")
+        # 从动态配置读取微信配置
+        app_id = get_dynamic_config_value("pay", "wxpay", "appId", default="")
+        app_secret = get_dynamic_config_value("pay", "wxpay", "appSecret", default="")
         
         if not app_id or not app_secret:
             raise HTTPException(status_code=500, detail="微信配置不完整")
@@ -3687,7 +3915,8 @@ async def _update_first_recharge_status(auth_token: str) -> None:
 
 
 @app.get("/api/recharge/packages")
-async def get_recharge_packages(auth_token: str):
+@require_permission("computing:view_packages")
+async def get_recharge_packages(request: Request, auth_token: str):
     """
     获取算力充值套餐列表
     
@@ -3723,12 +3952,13 @@ async def get_recharge_packages(auth_token: str):
 
 
 @app.post("/api/recharge/wechat-pay")
-async def create_wechat_payment(request: WechatPayRequest):
+@require_permission("order:create")
+async def create_wechat_payment(request: Request, payment_request: WechatPayRequest):
     """
     创建微信支付订单
     
     Args:
-        request: 包含套餐ID、用户ID、认证token和浏览器类型的请求
+        payment_request: 包含套餐ID、用户ID、认证token和浏览器类型的请求
     
     Returns:
         微信支付二维码URL/JSAPI支付参数和订单信息
@@ -3744,7 +3974,7 @@ async def create_wechat_payment(request: WechatPayRequest):
     """
     try:
         # 验证用户token
-        if not request.auth_token:
+        if not payment_request.auth_token:
             raise HTTPException(
                 status_code=400,
                 detail="Authentication token is required"
@@ -3755,11 +3985,11 @@ async def create_wechat_payment(request: WechatPayRequest):
             success, message, response_data = await async_make_perseids_request(
                 endpoint='user/check_computing_power',
                 method='GET',
-                headers={'Authorization': f'Bearer {request.auth_token}'}
+                headers={'Authorization': f'Bearer {payment_request.auth_token}'}
             )
             
             if not success:
-                logger.warning(f"User {request.user_id} authentication failed or expired")
+                logger.warning(f"User {payment_request.user_id} authentication failed or expired")
                 raise HTTPException(
                     status_code=401,
                     detail="登录已过期，请重新登录"
@@ -3776,7 +4006,7 @@ async def create_wechat_payment(request: WechatPayRequest):
         # 验证套餐ID
         package_info = None
         for package in RECHARGE_PACKAGES:
-            if package["package_id"] == request.package_id:
+            if package["package_id"] == payment_request.package_id:
                 package_info = package
                 break
         
@@ -3787,10 +4017,10 @@ async def create_wechat_payment(request: WechatPayRequest):
             )
 
         # 首充套餐校验：如果package_id为1且用户已首充，禁止再次购买
-        if request.package_id == 1:
-            has_completed_first_recharge = await _has_completed_first_recharge(request.auth_token)
+        if payment_request.package_id == 1:
+            has_completed_first_recharge = await _has_completed_first_recharge(payment_request.auth_token)
             if has_completed_first_recharge:
-                logger.warning(f"User {request.user_id} attempted to purchase first-charge package again")
+                logger.warning(f"User {payment_request.user_id} attempted to purchase first-charge package again")
                 raise HTTPException(
                     status_code=400,
                     detail="首充福利仅限首次充值，您已领取过该套餐"
@@ -3810,12 +4040,12 @@ async def create_wechat_payment(request: WechatPayRequest):
         payment_result = {}
         payment_type = ""
         
-        if request.is_wechat_browser:
+        if payment_request.is_wechat_browser:
             # 微信内浏览器使用JSAPI支付
             payment_type = "JSAPI"
             
             # 获取用户的openid
-            if not request.openid:
+            if not payment_request.openid:
                 raise HTTPException(
                     status_code=400,
                     detail="微信支付需要用户openid，请先进行微信授权"
@@ -3826,9 +4056,9 @@ async def create_wechat_payment(request: WechatPayRequest):
                 order_id=order_id,
                 total_fee=total_fee,
                 body=body,
-                openid=request.openid,
+                openid=payment_request.openid,
                 notify_url=notify_url,
-                payer_client_ip=request.payment_ip or "127.0.0.1"
+                payer_client_ip=payment_request.payment_ip or "127.0.0.1"
             )
         else:
             # 外部浏览器使用Native扫码支付
@@ -3840,33 +4070,33 @@ async def create_wechat_payment(request: WechatPayRequest):
                 total_fee=total_fee,
                 body=body,
                 notify_url=notify_url,
-                payer_client_ip=request.payment_ip or "127.0.0.1"
+                payer_client_ip=payment_request.payment_ip or "127.0.0.1"
             )
         
         # 保存订单记录到数据库
         try:
             record_id = PaymentOrdersModel.create(
                 order_id=order_id,
-                user_id=request.user_id,
-                package_id=request.package_id,
+                user_id=payment_request.user_id,
+                package_id=payment_request.package_id,
                 computing_power=package_info["computing_power"],
                 price=package_info["price"],
                 payment_type=payment_type,
                 status=0,  # 0-待支付
-                payment_ip=request.payment_ip
+                payment_ip=payment_request.payment_ip
             )
             logger.info(f"Saved payment order {record_id} to database")
         except Exception as e:
             logger.error(f"Failed to save payment order to database: {e}")
             # 继续执行，不影响支付流程
         
-        logger.info(f"Created {payment_type} payment order {record_id} for user {request.user_id}, package {request.package_id}")
+        logger.info(f"Created {payment_type} payment order {record_id} for user {payment_request.user_id}, package {payment_request.package_id}")
               
         # 返回支付信息
         response_data = {
             "success": True,
             "order_id": record_id,
-            "package_id": request.package_id,
+            "package_id": payment_request.package_id,
             "computing_power": package_info["computing_power"],
             "price": package_info["price"],
             "payment_type": payment_type
@@ -3990,13 +4220,12 @@ async def wechat_payment_callback(request: Request):
             
             user_id = order.user_id
             # TODO: 增加用户算力
-            logger.info(f"Refunding {user_id} , {AUTHENTICATION_ID}")
+            logger.info(f"Processing payment for user {user_id}")
             success, message, response_data = await async_make_perseids_request(
                 endpoint='get_auth_token_by_user_id',
                 method='POST',
                 data={
-                    "user_id": user_id,
-                    "authentication_id": AUTHENTICATION_ID
+                    "user_id": user_id
                 }
             )
 
@@ -4080,7 +4309,9 @@ class VideoWorkflowUpdateRequest(BaseModel):
 
 
 @app.get('/api/video-workflow/list')
+@require_permission("video_workflow:list")
 async def get_video_workflow_list(
+    request: Request,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
     status: Optional[int] = Query(None, description="状态筛选: 0-禁用, 1-启用, 2-草稿"),
@@ -4121,7 +4352,9 @@ async def get_video_workflow_list(
 
 
 @app.get('/api/video-workflow/{workflow_id}')
+@require_permission("video_workflow:view")
 async def get_video_workflow(
+    request: Request,
     workflow_id: int,
     auth_token: str = Header(None, alias="Authorization"),
     user_id: Optional[int] = Header(None, alias="X-User-Id")
@@ -4138,7 +4371,8 @@ async def get_video_workflow(
                 content={"code": -1, "message": "工作流不存在"}
             )
 
-        if getattr(workflow, 'user_id', None) != user_id:
+        # 商业版才检查权限，社区版所有人都可以访问
+        if Edition.is_enterprise() and getattr(workflow, 'user_id', None) != user_id:
             return JSONResponse(
                 status_code=403,
                 content={"code": -1, "message": "无权限访问该工作流"}
@@ -4159,7 +4393,9 @@ async def get_video_workflow(
 
 
 @app.get('/api/video-workflow/{workflow_id}/poll-status')
+@require_permission("video_workflow:poll_status")
 async def poll_workflow_node_status(
+    request: Request,
     workflow_id: int,
     auth_token: str = Header(None, alias="Authorization"),
     user_id: Optional[int] = Header(None, alias="X-User-Id")
@@ -4179,7 +4415,8 @@ async def poll_workflow_node_status(
                 content={"code": -1, "message": "工作流不存在"}
             )
         
-        if getattr(workflow, 'user_id', None) != user_id:
+        # 商业版才检查权限，社区版所有人都可以访问
+        if Edition.is_enterprise() and getattr(workflow, 'user_id', None) != user_id:
             return JSONResponse(
                 status_code=403,
                 content={"code": -1, "message": "无权限访问该工作流"}
@@ -4289,6 +4526,7 @@ async def poll_workflow_node_status(
 
 
 @app.post('/api/video-workflow/upload')
+@require_permission("video_workflow:upload")
 async def upload_workflow_asset(
     request: Request,
     file: UploadFile = File(..., description="要上传的图片、视频或音频文件"),
@@ -4329,7 +4567,9 @@ async def upload_workflow_asset(
 
 
 @app.get('/api/ai-tools/{ai_tools_id}/grid-split')
+@require_permission("image:grid_split")
 async def get_grid_split_image(
+    request: Request,
     ai_tools_id: int,
     grid_index: int = Query(..., ge=1, le=9, description="宫格位置，1-4或1-9"),
     user_id: int = Query(...),
@@ -4365,7 +4605,8 @@ async def get_grid_split_image(
             )
         
         # 3. 验证类型（图片编辑类型）
-        if ai_tool.type not in IMAGE_EDIT_TYPES:
+        task_config = TaskTypeRegistry.get(ai_tool.type)
+        if not task_config or task_config.category != TaskCategory.IMAGE_EDIT:
             return JSONResponse(
                 status_code=400,
                 content={"code": -1, "message": "该AI工具不是图片编辑类型"}
@@ -4556,6 +4797,7 @@ class MergeGridRequest(BaseModel):
 
 
 @app.post('/api/images/merge-grid')
+@require_permission("image:merge_grid")
 async def merge_grid_images(
     request: MergeGridRequest,
     x_user_id: Optional[int] = Header(None, alias="X-User-Id"),
@@ -4813,8 +5055,10 @@ async def reduce_violation(
 
 
 @app.post('/api/video-workflow/create')
+@require_permission("video_workflow:create")
 async def create_video_workflow(
-    request: VideoWorkflowCreateRequest,
+    request: Request,
+    workflow_request: VideoWorkflowCreateRequest,
     auth_token: str = Header(None, alias="Authorization"),
     user_id: Optional[int] = Header(None, alias="X-User-Id")
 ):
@@ -4825,15 +5069,15 @@ async def create_video_workflow(
         user_id = _get_user_id_from_header(user_id)
         
         workflow_id = VideoWorkflowModel.create(
-            name=request.name,
+            name=workflow_request.name,
             user_id=user_id,
-            description=request.description,
-            cover_image=request.cover_image,
-            status=request.status,
-            workflow_data=request.workflow_data,
-            style=request.style,
-            style_reference_image=request.style_reference_image,
-            default_world_id=request.default_world_id
+            description=workflow_request.description,
+            cover_image=workflow_request.cover_image,
+            status=workflow_request.status,
+            workflow_data=workflow_request.workflow_data,
+            style=workflow_request.style,
+            style_reference_image=workflow_request.style_reference_image,
+            default_world_id=workflow_request.default_world_id
         )
         
         return JSONResponse({
@@ -4851,9 +5095,11 @@ async def create_video_workflow(
 
 
 @app.put('/api/video-workflow/{workflow_id}')
+@require_permission("video_workflow:update")
 async def update_video_workflow(
+    request: Request,
     workflow_id: int,
-    request: VideoWorkflowUpdateRequest,
+    update_request: VideoWorkflowUpdateRequest,
     auth_token: str = Header(None, alias="Authorization"),
     user_id: Optional[int] = Header(None, alias="X-User-Id")
 ):
@@ -4870,7 +5116,8 @@ async def update_video_workflow(
                 content={"code": -1, "message": "工作流不存在"}
             )
 
-        if getattr(workflow, 'user_id', None) != user_id:
+        # 商业版才检查权限，社区版所有人都可以修改
+        if Edition.is_enterprise() and getattr(workflow, 'user_id', None) != user_id:
             return JSONResponse(
                 status_code=403,
                 content={"code": -1, "message": "无权限修改该工作流"}
@@ -4878,22 +5125,22 @@ async def update_video_workflow(
         
         # 构建更新字段
         update_fields = {}
-        if request.name is not None:
-            update_fields['name'] = request.name
-        if request.description is not None:
-            update_fields['description'] = request.description
-        if request.cover_image is not None:
-            update_fields['cover_image'] = request.cover_image
-        if request.status is not None:
-            update_fields['status'] = request.status
-        if request.workflow_data is not None:
-            update_fields['workflow_data'] = request.workflow_data
-        if request.style is not None:
-            update_fields['style'] = request.style
-        if request.style_reference_image is not None:
-            update_fields['style_reference_image'] = request.style_reference_image
-        if request.default_world_id is not None:
-            update_fields['default_world_id'] = request.default_world_id
+        if update_request.name is not None:
+            update_fields['name'] = update_request.name
+        if update_request.description is not None:
+            update_fields['description'] = update_request.description
+        if update_request.cover_image is not None:
+            update_fields['cover_image'] = update_request.cover_image
+        if update_request.status is not None:
+            update_fields['status'] = update_request.status
+        if update_request.workflow_data is not None:
+            update_fields['workflow_data'] = update_request.workflow_data
+        if update_request.style is not None:
+            update_fields['style'] = update_request.style
+        if update_request.style_reference_image is not None:
+            update_fields['style_reference_image'] = update_request.style_reference_image
+        if update_request.default_world_id is not None:
+            update_fields['default_world_id'] = update_request.default_world_id
         
         if update_fields:
             VideoWorkflowModel.update(workflow_id, **update_fields)
@@ -4912,7 +5159,9 @@ async def update_video_workflow(
 
 
 @app.delete('/api/video-workflow/{workflow_id}')
+@require_permission("video_workflow:delete")
 async def delete_video_workflow(
+    request: Request,
     workflow_id: int,
     auth_token: str = Header(None, alias="Authorization"),
     user_id: Optional[int] = Header(None, alias="X-User-Id")
@@ -4967,6 +5216,34 @@ app.mount("/files", StaticFiles(directory=files_dir), name="files")
 static_dir = os.path.join(APP_DIR, "web")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir, exist_ok=True)
+
+@app.get('/api/edition')
+async def get_edition():
+    """
+    获取版本信息
+    """
+    try:
+        return JSONResponse(
+            status_code=200,
+            content={
+                'code': 0,
+                'message': 'success',
+                'data': {
+                    'mode': Edition.get_mode(),
+                    'mode_label': Edition.get_label()
+                }
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get edition info: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                'code': -1,
+                'message': str(e),
+                'data': None
+            }
+        )
 
 @app.get('/api/worlds')
 async def get_worlds(
@@ -5093,7 +5370,7 @@ async def update_world(
     """
     try:
         user_id = _get_user_id_from_header(user_id)
-        world = _ensure_world_owner(world_id, user_id)
+        world = _ensure_world_access(world_id, user_id, Action.EDIT)
 
         update_fields = {}
 
@@ -5169,7 +5446,7 @@ async def delete_world(
     """
     try:
         user_id = _get_user_id_from_header(user_id)
-        _ensure_world_owner(world_id, user_id)
+        _ensure_world_access(world_id, user_id, Action.DELETE)
 
         character_count = CharacterModel.count_by_world(world_id)
         if character_count > 0:
@@ -5232,7 +5509,7 @@ async def get_scripts(
     """
     try:
         user_id = _get_user_id_from_header(user_id)
-        _ensure_world_owner(world_id, user_id)
+        _ensure_world_access(world_id, user_id, Action.VIEW)
         
         result = ScriptModel.list_by_world(
             world_id=world_id,
@@ -6269,9 +6546,9 @@ async def export_timeline_draft(
         safe_workflow_name = safe_workflow_name.replace(' ', '_') or 'workflow'
         draft_name = f"{safe_workflow_name}_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 创建临时目录（使用/tmp目录，按日期分组）
+        # 创建临时目录（使用 files/tmp/jianying_export 目录，按日期分组）
         date_folder = datetime.now().strftime('%Y-%m-%d')
-        base_temp_dir = os.path.join('/tmp', 'jianying_export', date_folder, draft_name)
+        base_temp_dir = FilePathConstants.get_jianying_export_dir(APP_DIR, draft_name)
         temp_download_dir = os.path.join(base_temp_dir, 'downloads')
         local_draft_parent = os.path.join(base_temp_dir, 'draft_output')
         os.makedirs(temp_download_dir, exist_ok=True)
@@ -6741,6 +7018,13 @@ async def serve_image_style_guide():
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail="Image style guide page not found")
 
+@app.get("/script-writer")
+async def serve_script_writer():
+    file_path = os.path.join(static_dir, "script_writer.html")
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404, detail="Script writer page not found")
+
 @app.get(f"{MP_VERIFY_ROUTE}")
 async def get_mp_verify_file():
     """
@@ -6834,6 +7118,11 @@ async def serve_spa(full_path: str):
     if os.path.isfile(file_path):
         return FileResponse(file_path)
     
+    # 检查是否有对应的 .html 文件（支持 /admin -> admin.html）
+    html_path = os.path.join(static_dir, f"{full_path}.html")
+    if os.path.isfile(html_path):
+        return FileResponse(html_path)
+
     # Otherwise return index.html for SPA routing
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
@@ -6844,18 +7133,26 @@ async def serve_spa(full_path: str):
 
 if __name__ == "__main__":
     # Check if HTTPS is enabled
-    https_config = config["server"].get("https", {})
-    if https_config.get("enabled", False):
+    https_enabled = get_config_value("server", "https", "enabled", default=False)
+    if https_enabled:
         # For HTTPS, prefer https_port, fallback to port, then default
-        port = config["server"].get("https_port") or config["server"].get("port")
+        port = get_config_value("server", "https_port") or get_config_value("server", "port", default=8000)
     else:
         # For HTTP, use port or default
-        port = config["server"].get("port")
-    
-    if https_config.get("enabled", False):
+        port = get_config_value("server", "port", default=8000)
+
+    # Run database migrations on startup if enabled (只在主进程执行一次，避免 uvicorn 重新导入时再次执行)
+    alembic_config = get_alembic_config()
+    if alembic_config.get('auto_migrate', False):
+        try:
+            run_migrations()
+        except Exception as e:
+            logger.error(f"Database migration failed on startup: {e}")
+
+    if https_enabled:
         # HTTPS configuration
-        ssl_keyfile = os.path.join(APP_DIR, https_config["keyfile"])
-        ssl_certfile = os.path.join(APP_DIR, https_config["certfile"])
+        ssl_keyfile = os.path.join(APP_DIR, get_config_value("server", "https", "keyfile", default=""))
+        ssl_certfile = os.path.join(APP_DIR, get_config_value("server", "https", "certfile", default=""))
         
         # Verify certificate files exist
         if not os.path.exists(ssl_keyfile):
@@ -6869,9 +7166,9 @@ if __name__ == "__main__":
         
         init_scheduler(app)
         uvicorn.run(
-            "server:app", 
-            host="0.0.0.0", 
-            port=port, 
+            "server:app",
+            host="0.0.0.0",
+            port=port,
             reload=False,
             ssl_keyfile=ssl_keyfile,
             ssl_certfile=ssl_certfile

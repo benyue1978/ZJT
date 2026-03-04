@@ -11,7 +11,7 @@ import sys
 import os
 import time
 import yaml
-from config_util import get_config_path
+from config.config_util import get_config_path
 
 
 # 子进程列表
@@ -51,6 +51,17 @@ def main():
     
     cwd = os.path.dirname(os.path.abspath(__file__))
     
+    # 在启动服务之前先执行数据库迁移
+    from model.migration import get_alembic_config, run_migrations
+    alembic_config = get_alembic_config()
+    if alembic_config.get('auto_migrate', False):
+        print("[Manager] Running database migrations...")
+        try:
+            run_migrations()
+            print("[Manager] Database migrations completed.")
+        except Exception as e:
+            print(f"[Manager] Database migration failed: {e}")
+    
     # 优先使用环境变量 PORT，否则从配置文件读取
     port = os.environ.get("PORT")
     if port is None:
@@ -71,7 +82,7 @@ def main():
     # 2. 启动 uvicorn 开发服务器（单进程，支持热重载）
     print(f"[Manager] Starting uvicorn dev server on port {port}...")
     uvicorn_cmd = [
-        "uvicorn", "server:app",
+        sys.executable, "-m", "uvicorn", "server:app",
         "--host", "0.0.0.0",
         "--port", port,
         "--reload"
