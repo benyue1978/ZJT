@@ -2,8 +2,7 @@
 System Config History Model - Database operations for system_config_history table
 系统配置修改历史表
 """
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+from typing import Dict, Any, List
 from .database import execute_query, execute_update, execute_insert
 from .system_config import SystemConfigModel
 from config.constant import CONFIG_KEY_MAX_LENGTH

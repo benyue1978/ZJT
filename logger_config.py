@@ -8,7 +8,6 @@
 import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
-from datetime import datetime
 
 # 确保 logs 目录存在
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')

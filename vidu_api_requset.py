@@ -1,7 +1,5 @@
 import requests
 from config.config_util import get_dynamic_config_value
-import uuid
-import time
 import json
 from logger_config import setup_logger
 

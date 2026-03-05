@@ -7,9 +7,7 @@
 """
 
 import json
-import os
 from pathlib import Path
-from typing import Dict, List, Any
 
 
 def merge_test_cases(output_file: str = "test_todo_list.json") -> bool:

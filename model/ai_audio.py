@@ -2,13 +2,9 @@
 AI Audio Model - Database operations for ai_audio table
 """
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 from config.constant import (
-    AI_AUDIO_STATUS_PENDING,
-    AI_AUDIO_STATUS_PROCESSING,
-    AI_AUDIO_STATUS_FAILED,
-    AI_AUDIO_STATUS_COMPLETED
+    AI_AUDIO_STATUS_PENDING
 )
 import logging
 

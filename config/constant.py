@@ -548,6 +548,84 @@ class SystemConfigConstants:
 CONFIG_KEY_MAX_LENGTH = SystemConfigConstants.CONFIG_KEY_MAX_LENGTH
 
 
+# 模型配置常量
+class ModelConfig:
+    """模型配置常量 - 定义各模型支持的比例和尺寸"""
+    
+    # 图片比例选项
+    RATIOS = {
+        'gemini-2.5-flash': ['9:16', '16:9', '1:1', '4:3', '3:4'],
+        'gemini-3.0-pro': ['9:16', '16:9', '1:1', '4:3', '3:4'],
+        'seedream-5.0': ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:9'],
+        'sora2': ['9:16', '16:9', '1:1'],
+        'ltx2': ['9:16', '16:9', '1:1'],
+        'wan22': ['9:16', '16:9', '1:1', '4:3', '3:4'],
+        'kling': ['9:16', '16:9', '1:1'],
+        'vidu': ['9:16', '16:9', '1:1'],
+        'veo3': ['9:16', '16:9', '1:1'],
+        'digital_human': ['9:16', '16:9', '1:1', 'original', 'custom'],
+    }
+    
+    # 图片尺寸选项
+    IMAGE_SIZES = {
+        'gemini-2.5-flash': ['1K', '2K'],
+        'gemini-3.0-pro': ['1K', '2K'],
+        'seedream-5.0': ['2K', '3K'],
+    }
+    
+    # 默认比例
+    DEFAULT_RATIOS = {
+        'gemini-2.5-flash': '9:16',
+        'gemini-3.0-pro': '9:16',
+        'seedream-5.0': '1:1',
+        'sora2': '9:16',
+        'ltx2': '9:16',
+        'wan22': '9:16',
+        'kling': '9:16',
+        'vidu': '9:16',
+        'veo3': '9:16',
+        'digital_human': '9:16',
+    }
+    
+    # 默认尺寸
+    DEFAULT_IMAGE_SIZES = {
+        'gemini-2.5-flash': '1K',
+        'gemini-3.0-pro': '1K',
+        'seedream-5.0': '2K',
+    }
+    
+    @classmethod
+    def get_ratios(cls, model: str) -> list:
+        """获取指定模型支持的比例列表"""
+        return cls.RATIOS.get(model, ['9:16', '16:9', '1:1'])
+    
+    @classmethod
+    def get_image_sizes(cls, model: str) -> list:
+        """获取指定模型支持的尺寸列表"""
+        return cls.IMAGE_SIZES.get(model, ['1K', '2K'])
+    
+    @classmethod
+    def get_default_ratio(cls, model: str) -> str:
+        """获取指定模型的默认比例"""
+        return cls.DEFAULT_RATIOS.get(model, '9:16')
+    
+    @classmethod
+    def get_default_image_size(cls, model: str) -> str:
+        """获取指定模型的默认尺寸"""
+        return cls.DEFAULT_IMAGE_SIZES.get(model, '1K')
+    
+    @classmethod
+    def get_durations(cls, model: str) -> list:
+        """获取指定模型支持的时长列表（使用已有的 VIDEO_MODEL_DURATION_OPTIONS）"""
+        return VIDEO_MODEL_DURATION_OPTIONS.get(model, [5])
+    
+    @classmethod
+    def get_default_duration(cls, model: str) -> int:
+        """获取指定模型的默认时长"""
+        durations = cls.get_durations(model)
+        return durations[0] if durations else 5
+
+
 # 外部链接常量
 class ExternalLinks:
     """外部链接常量"""

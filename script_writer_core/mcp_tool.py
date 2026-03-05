@@ -8,9 +8,6 @@ import os
 import re
 import logging
 import requests
-import time
-import urllib.parse
-import uuid
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from script_writer_core.file_manager import FileManager

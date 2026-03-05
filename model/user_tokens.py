@@ -2,7 +2,7 @@
 UserTokens Model - Database operations for user_tokens table
 对应Go的models/user_tokens.go
 """
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 import logging

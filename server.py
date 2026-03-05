@@ -1,9 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header, Path
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-import requests
 import httpx
 import asyncio
 import uuid
@@ -18,16 +17,14 @@ import subprocess
 import tempfile
 from datetime import datetime
 from typing import List, Optional
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
-import mimetypes
+from urllib.parse import urlparse
 from pydantic import BaseModel
 from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
-from config.config_util import get_config_path, resolve_bin_path
-from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
+from config.config_util import resolve_bin_path
+from perseids_client import make_perseids_request, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
-from model.users import UsersModel, User
+from model.users import UsersModel
 from model.user_tokens import UserTokensModel
-from model.computing_power import ComputingPowerModel
 from model.world import WorldModel
 from model.character import CharacterModel
 from model.location import LocationModel
@@ -42,8 +39,8 @@ from model.migration import run_migrations, get_alembic_config
 from config.constant import (
     TaskTypeRegistry,
     TaskCategory,
-    TaskProvider,
     TaskTypeId,
+    ModelConfig,
     TASK_TYPE_GENERATE_VIDEO, 
     TASK_TYPE_GENERATE_AUDIO, 
     RECHARGE_PACKAGES, 
@@ -53,13 +50,9 @@ from config.constant import (
     AI_TOOL_STATUS_COMPLETED,
     AI_TOOL_STATUS_FAILED,
     AI_AUDIO_STATUS_PENDING,
-    AI_AUDIO_STATUS_PROCESSING,
     AI_AUDIO_STATUS_COMPLETED,
     AI_AUDIO_STATUS_FAILED,
     TASK_STATUS_QUEUED,
-    TASK_STATUS_PROCESSING,
-    TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED,
     GRID_SIZE_2X2,
     GRID_SIZE_3X3,
     GRID_VALID_SIZES,
@@ -74,7 +67,7 @@ from utils.image_grid_splitter import ImageGridSplitter
 from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
 from utils import file_lock
-from perseids_server.utils.permission import require_permission, admin_required
+from perseids_server.utils.permission import require_permission
 from api.admin import router as admin_router
 from api.system import router as system_router
 
@@ -354,6 +347,81 @@ async def get_config_by_key(
             "description": config_def.get('description')
         }
     })
+
+
+@app.get("/api/model-config")
+async def get_model_config(
+    request: Request,
+    model: str = Query(..., description="模型名称")
+):
+    """
+    获取指定模型的配置信息（比例、尺寸、时长等）
+    """
+    try:
+        config = {
+            "model": model,
+            "ratios": ModelConfig.get_ratios(model),
+            "default_ratio": ModelConfig.get_default_ratio(model),
+            "durations": ModelConfig.get_durations(model),
+            "default_duration": ModelConfig.get_default_duration(model),
+        }
+        
+        # 只有支持图片尺寸的模型才返回尺寸配置
+        if model in ModelConfig.IMAGE_SIZES:
+            config["image_sizes"] = ModelConfig.get_image_sizes(model)
+            config["default_image_size"] = ModelConfig.get_default_image_size(model)
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": config
+        })
+    except Exception as e:
+        logger.error(f"获取模型配置失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"获取模型配置失败: {str(e)}"}
+        )
+
+
+@app.get("/api/all-model-configs")
+async def get_all_model_configs(request: Request):
+    """
+    获取所有模型的配置信息
+    """
+    try:
+        all_configs = {}
+        all_models = set(
+            list(ModelConfig.RATIOS.keys()) +
+            list(ModelConfig.IMAGE_SIZES.keys()) +
+            list(ModelConfig.DURATIONS.keys())
+        )
+        
+        for model in all_models:
+            config = {
+                "ratios": ModelConfig.get_ratios(model),
+                "default_ratio": ModelConfig.get_default_ratio(model),
+                "durations": ModelConfig.get_durations(model),
+                "default_duration": ModelConfig.get_default_duration(model),
+            }
+            
+            if model in ModelConfig.IMAGE_SIZES:
+                config["image_sizes"] = ModelConfig.get_image_sizes(model)
+                config["default_image_size"] = ModelConfig.get_default_image_size(model)
+            
+            all_configs[model] = config
+        
+        return JSONResponse({
+            "code": 0,
+            "message": "success",
+            "data": all_configs
+        })
+    except Exception as e:
+        logger.error(f"获取所有模型配置失败: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"获取所有模型配置失败: {str(e)}"}
+        )
 
 
 @app.get("/api/download")

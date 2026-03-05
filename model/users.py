@@ -2,8 +2,7 @@
 Users Model - Database operations for users table
 对应Go的models/users.go
 """
-from typing import Optional, Dict, Any, List
-from datetime import datetime
+from typing import Optional, Dict, Any
 from .database import execute_query, execute_update, execute_insert
 import logging
 import random

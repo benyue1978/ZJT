@@ -1,7 +1,7 @@
 """
 Vidu 默认驱动实现
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import traceback
 from .base_video_driver import BaseVideoDriver
 from config.config_util import get_config, get_dynamic_config_value

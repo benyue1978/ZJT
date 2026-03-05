@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import logging
 import os
-import json
 import traceback
 from datetime import datetime
 import requests

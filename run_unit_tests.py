@@ -24,13 +24,11 @@ import sys
 import os
 import argparse
 import unittest
-import subprocess
-from pathlib import Path
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, APP_DIR)
 
-from tests.db_test_config import get_test_db_config, get_unit_test_setting
+from tests.db_test_config import get_test_db_config
 
 
 class TestRunner:

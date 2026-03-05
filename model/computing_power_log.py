@@ -2,9 +2,8 @@
 ComputingPowerLog Model - Database operations for computing_power_log table
 对应Go的models/computing_power_log.go
 """
-from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime
-from .database import execute_query, execute_update, execute_insert
+from typing import Optional, Dict, Any, List
+from .database import execute_query, execute_insert
 import logging
 
 logger = logging.getLogger(__name__)

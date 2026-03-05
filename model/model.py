@@ -3,7 +3,6 @@ Model Model - Database operations for model table
 对应Go的models/model.go
 """
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 import logging
 

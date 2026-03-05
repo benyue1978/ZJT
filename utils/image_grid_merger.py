@@ -6,7 +6,6 @@ import os
 import uuid
 import logging
 from io import BytesIO
-from urllib.parse import urlparse
 from typing import List, Optional
 from datetime import datetime
 
