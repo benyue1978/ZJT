@@ -5,8 +5,9 @@ Seedream 5.0 火山引擎供应商 v1 版本驱动实现
 from typing import Dict, Any, Optional
 import traceback
 from .base_video_driver import BaseVideoDriver
-from config.config_util import get_dynamic_config_value
+from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
+from utils.image_upload_utils import upload_local_images_to_cdn_sync
 
 
 class Seedream5VolcengineV1Driver(BaseVideoDriver):
@@ -50,6 +51,10 @@ class Seedream5VolcengineV1Driver(BaseVideoDriver):
         self._base_url = "https://ark.cn-beijing.volces.com"
         self._timeout = get_dynamic_config_value("timeout", "request_timeout", default=60)
         self._model = "doubao-seedream-5-0-260128"
+
+        # 是否为本地环境
+        self._is_local = get_dynamic_config_value("server", "is_local", default=False)
+        self._config = get_config()
 
         self._validate_required({
             "Volcengine API Key": self._api_key,
@@ -149,6 +154,16 @@ class Seedream5VolcengineV1Driver(BaseVideoDriver):
         # 基于 image_size 和 aspect_ratio 获取像素尺寸
         pixel_size = self._get_pixel_size(image_size, aspect_ratio)
 
+        # 处理图片路径
+        image_urls = None
+        if ai_tool.image_path:
+            image_urls = ai_tool.image_path.split(',') if ',' in ai_tool.image_path else [ai_tool.image_path]
+            # 如果是本地环境，将本地图片上传到图床
+            if self._is_local:
+                self.logger.info(f"本地环境检测到图片路径，准备上传到图床: {image_urls}")
+                image_urls = upload_local_images_to_cdn_sync(image_urls, self._config)
+                self.logger.info(f"图片上传完成，CDN链接: {image_urls}")
+
         payload = {
             "model": self._model,
             "prompt": ai_tool.prompt,
@@ -156,6 +171,10 @@ class Seedream5VolcengineV1Driver(BaseVideoDriver):
             "output_format": "png",
             "watermark": False
         }
+
+        # 如果有图片路径，添加 image 参数（数组，支持多张图片）
+        if image_urls:
+            payload["image"] = image_urls
 
         headers = {
             "Content-Type": "application/json",

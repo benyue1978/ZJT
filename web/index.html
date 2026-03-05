@@ -2069,6 +2069,14 @@
         }
       }
     },
+    watch: {
+      model(newModel) {
+        // 当选择 seedream-5.0 时，默认分辨率为 2K
+        if (newModel === 'seedream-5.0' && !['2K', '3K'].includes(this.imageSize)) {
+          this.imageSize = '2K';
+        }
+      }
+    },
     methods: {
       async fetchDriverStatus() {
         try {
@@ -2741,6 +2749,14 @@
           case 'SUCCESS': return '生成完成！';
           case 'FAILED': return '任务失败';
           default: return '';
+        }
+      }
+    },
+    watch: {
+      model(newModel) {
+        // 当选择 seedream-5.0 时，默认分辨率为 2K
+        if (newModel === 'seedream-5.0' && !['2K', '3K'].includes(this.imageSize)) {
+          this.imageSize = '2K';
         }
       }
     },
