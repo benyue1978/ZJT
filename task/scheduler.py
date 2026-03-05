@@ -129,6 +129,35 @@ def init_scheduler(app):
         coalesce=True
     )
 
+    # 媒体缓存清理任务
+    from config.config_util import get_dynamic_config_value
+    cleanup_enabled = get_dynamic_config_value("media_cache", "enabled", default=True)
+    cleanup_interval_hours = get_dynamic_config_value("media_cache", "cleanup_interval_hours", default=24)
+    cleanup_on_startup = get_dynamic_config_value("media_cache", "cleanup_on_startup", default=True)
+    
+    if cleanup_enabled:
+        from utils.media_cache import cleanup_cache
+        
+        # 启动时执行一次清理
+        if cleanup_on_startup:
+            logger.info('执行启动时媒体缓存清理')
+            try:
+                cleanup_cache()
+            except Exception as e:
+                logger.error(f"启动时清理缓存失败: {e}")
+        
+        # 添加定时清理任务
+        logger.info(f'启用媒体缓存清理任务，间隔 {cleanup_interval_hours} 小时')
+        scheduler.add_job(
+            func=cleanup_cache,
+            trigger=IntervalTrigger(hours=cleanup_interval_hours),
+            id='cleanup_media_cache',
+            name=f'Cleanup media cache every {cleanup_interval_hours} hours',
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+
     # 启动调度器
     scheduler.start()
     logger.info("定时任务启动成功")

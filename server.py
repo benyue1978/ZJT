@@ -365,8 +365,47 @@ async def download_image(
 ):
     """
     Proxy download for media files (images/videos) to handle CORS and provide proper download headers
+    优先使用本地缓存文件，如果不存在则从远程下载
     """
     try:
+        # 检查是否为本地缓存文件路径
+        if url.startswith('/upload/cache/'):
+            # 本地缓存文件，直接返回
+            import os
+            from pathlib import Path
+            
+            # 获取项目根目录
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            file_path = Path(current_dir) / url.lstrip('/')
+            
+            if file_path.exists() and file_path.is_file():
+                # 确定文件名
+                if not filename:
+                    filename = file_path.name
+                
+                # 确定 content type
+                ext = file_path.suffix.lower()
+                if ext in ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv']:
+                    content_type = 'video/mp4'
+                elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+                    content_type = f'image/{ext[1:]}'
+                else:
+                    content_type = 'application/octet-stream'
+                
+                # 返回本地文件
+                return FileResponse(
+                    path=str(file_path),
+                    media_type=content_type,
+                    filename=filename,
+                    headers={
+                        "Content-Disposition": f"attachment; filename={filename}",
+                        "Cache-Control": "public, max-age=31536000, immutable"
+                    }
+                )
+            else:
+                raise HTTPException(status_code=404, detail="本地缓存文件不存在")
+        
+        # 远程文件，使用代理下载
         async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.get(url)
             response.raise_for_status()
@@ -2919,12 +2958,6 @@ async def video_enhance(
     """
     try:
         logger.info(f"Video enhancement request received from user: {user_id}")
-        # Check authentication
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Authentication token is required"
-            )
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
         task_config = TaskTypeRegistry.get(TaskTypeId.VIDEO_ENHANCE)
@@ -2960,10 +2993,52 @@ async def video_enhance(
         local_video_url = None
         
         if video_url:
-            # Use provided video URL directly
-            final_video_url = video_url
-            local_video_url = video_url  # URL 情况下直接使用 URL
-            logger.info(f"Using provided video URL: {video_url}")
+            # 检查是否为本地缓存文件路径
+            if video_url.startswith('/upload/cache/'):
+                # 本地缓存文件，需要上传到 RunningHub
+                import os
+                from pathlib import Path
+                from utils.file_storage import RunningHubFileStorage
+                from config.config_util import get_config, get_dynamic_config_value
+                
+                # 获取项目根目录
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                local_file_path = Path(current_dir) / video_url.lstrip('/')
+                
+                if not local_file_path.exists() or not local_file_path.is_file():
+                    raise HTTPException(
+                        status_code=404,
+                        detail="本地缓存文件不存在"
+                    )
+                
+                logger.info(f"本地缓存文件检测到，准备上传到 RunningHub: {video_url}")
+                
+                # 上传到 RunningHub
+                rh_host = get_dynamic_config_value("runninghub", "host", default="")
+                rh_api_key = get_dynamic_config_value("runninghub", "api_key", default="")
+                storage = RunningHubFileStorage(
+                    host=rh_host,
+                    api_key=rh_api_key,
+                    config=get_config(),
+                    logger=logger
+                )
+                
+                upload_result = await storage.upload_file("", str(local_file_path))
+                if not upload_result.success:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"文件上传到 RunningHub 失败: {upload_result.error}"
+                    )
+                
+                # 使用 fileName 作为 comfyUI 节点的引用
+                final_video_url = upload_result.key
+                local_video_url = video_url  # 保存本地路径到数据库
+                logger.info(f"本地缓存文件上传完成，fileName: {final_video_url}")
+            else:
+                # 远程 URL，直接使用
+                final_video_url = video_url
+                local_video_url = video_url
+                logger.info(f"Using provided video URL: {video_url}")
         elif video:
             # 读取视频文件
             file_bytes = await video.read()

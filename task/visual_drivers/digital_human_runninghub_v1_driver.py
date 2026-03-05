@@ -143,7 +143,7 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
         
         return True, None
     
-    def build_create_request(self, ai_tool) -> Dict[str, Any]:
+    async def build_create_request(self, ai_tool) -> Dict[str, Any]:
         """
         构建创建 Digital Human 任务的完整请求参数
         
@@ -159,7 +159,7 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
         # 处理音频路径 - 如果是本地环境，上传到 RunningHub
         if self._is_local and audio_url:
             self.logger.info(f"本地环境检测到音频路径，准备上传到 RunningHub: {audio_url}")
-            result = asyncio.run(self._storage.upload_file("", audio_url))
+            result = await self._storage.upload_file("", audio_url)
             if result.success:
                 audio_url = result.key
                 self.logger.info(f"音频上传完成，使用 fileName: {audio_url}")
@@ -170,7 +170,7 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
         image_path = ai_tool.image_path
         if self._is_local and image_path:
             self.logger.info(f"本地环境检测到图片路径，准备上传到 RunningHub: {image_path}")
-            result = asyncio.run(self._storage.upload_file("", image_path))
+            result = await self._storage.upload_file("", image_path)
             if result.success:
                 image_path = result.key
                 self.logger.info(f"图片上传完成，使用 fileName: {image_path}")
@@ -269,7 +269,7 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
             }
         }
     
-    def submit_task(self, ai_tool) -> Dict[str, Any]:
+    async def submit_task(self, ai_tool) -> Dict[str, Any]:
         """
         提交 Digital Human 视频生成任务
         
@@ -287,7 +287,7 @@ class DigitalHumanRunninghubV1Driver(BaseVideoDriver):
             self.logger.info(f"Submitting Digital Human task: text='{ai_tool.prompt[:50]}...', ratio={ai_tool.ratio}")
             
             # 构建请求参数
-            request_params = self.build_create_request(ai_tool)
+            request_params = await self.build_create_request(ai_tool)
             
             # 调用统一请求方法
             try:
