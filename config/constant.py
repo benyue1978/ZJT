@@ -1,262 +1,71 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+常量配置模块
 
-from dataclasses import dataclass
-from typing import Optional, Union, Dict, List
+⚠️ 注意：任务类型相关配置已迁移到 unified_config.py
+新增或修改任务类型请编辑 config/unified_config.py 中的 ALL_TASK_CONFIGS
 
+本文件保留向后兼容的常量别名，逐步废弃中。
+"""
 
-class TaskTypeId:
-    """任务类型ID常量"""
-    # 图片编辑
-    GEMINI_2_5_FLASH_IMAGE = 1          # Gemini 2.5 Flash 图片编辑（标准版）
-    GEMINI_3_PRO_IMAGE = 7              # Gemini 3 Pro 图片编辑（加强版）
-    
-    # 文生视频
-    SORA2_TEXT_TO_VIDEO = 2             # Sora2 文生视频
-    
-    # 图生视频
-    SORA2_IMAGE_TO_VIDEO = 3            # Sora2 图生视频
-    LTX2_IMAGE_TO_VIDEO = 10            # LTX2.0 图生视频
-    WAN22_IMAGE_TO_VIDEO = 11           # Wan2.2 图生视频
-    KLING_IMAGE_TO_VIDEO = 12           # 可灵图生视频
-    VIDU_IMAGE_TO_VIDEO = 14            # Vidu 图生视频
-    VEO3_IMAGE_TO_VIDEO = 15            # VEO3.1 图生视频
-    
-    # 图片/视频 增强
-    IMAGE_ENHANCE = 4                   # 图片高清放大
-    VIDEO_ENHANCE = 5                   # AI视频高清修复
-    
-    # 其他
-    CHARACTER_CARD = 8                  # 创建角色卡
-    
-    # 音频
-    AUDIO_GENERATE = 9                  # 音频生成
-    
-    # 数字人
-    DIGITAL_HUMAN = 13                  # 数字人生成
-    
-    # 文生图
-    SEEDREAM_TEXT_TO_IMAGE = 16         # Seedream 5.0 文生图
+from typing import Union, Dict, List
+
+# 从统一配置系统导入（新系统）
+from config.unified_config import (
+    TaskTypeId,
+    TaskCategory,
+    TaskProvider,
+    DriverKey,
+    DriverImplementation,
+    UnifiedConfigRegistry,
+    UnifiedTaskConfig,
+)
 
 
-class TaskCategory:
-    """任务分类常量"""
-    IMAGE_EDIT = 'image_edit'           # 图片编辑
-    TEXT_TO_VIDEO = 'text_to_video'     # 文生视频
-    IMAGE_TO_VIDEO = 'image_to_video'   # 图生视频
-    TEXT_TO_IMAGE = 'text_to_image'     # 文生图
-    VISUAL_ENHANCE = 'visual_enhance'   # 视觉增强
-    AUDIO = 'audio'                     # 音频
-    DIGITAL_HUMAN = 'digital_human'     # 数字人
-    OTHER = 'other'                     # 其他
-
-
-class TaskProvider:
-    """任务供应商常量"""
-    DUOMI = 'duomi'           # 多米供应商
-    RUNNINGHUB = 'runninghub' # RunningHub 供应商
-    VIDU = 'vidu'             # Vidu 官方
-    VOLCENGINE = 'volcengine' # 火山引擎
-    LOCAL = 'local'           # 本地处理
-
-
-class DriverKey:
-    """业务驱动名称常量"""
-    # Sora2 相关
-    SORA2_TEXT_TO_VIDEO = 'sora2_text_to_video'       # Sora2 文生视频
-    SORA2_IMAGE_TO_VIDEO = 'sora2_image_to_video'     # Sora2 图生视频
-    
-    # Kling 相关
-    KLING_IMAGE_TO_VIDEO = 'kling_image_to_video'     # 可灵图生视频
-    
-    # Gemini 相关
-    GEMINI_IMAGE_EDIT = 'gemini_image_edit'           # Gemini 图片编辑（标准版）
-    GEMINI_IMAGE_EDIT_PRO = 'gemini_image_edit_pro'   # Gemini 图片编辑（加强版）
-    
-    # VEO3 相关
-    VEO3_IMAGE_TO_VIDEO = 'veo3_image_to_video'       # VEO3 图生视频
-    
-    # LTX2 相关
-    LTX2_IMAGE_TO_VIDEO = 'ltx2_image_to_video'       # LTX2 图生视频
-    
-    # Wan22 相关
-    WAN22_IMAGE_TO_VIDEO = 'wan22_image_to_video'     # Wan2.2 图生视频
-    
-    # Vidu 相关
-    VIDU_IMAGE_TO_VIDEO = 'vidu_image_to_video'       # Vidu 图生视频
-    
-    # 数字人
-    DIGITAL_HUMAN = 'digital_human'                   # 数字人生成
-    
-    # 文生图
-    SEEDREAM_TEXT_TO_IMAGE = 'seedream_text_to_image' # Seedream 5.0 文生图
-
-
-class DriverImplementation:
-    """驱动实现类名常量"""
-    # Sora2
-    SORA2_DUOMI_V1 = 'sora2_duomi_v1'
-    
-    # Kling
-    KLING_DUOMI_V1 = 'kling_duomi_v1'
-    
-    # Gemini
-    GEMINI_DUOMI_V1 = 'gemini_duomi_v1'
-    GEMINI_PRO_DUOMI_V1 = 'gemini_pro_duomi_v1'
-    
-    # VEO3
-    VEO3_DUOMI_V1 = 'veo3_duomi_v1'
-    
-    # LTX2
-    LTX2_RUNNINGHUB_V1 = 'ltx2_runninghub_v1'
-    
-    # Wan22
-    WAN22_RUNNINGHUB_V1 = 'wan22_runninghub_v1'
-    
-    # Digital Human
-    DIGITAL_HUMAN_RUNNINGHUB_V1 = 'digital_human_runninghub_v1'
-    
-    # Vidu
-    VIDU_DEFAULT = 'vidu_default'
-    
-    # Seedream 5.0
-    SEEDREAM5_VOLCENGINE_V1 = 'seedream5_volcengine_v1'
-
-
-@dataclass
-class TaskTypeConfig:
-    """任务类型配置"""
-    id: int                                          # 任务类型ID
-    name: str                                        # 显示名称
-    category: str                                    # 分类：使用 TaskCategory 常量
-    provider: str                                    # 供应商：使用 TaskProvider 常量
-    driver_name: Optional[str] = None                # 业务驱动名称（可选）
-    computing_power: Union[int, Dict[int, int]] = 0  # 算力消耗（整数或按时长的字典）
-
+# ============ 向后兼容：使用 UnifiedConfigRegistry 提供旧 API ============
 
 class TaskTypeRegistry:
-    """任务类型注册表 - 统一管理所有任务类型配置"""
+    """
+    向后兼容的任务类型注册表
     
-    _configs: Dict[int, TaskTypeConfig] = {}
-    
-    @classmethod
-    def register(cls, config: TaskTypeConfig) -> None:
-        """注册任务类型配置"""
-        cls._configs[config.id] = config
+    ⚠️ 已废弃：请使用 UnifiedConfigRegistry
+    """
     
     @classmethod
-    def get(cls, task_type: int) -> Optional[TaskTypeConfig]:
+    def get(cls, task_type: int):
         """获取指定任务类型的配置"""
-        return cls._configs.get(task_type)
+        return UnifiedConfigRegistry.get_by_id(task_type)
     
     @classmethod
-    def get_all(cls) -> Dict[int, TaskTypeConfig]:
+    def get_all(cls) -> Dict[int, UnifiedTaskConfig]:
         """获取所有任务类型配置"""
-        return cls._configs.copy()
+        return {c.id: c for c in UnifiedConfigRegistry.get_all()}
     
     @classmethod
     def get_by_category(cls, category: str) -> List[int]:
         """获取指定分类的所有任务类型ID"""
-        return [c.id for c in cls._configs.values() if c.category == category]
+        return UnifiedConfigRegistry.get_ids_by_category(category)
     
     @classmethod
     def get_by_provider(cls, provider: str) -> List[int]:
         """获取指定供应商的所有任务类型ID"""
-        return [c.id for c in cls._configs.values() if c.provider == provider]
+        return UnifiedConfigRegistry.get_ids_by_provider(provider)
     
     @classmethod
     def get_name_map(cls) -> Dict[int, str]:
         """获取任务类型ID到名称的映射"""
-        return {c.id: c.name for c in cls._configs.values()}
+        return UnifiedConfigRegistry.get_name_map()
     
     @classmethod
     def get_driver_mapping(cls) -> Dict[int, str]:
         """获取任务类型ID到业务驱动名称的映射"""
-        return {c.id: c.driver_name for c in cls._configs.values() if c.driver_name}
+        return UnifiedConfigRegistry.get_driver_mapping()
     
     @classmethod
     def get_computing_power_map(cls) -> Dict[int, Union[int, Dict[int, int]]]:
         """获取任务类型ID到算力消耗的映射"""
-        return {c.id: c.computing_power for c in cls._configs.values()}
-
-
-# ============ 注册所有任务类型 ============
-
-# 图片编辑
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.GEMINI_2_5_FLASH_IMAGE, name='图片编辑', category=TaskCategory.IMAGE_EDIT,
-    provider=TaskProvider.DUOMI, driver_name=DriverKey.GEMINI_IMAGE_EDIT, computing_power=2
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.GEMINI_3_PRO_IMAGE, name='图片编辑 (Pro)', category=TaskCategory.IMAGE_EDIT,
-    provider=TaskProvider.DUOMI, driver_name=DriverKey.GEMINI_IMAGE_EDIT_PRO, computing_power=6
-))
-
-# 文生视频
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.SORA2_TEXT_TO_VIDEO, name='Sora2文生视频', category=TaskCategory.TEXT_TO_VIDEO,
-    provider=TaskProvider.DUOMI, driver_name=DriverKey.SORA2_TEXT_TO_VIDEO, computing_power=18
-))
-
-# 图生视频
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.SORA2_IMAGE_TO_VIDEO, name='图片生成视频 (Sora2)', category=TaskCategory.IMAGE_TO_VIDEO,
-    provider=TaskProvider.DUOMI, driver_name=DriverKey.SORA2_IMAGE_TO_VIDEO, computing_power=18
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.LTX2_IMAGE_TO_VIDEO, name='图片生成视频 (LTX2.0)', category=TaskCategory.IMAGE_TO_VIDEO,
-    provider=TaskProvider.RUNNINGHUB, driver_name=DriverKey.LTX2_IMAGE_TO_VIDEO, computing_power=6
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.WAN22_IMAGE_TO_VIDEO, name='图片生成视频 (Wan2.2)', category=TaskCategory.IMAGE_TO_VIDEO,
-    provider=TaskProvider.RUNNINGHUB, driver_name=DriverKey.WAN22_IMAGE_TO_VIDEO, computing_power={5: 6, 10: 12}
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.KLING_IMAGE_TO_VIDEO, name='图片生成视频 (可灵)', category=TaskCategory.IMAGE_TO_VIDEO,
-    provider=TaskProvider.DUOMI, driver_name=DriverKey.KLING_IMAGE_TO_VIDEO, computing_power={5: 38, 10: 70}
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.VIDU_IMAGE_TO_VIDEO, name='图片生成视频 (Vidu)', category=TaskCategory.IMAGE_TO_VIDEO,
-    provider=TaskProvider.VIDU, driver_name=DriverKey.VIDU_IMAGE_TO_VIDEO, computing_power={5: 16, 8: 22}
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.VEO3_IMAGE_TO_VIDEO, name='图片生成视频 (VEO3.1)', category=TaskCategory.IMAGE_TO_VIDEO,
-    provider=TaskProvider.DUOMI, driver_name=DriverKey.VEO3_IMAGE_TO_VIDEO, computing_power=6
-))
-
-# 数字人
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.DIGITAL_HUMAN, name='数字人生成', category=TaskCategory.DIGITAL_HUMAN,
-    provider=TaskProvider.RUNNINGHUB, driver_name=DriverKey.DIGITAL_HUMAN, computing_power=12
-))
-
-# 图片/视频增强
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.IMAGE_ENHANCE, name='图片高清放大', category=TaskCategory.VISUAL_ENHANCE,
-    provider=TaskProvider.LOCAL, driver_name=None, computing_power=1
-))
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.VIDEO_ENHANCE, name='AI视频高清修复', category=TaskCategory.VISUAL_ENHANCE,
-    provider=TaskProvider.LOCAL, driver_name=None, computing_power=10
-))
-
-# 角色卡
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.CHARACTER_CARD, name='创建角色卡', category=TaskCategory.OTHER,
-    provider=TaskProvider.LOCAL, driver_name=None, computing_power=20
-))
-
-# 音频
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.AUDIO_GENERATE, name='AI音频生成', category=TaskCategory.AUDIO,
-    provider=TaskProvider.LOCAL, driver_name=None, computing_power=5
-))
-
-# 文生图
-TaskTypeRegistry.register(TaskTypeConfig(
-    id=TaskTypeId.SEEDREAM_TEXT_TO_IMAGE, name='文生图 (Seedream 5.0)', category=TaskCategory.TEXT_TO_IMAGE,
-    provider=TaskProvider.VOLCENGINE, driver_name=DriverKey.SEEDREAM_TEXT_TO_IMAGE, computing_power=6
-))
+        return UnifiedConfigRegistry.get_computing_power_map()
 
 
 class Action:
@@ -546,85 +355,6 @@ class SystemConfigConstants:
 
 # 向后兼容别名
 CONFIG_KEY_MAX_LENGTH = SystemConfigConstants.CONFIG_KEY_MAX_LENGTH
-
-
-# 模型配置常量
-class ModelConfig:
-    """模型配置常量 - 定义各模型支持的比例和尺寸"""
-    
-    # 图片比例选项
-    RATIOS = {
-        'gemini-2.5-pro-image-preview': ['9:16', '16:9', '1:1', '3:4', '4:3'],
-        'gemini-3-pro-image-preview': ['9:16', '16:9', '1:1', '3:4', '4:3'],
-        'seedream-5.0': ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'],
-        'sora2': ['9:16', '16:9'],
-        'ltx2': ['9:16', '16:9'],
-        'wan22': ['9:16', '16:9'],
-        'kling': ['9:16', '16:9'],
-        'vidu': ['9:16', '16:9'],
-        'veo3': ['9:16', '16:9'],
-        'digital_human': ['9:16', '16:9', '1:1', '3:2', '2:3', '3:4','4:3'],
-    }
-    
-    # 图片尺寸选项
-    IMAGE_SIZES = {
-        'gemini-2.5-pro-image-preview': ['1K', '2K'],
-        'gemini-3-pro-image-preview': ['1K', '2K', '4K'],
-        'seedream-5.0': ['2K', '3K'],
-    }
-    
-    # 默认比例
-    DEFAULT_RATIOS = {
-        'gemini-2.5-pro-image-preview': '9:16',
-        'gemini-3-pro-image-preview': '9:16',
-        'seedream-5.0': '1:1',
-        'sora2': '9:16',
-        'ltx2': '9:16',
-        'wan22': '9:16',
-        'kling': '9:16',
-        'vidu': '9:16',
-        'veo3': '9:16',
-        'digital_human': '9:16',
-    }
-    
-    # 默认尺寸
-    DEFAULT_IMAGE_SIZES = {
-        'gemini-2.5-pro-image-preview': '1K',
-        'gemini-3-pro-image-preview': '1K',
-        'seedream-5.0': '2K',
-    }
-    
-    @classmethod
-    def get_ratios(cls, model: str) -> list:
-        """获取指定模型支持的比例列表"""
-        return cls.RATIOS.get(model, ['9:16', '16:9', '1:1'])
-    
-    @classmethod
-    def get_image_sizes(cls, model: str) -> list:
-        """获取指定模型支持的尺寸列表"""
-        return cls.IMAGE_SIZES.get(model, ['1K', '2K'])
-    
-    @classmethod
-    def get_default_ratio(cls, model: str) -> str:
-        """获取指定模型的默认比例"""
-        return cls.DEFAULT_RATIOS.get(model, '9:16')
-    
-    @classmethod
-    def get_default_image_size(cls, model: str) -> str:
-        """获取指定模型的默认尺寸"""
-        return cls.DEFAULT_IMAGE_SIZES.get(model, '1K')
-    
-    @classmethod
-    def get_durations(cls, model: str) -> list:
-        """获取指定模型支持的时长列表（使用已有的 VIDEO_MODEL_DURATION_OPTIONS）"""
-        global VIDEO_MODEL_DURATION_OPTIONS
-        return VIDEO_MODEL_DURATION_OPTIONS.get(model, [5])
-    
-    @classmethod
-    def get_default_duration(cls, model: str) -> int:
-        """获取指定模型的默认时长"""
-        durations = cls.get_durations(model)
-        return durations[0] if durations else 5
 
 
 # 外部链接常量

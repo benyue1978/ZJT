@@ -40,7 +40,6 @@ from config.constant import (
     TaskTypeRegistry,
     TaskCategory,
     TaskTypeId,
-    ModelConfig,
     TASK_TYPE_GENERATE_VIDEO, 
     TASK_TYPE_GENERATE_AUDIO, 
     RECHARGE_PACKAGES, 
@@ -232,9 +231,6 @@ def _get_wechat_pay_util():
 # 兼容旧代码，初始化时创建一个实例
 wechat_pay_util = _get_wechat_pay_util()
 
-# Default ComfyUI server address; can be overridden by request field
-DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
-
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
 
 # 导入并注册 script_writer API 路由
@@ -268,13 +264,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-def _normalize_server(server: str) -> str:
-    if not server:
-        server = DEFAULT_COMFYUI_SERVER
-    if not server.endswith("/"):
-        server += "/"
-    return server
 
 
 @app.get("/api/config/upload")
@@ -347,85 +336,6 @@ async def get_config_by_key(
             "description": config_def.get('description')
         }
     })
-
-
-@app.get("/api/model-config")
-async def get_model_config(
-    request: Request,
-    model: str = Query(..., description="模型名称")
-):
-    """
-    获取指定模型的配置信息（比例、尺寸、时长等）
-    """
-    try:
-        config = {
-            "model": model,
-            "ratios": ModelConfig.get_ratios(model),
-            "default_ratio": ModelConfig.get_default_ratio(model),
-            "durations": ModelConfig.get_durations(model),
-            "default_duration": ModelConfig.get_default_duration(model),
-        }
-        
-        # 只有支持图片尺寸的模型才返回尺寸配置
-        if model in ModelConfig.IMAGE_SIZES:
-            config["image_sizes"] = ModelConfig.get_image_sizes(model)
-            config["default_image_size"] = ModelConfig.get_default_image_size(model)
-        
-        return JSONResponse({
-            "code": 0,
-            "message": "success",
-            "data": config
-        })
-    except Exception as e:
-        logger.error(f"获取模型配置失败: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"code": -1, "message": f"获取模型配置失败: {str(e)}"}
-        )
-
-
-@app.get("/api/all-model-configs")
-async def get_all_model_configs(request: Request):
-    """
-    获取所有模型的配置信息
-    """
-    try:
-        all_configs = {}
-        # 从 VIDEO_MODEL_DURATION_OPTIONS 获取视频模型列表
-        from config.constant import VIDEO_MODEL_DURATION_OPTIONS
-        all_models = set(
-            list(ModelConfig.RATIOS.keys()) +
-            list(ModelConfig.IMAGE_SIZES.keys()) +
-            list(VIDEO_MODEL_DURATION_OPTIONS.keys())
-        )
-        
-        for model in all_models:
-            # 直接使用 VIDEO_MODEL_DURATION_OPTIONS 而不是通过 ModelConfig
-            durations = VIDEO_MODEL_DURATION_OPTIONS.get(model, [5])
-            config = {
-                "ratios": ModelConfig.get_ratios(model),
-                "default_ratio": ModelConfig.get_default_ratio(model),
-                "durations": durations,
-                "default_duration": durations[0] if durations else 5,
-            }
-            
-            if model in ModelConfig.IMAGE_SIZES:
-                config["image_sizes"] = ModelConfig.get_image_sizes(model)
-                config["default_image_size"] = ModelConfig.get_default_image_size(model)
-            
-            all_configs[model] = config
-        
-        return JSONResponse({
-            "code": 0,
-            "message": "success",
-            "data": all_configs
-        })
-    except Exception as e:
-        logger.error(f"获取所有模型配置失败: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"code": -1, "message": f"获取所有模型配置失败: {str(e)}"}
-        )
 
 
 @app.get("/api/download")
@@ -1041,12 +951,6 @@ async def image_edit(
     2. URL list (ref_image_urls parameter, comma separated)
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
-
         #用uuid生成交易id
         image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
         if model == "gemini-2.5-pro-image-preview":
@@ -1184,12 +1088,6 @@ async def text_to_image(
     Submit text-to-image task to Duomi API (Gemini nano-banana)
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
-
         # Determine computing power based on model
         text_to_image_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE  # gemini-2.5-pro-image-preview: 2算力
         if model == "gemini-3-pro-image-preview":
@@ -1479,11 +1377,6 @@ async def ai_app_run(
     Automatically polls task status and returns final video/image URLs.
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
         task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)
         computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
@@ -1629,11 +1522,6 @@ async def ai_app_run_image(
         else:
             logger.warning("No image input provided")
         
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
         
         # Determine which mode: uploaded images or image URLs
         if image_urls:
@@ -2222,7 +2110,6 @@ async def register(request: RegisterRequest):
         phone = request.phone
         password = request.password
         verify_code = request.code
-        agent = request.agent
         
         logger.info(f"收到注册请求 - 手机号: {phone}")
 
@@ -2307,7 +2194,6 @@ async def login(request: LoginRequest):
     try:
         phone = request.phone
         password = request.password
-        agent = request.agent
         terms_agreed = request.terms_agreed
         
         logger.info(f"收到登录请求 - 手机号: {phone}")
@@ -2696,37 +2582,6 @@ async def get_computing_power_config(request: Request):
         )
     except Exception as e:
         logger.error(f'获取算力配置失败: {str(e)}')
-        return JSONResponse(
-            status_code=500,
-            content={
-                'success': False,
-                'message': '服务器错误'
-            }
-        )
-
-
-@app.get('/api/task-type-config')
-@require_permission("computing:view_task_config")
-async def get_task_type_config(request: Request):
-    """
-    获取任务类型配置
-    返回图生视频、图片编辑等任务类型列表和类型名称映射
-    """
-    try:
-        return JSONResponse(
-            content={
-                'success': True,
-                'message': '获取成功',
-                'data': {
-                    'image_to_video_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_TO_VIDEO),
-                    'image_edit_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_EDIT),
-                    'text_to_image_types': TaskTypeRegistry.get_by_category(TaskCategory.TEXT_TO_IMAGE),
-                    'task_type_name_map': TaskTypeRegistry.get_name_map()
-                }
-            }
-        )
-    except Exception as e:
-        logger.error(f'获取任务类型配置失败: {str(e)}')
         return JSONResponse(
             status_code=500,
             content={
@@ -3270,14 +3125,7 @@ async def video_remix(
     """
     try:
         logger.info(f"Video remix request received - video_id: {video_id}, prompt: {prompt}")
-        
-        # 检查认证
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="请提供认证令牌"
-            )
-        
+          
         # 计算所需算力（使用视频生成的算力标准）
         task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)  # AI视频生成
         computing_power = task_config.computing_power if task_config else 0
@@ -3589,12 +3437,6 @@ async def digital_human_generate(
     Generate digital human video from image, text and audio
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Authentication token is required"
-            )
-        
         # Validate text length
         if len(text) > 1000:
             raise HTTPException(
@@ -3719,13 +3561,7 @@ async def audio_generate(
     Submit audio generation task
     Supports voice cloning with reference audio and emotion control
     """
-    try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Authentication token is required"
-            )
-        
+    try:      
         # Calculate computing power cost
         ref_path = None
         if ref_audio:
@@ -4964,7 +4800,6 @@ async def merge_grid_images(
     - 所有非黑色位置的图片尺寸必须相同
     """
     try:
-        user_id = _get_user_id_from_header(x_user_id)
 
         merger = ImageGridMerger(upload_dir=UPLOAD_DIR, server_host=SERVER_HOST)
         result = await merger.merge_images(

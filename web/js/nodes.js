@@ -1281,17 +1281,34 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">分镜模型</div>
-            <select class="shot-group-model">
-              <option value="gemini-2.5-pro-image-preview" ${node.data.model === 'gemini-2.5-pro-image-preview' ? 'selected' : ''}>标准版</option>
-              <option value="gemini-3-pro-image-preview" ${node.data.model === 'gemini-3-pro-image-preview' ? 'selected' : ''}>加强版</option>
-              <option value="seedream-5.0" ${node.data.model === 'seedream-5.0' ? 'selected' : ''}>Seedream 5.0</option>
-            </select>
+            <select class="shot-group-model"></select>
           </div>
           <div class="field field-collapsible btn-row">
             <button class="mini-btn secondary shot-group-detail-btn" type="button" style="flex: 1;">查看/编辑</button>
             <button class="mini-btn gen-btn-white shot-group-generate-btn" type="button">生成分镜</button>
           </div>
         `;
+
+        // 动态填充分镜模型选项
+        const shotGroupModelEl = nodeBody.querySelector('.shot-group-model');
+        if(shotGroupModelEl) {
+          if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+            const options = window.TaskConfig.getModelOptionsForCategory('image_edit');
+            options.forEach(opt => {
+              const optEl = document.createElement('option');
+              optEl.value = opt.value;
+              optEl.textContent = opt.label;
+              if(opt.value === node.data.model) optEl.selected = true;
+              shotGroupModelEl.appendChild(optEl);
+            });
+          } else {
+            shotGroupModelEl.innerHTML = `
+              <option value="gemini" ${node.data.model === 'gemini' ? 'selected' : ''}>标准版</option>
+              <option value="gemini_pro" ${node.data.model === 'gemini_pro' ? 'selected' : ''}>加强版</option>
+              <option value="seedream" ${node.data.model === 'seedream' ? 'selected' : ''}>Seedream 5.0</option>
+            `;
+          }
+        }
 
         const newDetailBtn = nodeBody.querySelector('.shot-group-detail-btn');
         const newGenerateBtn = nodeBody.querySelector('.shot-group-generate-btn');
@@ -2552,14 +2569,7 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">视频模型</div>
-            <select class="video-model-select">
-              <option value="wan22" selected>Wan2.2</option>
-              <option value="sora2">Sora2</option>
-              <option value="ltx2">LTX2.0</option>
-              <option value="kling">可灵</option>
-              <option value="vidu">Vidu</option>
-              <option value="veo3">VEO3.1</option>
-            </select>
+            <select class="video-model-select"></select>
           </div>
           <div class="field field-collapsible">
             <div class="label">提示词</div>
@@ -2615,6 +2625,37 @@
         e.stopPropagation();
         state.connecting = { fromId: id, startX: e.clientX, startY: e.clientY };
       });
+
+      // 动态填充视频模型选项（从 TaskConfig 获取）
+      function populateVideoModelOptions() {
+        videoModelSelect.innerHTML = '';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_to_video');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            videoModelSelect.appendChild(optEl);
+          });
+        } else {
+          // 回退：硬编码选项
+          const fallbackOptions = [
+            { value: 'wan22', label: 'Wan2.2' },
+            { value: 'sora2', label: 'Sora2' },
+            { value: 'ltx2', label: 'LTX2.0' },
+            { value: 'kling', label: '可灵' },
+            { value: 'vidu', label: 'Vidu' },
+            { value: 'veo3', label: 'VEO3.1' }
+          ];
+          fallbackOptions.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            videoModelSelect.appendChild(optEl);
+          });
+        }
+      }
+      populateVideoModelOptions();
 
       // 初始化videoModel
       if(!node.data.videoModel){
@@ -2692,71 +2733,48 @@
         node.data.ratio = ratioSelect.value;
       });
 
-      // 根据模型更新时长选项
+      // 根据模型更新时长选项（从后端配置获取）
       function updateDurationOptions(videoModel) {
         const currentDuration = durationSelect.value;
         durationSelect.innerHTML = '';
         
-        if(videoModel === 'ltx2') {
-          // LTX2.0: 5, 8, 10秒
-          durationSelect.innerHTML = `
-            <option value="5">5秒 (121帧)</option>
-            <option value="8">8秒 (201帧)</option>
-            <option value="10">10秒 (241帧)</option>
-          `;
-          if(['5', '8', '10'].includes(currentDuration)) {
+        const modelConfigs = getModelConfigs();
+        const config = modelConfigs[videoModel];
+        
+        // LTX2 特殊标签
+        const ltx2Labels = {
+          5: '5秒 (121帧)',
+          8: '8秒 (201帧)',
+          10: '10秒 (241帧)'
+        };
+        
+        if(config && config.durations && config.durations.length > 0) {
+          // 从后端配置生成选项
+          config.durations.forEach(duration => {
+            const label = videoModel === 'ltx2' ? (ltx2Labels[duration] || `${duration}秒`) : `${duration}秒`;
+            durationSelect.innerHTML += `<option value="${duration}">${label}</option>`;
+          });
+          
+          // 检查当前值是否有效
+          if(config.durations.includes(Number(currentDuration))) {
             durationSelect.value = currentDuration;
           } else {
-            durationSelect.value = '5';
-            node.data.duration = 5;
+            const defaultDuration = config.default_duration || config.durations[0];
+            durationSelect.value = defaultDuration;
+            node.data.duration = defaultDuration;
           }
-        } else if(videoModel === 'wan22' || videoModel === 'kling') {
-          // Wan2.2 和可灵: 5, 10秒
-          durationSelect.innerHTML = `
-            <option value="5">5秒</option>
-            <option value="10">10秒</option>
-          `;
-          if(['5', '10'].includes(currentDuration)) {
-            durationSelect.value = currentDuration;
-          } else {
-            durationSelect.value = '5';
-            node.data.duration = 5;
-          }
-        } else if(videoModel === 'vidu') {
-          // Vidu: 5, 8秒
-          durationSelect.innerHTML = `
-            <option value="5">5秒</option>
-            <option value="8">8秒</option>
-          `;
-          if(['5', '8'].includes(currentDuration)) {
-            durationSelect.value = currentDuration;
-          } else {
-            durationSelect.value = '5';
-            node.data.duration = 5;
-          }
-        } else if(videoModel === 'veo3') {
-          // VEO3: 固定8秒
-          durationSelect.innerHTML = `
-            <option value="8">8秒</option>
-          `;
-          durationSelect.value = '8';
-          node.data.duration = 8;
         } else {
-          // Sora2: 10, 15秒
+          // 降级：使用默认选项
           durationSelect.innerHTML = `
+            <option value="5">5秒</option>
             <option value="10">10秒</option>
-            <option value="15">15秒</option>
           `;
-          if(['10', '15'].includes(currentDuration)) {
-            durationSelect.value = currentDuration;
-          } else {
-            durationSelect.value = '10';
-            node.data.duration = 10;
-          }
+          durationSelect.value = '5';
+          node.data.duration = 5;
         }
       }
       
-      // 根据模型更新比例选项（所有模型都只支持16:9和9:16）
+      // 根据模型更新比例选项（从后端配置获取）
       function updateRatioOptions(videoModel) {
         const ratioField = ratioSelect.closest('.field');
         
@@ -2770,16 +2788,43 @@
         if(ratioField) ratioField.style.display = '';
         
         const currentRatio = ratioSelect.value;
-        ratioSelect.innerHTML = `
-          <option value="9:16">9:16 (竖屏)</option>
-          <option value="16:9">16:9 (横屏)</option>
-        `;
-        // 如果当前比例不在支持列表中，默认使用16:9
-        if(currentRatio !== '9:16' && currentRatio !== '16:9') {
-          ratioSelect.value = '16:9';
-          node.data.ratio = '16:9';
+        const modelConfigs = getModelConfigs();
+        const config = modelConfigs[videoModel];
+        
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1 (方形)'
+        };
+        
+        if(config && config.ratios && config.ratios.length > 0) {
+          // 从后端配置生成选项
+          ratioSelect.innerHTML = '';
+          config.ratios.forEach(ratio => {
+            const label = labelMap[ratio] || ratio;
+            ratioSelect.innerHTML += `<option value="${ratio}">${label}</option>`;
+          });
+          
+          // 检查当前值是否有效
+          if(config.ratios.includes(currentRatio)) {
+            ratioSelect.value = currentRatio;
+          } else {
+            const defaultRatio = config.default_ratio || config.ratios[0];
+            ratioSelect.value = defaultRatio;
+            node.data.ratio = defaultRatio;
+          }
         } else {
-          ratioSelect.value = currentRatio;
+          // 降级：使用默认选项
+          ratioSelect.innerHTML = `
+            <option value="9:16">9:16 (竖屏)</option>
+            <option value="16:9">16:9 (横屏)</option>
+          `;
+          if(currentRatio !== '9:16' && currentRatio !== '16:9') {
+            ratioSelect.value = '16:9';
+            node.data.ratio = '16:9';
+          } else {
+            ratioSelect.value = currentRatio;
+          }
         }
       }
       
@@ -3502,11 +3547,7 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">模型</div>
-            <select class="image-model">
-              <option value="gemini-2.5-pro-image-preview">标准版 (2算力)</option>
-              <option value="gemini-3-pro-image-preview">加强版 (6算力)</option>
-              <option value="seedream-5.0">Seedream 5.0 (6算力)</option>
-            </select>
+            <select class="image-model"></select>
           </div>
           <div class="field field-collapsible">
             <div class="label">图片比例</div>
@@ -3812,6 +3853,79 @@
       const confirmFieldEl = el.querySelector('.image-confirm-field');
       const confirmShotBtn = el.querySelector('.image-confirm-shot-btn');
 
+      // 动态填充图片模型选项（从 TaskConfig 获取）
+      function populateImageModelOptions() {
+        if(!modelEl) return;
+        modelEl.innerHTML = '';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_edit');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            modelEl.appendChild(optEl);
+          });
+        } else {
+          // 回退：硬编码选项
+          const fallbackOptions = [
+            { value: 'gemini', label: '标准版 (2算力)' },
+            { value: 'gemini_pro', label: '加强版 (6算力)' },
+            { value: 'seedream', label: 'Seedream 5.0 (6算力)' }
+          ];
+          fallbackOptions.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            modelEl.appendChild(optEl);
+          });
+        }
+      }
+      populateImageModelOptions();
+
+      // 根据模型更新图片比例选项（从后端配置获取）
+      function updateImageRatioOptions(model) {
+        if(!ratioEl) return;
+        const currentRatio = ratioEl.value;
+        const modelConfigs = getModelConfigs();
+        const config = modelConfigs[model];
+        
+        const labelMap = {
+          '9:16': '竖屏 (9:16)',
+          '16:9': '横屏 (16:9)',
+          '1:1': '正方形 (1:1)',
+          '3:4': '竖屏 (3:4)',
+          '4:3': '横屏 (4:3)',
+          '2:3': '竖屏 (2:3)',
+          '3:2': '横屏 (3:2)'
+        };
+        
+        if(config && config.ratios && config.ratios.length > 0) {
+          ratioEl.innerHTML = '';
+          config.ratios.forEach(ratio => {
+            ratioEl.innerHTML += `<option value="${ratio}">${labelMap[ratio] || ratio}</option>`;
+          });
+          if(config.ratios.includes(currentRatio)) {
+            ratioEl.value = currentRatio;
+          } else {
+            const defaultRatio = config.default_ratio || config.ratios[0];
+            ratioEl.value = defaultRatio;
+            node.data.ratio = defaultRatio;
+          }
+        } else {
+          // 降级：使用默认选项
+          ratioEl.innerHTML = `
+            <option value="9:16">竖屏 (9:16)</option>
+            <option value="16:9">横屏 (16:9)</option>
+            <option value="1:1">正方形 (1:1)</option>
+            <option value="3:4">竖屏 (3:4)</option>
+            <option value="4:3">横屏 (4:3)</option>
+          `;
+          ratioEl.value = currentRatio || '9:16';
+        }
+      }
+      
+      // 初始化比例选项
+      updateImageRatioOptions(node.data.model);
       if(ratioEl) ratioEl.value = node.data.ratio;
       
       // 应用驱动状态禁用未配置的图片模型选项
@@ -3961,6 +4075,8 @@
       });
       modelEl.addEventListener('change', () => {
         node.data.model = modelEl.value;
+        // 模型切换时更新比例选项
+        updateImageRatioOptions(modelEl.value);
       });
 
       imageFileEl.addEventListener('change', async () => {
@@ -4512,13 +4628,7 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">宫格生图模型</div>
-            <select class="script-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
-              <option value="auto" selected>智能模式 (根据分镜数自动选择)</option>
-              <option value="gemini-2.5-pro-image-preview">标准版 (4宫格, 2算力/张)</option>
-              <option value="gemini-3-pro-4grid">加强版 (4宫格, 6算力/张)</option>
-              <option value="gemini-3-pro-image-preview">加强版 (9宫格, 6算力/张)</option>
-              <option value="seedream-5.0">Seedream 5.0 (6算力/张)</option>
-            </select>
+            <select class="script-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;"></select>
           </div>
           <div class="field field-collapsible">
             <button class="gen-btn gen-btn-green script-split-grid-btn" type="button" style="border-radius: 10px; width: 100%;">拆分分镜组 + 宫格生图</button>
@@ -4557,13 +4667,33 @@
       const gridOnlyBtn = el.querySelector('.script-grid-only-btn');
       const gridOnlyStatusEl = el.querySelector('.script-grid-only-status');
       
+      // 动态填充宫格生图模型选项
+      if(gridModelSelect) {
+        gridModelSelect.innerHTML = '<option value="auto" selected>智能模式 (根据分镜数自动选择)</option>';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_edit');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            gridModelSelect.appendChild(optEl);
+          });
+        } else {
+          gridModelSelect.innerHTML += `
+            <option value="gemini">标准版 (4宫格)</option>
+            <option value="gemini_pro">加强版 (9宫格)</option>
+            <option value="seedream">Seedream 5.0</option>
+          `;
+        }
+      }
+      
       // 初始化节点数据中的最大时长和选项
       node.data.maxGroupDuration = 15;
       node.data.forceMediumShot = true;
       node.data.noBgMusic = true;
       node.data.splitMultiDialogue = false;
       node.data.narrationAsDialogue = false;
-      node.data.gridModel = 'gemini-2.5-pro-image-preview';
+      node.data.gridModel = 'auto';
       
       // 应用驱动状态禁用未配置的宫格生图模型选项
       if(gridModelSelect) applyDriverStatusToSelect(gridModelSelect);
@@ -6084,11 +6214,7 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">分镜模型</div>
-            <select class="shot-group-model">
-              <option value="gemini-2.5-pro-image-preview">标准版</option>
-              <option value="gemini-3-pro-image-preview">加强版</option>
-              <option value="seedream-5.0">Seedream 5.0</option>
-            </select>
+            <select class="shot-group-model"></select>
           </div>
           <div class="field field-collapsible btn-row">
             <button class="mini-btn secondary shot-group-detail-btn" type="button" style="flex: 1;">查看/编辑</button>
@@ -6097,13 +6223,7 @@
           <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
           <div class="field field-collapsible">
             <div class="label">宫格生图模型</div>
-            <select class="shot-group-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;">
-              <option value="auto">智能模式 (自动选择)</option>
-              <option value="gemini-2.5-pro-image-preview">标准版 (4宫格, 2算力/张)</option>
-              <option value="gemini-3-pro-4grid">加强版 (4宫格, 6算力/张)</option>
-              <option value="gemini-3-pro-image-preview">加强版 (9宫格, 6算力/张)</option>
-              <option value="seedream-5.0">Seedream 5.0 (6算力/张)</option>
-            </select>
+            <select class="shot-group-grid-model" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; background: white;"></select>
           </div>
           <div class="field field-collapsible btn-row">
             <button class="mini-btn gen-btn-green shot-group-grid-btn" type="button" style="width: 100%;">宫格生图</button>
@@ -6112,14 +6232,7 @@
           <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
           <div class="field field-collapsible">
             <div class="label">视频模型</div>
-            <select class="shot-group-video-model">
-              <option value="wan22" selected>Wan2.2</option>
-              <option value="sora2">Sora2</option>
-              <option value="ltx2">LTX2.0</option>
-              <option value="kling">可灵</option>
-              <option value="vidu">Vidu</option>
-              <option value="veo3">VEO3.1</option>
-            </select>
+            <select class="shot-group-video-model"></select>
           </div>
           <div class="field field-collapsible">
             <div class="label">视频时长</div>
@@ -6242,6 +6355,49 @@
       const gridModelSelect = el.querySelector('.shot-group-grid-model');
       const gridStatusEl = el.querySelector('.shot-group-grid-status');
       
+      // 动态填充分镜模型选项
+      const shotGroupModelEl = el.querySelector('.shot-group-model');
+      if(shotGroupModelEl) {
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_edit');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            if(opt.value === node.data.model) optEl.selected = true;
+            shotGroupModelEl.appendChild(optEl);
+          });
+        } else {
+          shotGroupModelEl.innerHTML = `
+            <option value="gemini">标准版</option>
+            <option value="gemini_pro">加强版</option>
+            <option value="seedream">Seedream 5.0</option>
+          `;
+        }
+        shotGroupModelEl.value = node.data.model || 'gemini';
+        applyDriverStatusToSelect(shotGroupModelEl);
+      }
+
+      // 动态填充宫格生图模型选项
+      if(gridModelSelect) {
+        gridModelSelect.innerHTML = '<option value="auto">智能模式 (自动选择)</option>';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_edit');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            gridModelSelect.appendChild(optEl);
+          });
+        } else {
+          gridModelSelect.innerHTML += `
+            <option value="gemini">标准版 (4宫格)</option>
+            <option value="gemini_pro">加强版 (9宫格)</option>
+            <option value="seedream">Seedream 5.0</option>
+          `;
+        }
+      }
+
       // 初始化宫格模型选择（默认智能模式）
       if(!node.data.gridModel){
         node.data.gridModel = 'auto';
@@ -6270,6 +6426,30 @@
       const videoDrawCountLabel = el.querySelector('.shot-group-video-draw-count-label');
       const computingPowerValue = el.querySelector('.shot-group-computing-power-value');
       const computingPowerDetail = el.querySelector('.shot-group-computing-power-detail');
+
+      // 动态填充视频模型选项
+      if(videoModelEl) {
+        videoModelEl.innerHTML = '';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_to_video');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            if(opt.value === node.data.videoModel) optEl.selected = true;
+            videoModelEl.appendChild(optEl);
+          });
+        } else {
+          videoModelEl.innerHTML = `
+            <option value="wan22" selected>Wan2.2</option>
+            <option value="sora2">Sora2</option>
+            <option value="ltx2">LTX2.0</option>
+            <option value="kling">可灵</option>
+            <option value="vidu">Vidu</option>
+            <option value="veo3">VEO3.1</option>
+          `;
+        }
+      }
 
       // 初始化视频模型和时长
       if(videoModelEl) videoModelEl.value = node.data.videoModel;
@@ -7065,11 +7245,7 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">分镜模型</div>
-            <select class="shot-frame-model">
-              <option value="gemini-2.5-pro-image-preview">标准版 (2算力)</option>
-              <option value="gemini-3-pro-image-preview">加强版 (6算力)</option>
-              <option value="seedream-5.0">Seedream 5.0 (6算力)</option>
-            </select>
+            <select class="shot-frame-model"></select>
           </div>
           <div class="field field-collapsible">
             <div class="btn-row" style="display: flex; gap: 8px; justify-content: space-between; align-items: center;">
@@ -7089,14 +7265,7 @@
           </div>
           <div class="field field-collapsible">
             <div class="label">视频模型</div>
-            <select class="shot-frame-video-model">
-              <option value="wan22" selected>Wan2.2</option>
-              <option value="sora2">Sora2</option>
-              <option value="ltx2">LTX2.0</option>
-              <option value="kling">可灵</option>
-              <option value="vidu">Vidu</option>
-              <option value="veo3">VEO3.1</option>
-            </select>
+            <select class="shot-frame-video-model"></select>
           </div>
           <div class="field field-collapsible">
             <div class="label">视频时长</div>
@@ -7166,6 +7335,55 @@
       const sceneTagsEl = el.querySelector('.shot-ref-scene-tags');
       const propTagsEl = el.querySelector('.shot-ref-prop-tags');
       const charTagsEl = el.querySelector('.shot-ref-tags.shot-ref-char-tags');
+
+      // 动态填充分镜模型选项
+      if(modelEl) {
+        modelEl.innerHTML = '';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_edit');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            if(opt.value === node.data.model) optEl.selected = true;
+            modelEl.appendChild(optEl);
+          });
+        } else {
+          modelEl.innerHTML = `
+            <option value="gemini">标准版 (2算力)</option>
+            <option value="gemini_pro">加强版 (6算力)</option>
+            <option value="seedream">Seedream 5.0 (6算力)</option>
+          `;
+        }
+        modelEl.value = node.data.model || 'gemini';
+        applyDriverStatusToSelect(modelEl);
+      }
+
+      // 动态填充视频模型选项
+      if(videoModelEl) {
+        videoModelEl.innerHTML = '';
+        if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+          const options = window.TaskConfig.getModelOptionsForCategory('image_to_video');
+          options.forEach(opt => {
+            const optEl = document.createElement('option');
+            optEl.value = opt.value;
+            optEl.textContent = opt.label;
+            if(opt.value === node.data.videoModel) optEl.selected = true;
+            videoModelEl.appendChild(optEl);
+          });
+        } else {
+          videoModelEl.innerHTML = `
+            <option value="wan22" selected>Wan2.2</option>
+            <option value="sora2">Sora2</option>
+            <option value="ltx2">LTX2.0</option>
+            <option value="kling">可灵</option>
+            <option value="vidu">Vidu</option>
+            <option value="veo3">VEO3.1</option>
+          `;
+        }
+        videoModelEl.value = node.data.videoModel || 'wan22';
+        applyDriverStatusToSelect(videoModelEl);
+      }
 
       // ============ 引用匹配与显示逻辑 ============
 
