@@ -554,29 +554,29 @@ class ModelConfig:
     
     # 图片比例选项
     RATIOS = {
-        'gemini-2.5-flash': ['9:16', '16:9', '1:1', '4:3', '3:4'],
-        'gemini-3.0-pro': ['9:16', '16:9', '1:1', '4:3', '3:4'],
-        'seedream-5.0': ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:9'],
-        'sora2': ['9:16', '16:9', '1:1'],
-        'ltx2': ['9:16', '16:9', '1:1'],
-        'wan22': ['9:16', '16:9', '1:1', '4:3', '3:4'],
-        'kling': ['9:16', '16:9', '1:1'],
-        'vidu': ['9:16', '16:9', '1:1'],
-        'veo3': ['9:16', '16:9', '1:1'],
-        'digital_human': ['9:16', '16:9', '1:1', 'original', 'custom'],
+        'gemini-2.5-pro-image-preview': ['9:16', '16:9', '1:1', '3:4', '4:3'],
+        'gemini-3-pro-image-preview': ['9:16', '16:9', '1:1', '3:4', '4:3'],
+        'seedream-5.0': ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'],
+        'sora2': ['9:16', '16:9'],
+        'ltx2': ['9:16', '16:9'],
+        'wan22': ['9:16', '16:9'],
+        'kling': ['9:16', '16:9'],
+        'vidu': ['9:16', '16:9'],
+        'veo3': ['9:16', '16:9'],
+        'digital_human': ['9:16', '16:9', '1:1', '3:2', '2:3', '3:4','4:3'],
     }
     
     # 图片尺寸选项
     IMAGE_SIZES = {
-        'gemini-2.5-flash': ['1K', '2K'],
-        'gemini-3.0-pro': ['1K', '2K'],
+        'gemini-2.5-pro-image-preview': ['1K', '2K'],
+        'gemini-3-pro-image-preview': ['1K', '2K', '4K'],
         'seedream-5.0': ['2K', '3K'],
     }
     
     # 默认比例
     DEFAULT_RATIOS = {
-        'gemini-2.5-flash': '9:16',
-        'gemini-3.0-pro': '9:16',
+        'gemini-2.5-pro-image-preview': '9:16',
+        'gemini-3-pro-image-preview': '9:16',
         'seedream-5.0': '1:1',
         'sora2': '9:16',
         'ltx2': '9:16',
@@ -589,8 +589,8 @@ class ModelConfig:
     
     # 默认尺寸
     DEFAULT_IMAGE_SIZES = {
-        'gemini-2.5-flash': '1K',
-        'gemini-3.0-pro': '1K',
+        'gemini-2.5-pro-image-preview': '1K',
+        'gemini-3-pro-image-preview': '1K',
         'seedream-5.0': '2K',
     }
     
@@ -617,6 +617,7 @@ class ModelConfig:
     @classmethod
     def get_durations(cls, model: str) -> list:
         """获取指定模型支持的时长列表（使用已有的 VIDEO_MODEL_DURATION_OPTIONS）"""
+        global VIDEO_MODEL_DURATION_OPTIONS
         return VIDEO_MODEL_DURATION_OPTIONS.get(model, [5])
     
     @classmethod

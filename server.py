@@ -391,18 +391,22 @@ async def get_all_model_configs(request: Request):
     """
     try:
         all_configs = {}
+        # 从 VIDEO_MODEL_DURATION_OPTIONS 获取视频模型列表
+        from config.constant import VIDEO_MODEL_DURATION_OPTIONS
         all_models = set(
             list(ModelConfig.RATIOS.keys()) +
             list(ModelConfig.IMAGE_SIZES.keys()) +
-            list(ModelConfig.DURATIONS.keys())
+            list(VIDEO_MODEL_DURATION_OPTIONS.keys())
         )
         
         for model in all_models:
+            # 直接使用 VIDEO_MODEL_DURATION_OPTIONS 而不是通过 ModelConfig
+            durations = VIDEO_MODEL_DURATION_OPTIONS.get(model, [5])
             config = {
                 "ratios": ModelConfig.get_ratios(model),
                 "default_ratio": ModelConfig.get_default_ratio(model),
-                "durations": ModelConfig.get_durations(model),
-                "default_duration": ModelConfig.get_default_duration(model),
+                "durations": durations,
+                "default_duration": durations[0] if durations else 5,
             }
             
             if model in ModelConfig.IMAGE_SIZES:

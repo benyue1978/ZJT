@@ -568,10 +568,13 @@
         historyLoading: false,
         historyPage: 1,
         historyTotal: 0,
+        modelConfigs: {}  // 从后端获取的模型配置
       }
     },
     mounted() {
       this.authToken = localStorage.getItem('auth_token') || '';
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() {
@@ -586,21 +589,49 @@
         return '';
       },
       aspectRatioOptions() {
-        return [
-          { value: '9:16', label: '9:16 (竖屏)' },
-          { value: '16:9', label: '16:9 (横屏)' },
-          { value: '1:1', label: '1:1 (方形)' },
-          { value: '3:2', label: '3:2' },
-          { value: '4:3', label: '4:3' },
-          { value: '2:3', label: '2:3' },
-          { value: '3:4', label: '3:4' }
-        ];
+        const config = this.modelConfigs['digital_human'];
+        if (!config || !config.ratios) {
+          return [
+            { value: '9:16', label: '9:16 (竖屏)' },
+            { value: '16:9', label: '16:9 (横屏)' },
+            { value: '1:1', label: '1:1 (方形)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1 (方形)',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '3:4': '3:4',
+          '4:3': '4:3'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       computingPower() {
         return 12;
       }
     },
     methods: {
+      async fetchModelConfigs() {
+        try {
+          const response = await axios.get('/api/all-model-configs');
+          if (response.data.code === 0) {
+            this.modelConfigs = response.data.data;
+            // 设置初始默认值
+            const config = this.modelConfigs['digital_human'];
+            if (config && config.default_ratio) {
+              this.aspectRatio = config.default_ratio;
+            }
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       onImageFile(e) {
         this.imageFile = e.target.files[0] || null;
       },
@@ -2006,7 +2037,8 @@
         upscaleResults: {},
         upscaleStatusIntervals: {},
         driverStatus: {},  // 驱动可用状态
-        taskTypeConfig: null  // 从后端获取的任务类型配置
+        taskTypeConfig: null,  // 从后端获取的任务类型配置
+        modelConfigs: {}  // 从后端获取的模型配置
       }
     },
     mounted() {
@@ -2016,17 +2048,36 @@
       this.fetchDriverStatus();
       // 获取任务类型配置
       this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() { return this.files.length > 0 && this.files.length <= 5 && !!this.prompt && !this.loading },
       ratioOptions() {
-        return [
-          { value: '9:16', label: '竖屏 (9:16)' },
-          { value: '16:9', label: '横屏 (16:9)' },
-          { value: '1:1', label: '正方形 (1:1)' },
-          { value: '3:4', label: '竖屏 (3:4)' },
-          { value: '4:3', label: '横屏 (4:3)' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.ratios) {
+          return [
+            { value: '9:16', label: '竖屏 (9:16)' },
+            { value: '16:9', label: '横屏 (16:9)' },
+            { value: '1:1', label: '正方形 (1:1)' },
+            { value: '3:4', label: '竖屏 (3:4)' },
+            { value: '4:3', label: '横屏 (4:3)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '竖屏 (9:16)',
+          '16:9': '横屏 (16:9)',
+          '1:1': '正方形 (1:1)',
+          '3:4': '竖屏 (3:4)',
+          '4:3': '横屏 (4:3)',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '21:9': '21:9'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       countOptions() {
         return [
@@ -2052,11 +2103,17 @@
         });
       },
       imageSizeOptions() {
-        return [
-          { value: '1K', label: '1K' },
-          { value: '2K', label: '2K' },
-          { value: '4K', label: '4K' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.image_sizes) {
+          return [
+            { value: '1K', label: '1K' },
+            { value: '2K', label: '2K' }
+          ];
+        }
+        return config.image_sizes.map(size => ({
+          value: size,
+          label: size
+        }));
       },
       statusText() {
         switch(this.status) {
@@ -2071,9 +2128,15 @@
     },
     watch: {
       model(newModel) {
-        // 当选择 seedream-5.0 时，默认分辨率为 2K
-        if (newModel === 'seedream-5.0' && !['2K', '3K'].includes(this.imageSize)) {
-          this.imageSize = '2K';
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          if (config.default_ratio && !config.ratios.includes(this.ratio)) {
+            this.ratio = config.default_ratio;
+          }
+          if (config.default_image_size && config.image_sizes && !config.image_sizes.includes(this.imageSize)) {
+            this.imageSize = config.default_image_size;
+          }
         }
       }
     },
@@ -2099,6 +2162,23 @@
           }
         } catch (err) {
           console.error('获取任务类型配置失败:', err);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          const response = await axios.get('/api/all-model-configs');
+          if (response.data.code === 0) {
+            this.modelConfigs = response.data.data;
+            // 设置初始默认值
+            const config = this.modelConfigs[this.model];
+            if (config) {
+              if (config.default_ratio) this.ratio = config.default_ratio;
+              if (config.default_image_size) this.imageSize = config.default_image_size;
+            }
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
         }
       },
 
@@ -2679,7 +2759,8 @@
         historyPage: 1,
         historyTotal: 0,
         driverStatus: {},  // 驱动可用状态
-        taskTypeConfig: null  // 从后端获取的任务类型配置
+        taskTypeConfig: null,  // 从后端获取的任务类型配置
+        modelConfigs: {}  // 从后端获取的模型配置
       }
     },
     mounted() {
@@ -2688,6 +2769,8 @@
       this.fetchDriverStatus();
       // 获取任务类型配置
       this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() { return !!this.prompt.trim() && !this.loading },
@@ -2707,31 +2790,43 @@
         });
       },
       aspectRatioOptions() {
-        const allOptions = [
-          { value: '1:1', label: '1:1' },
-          { value: '2:3', label: '2:3' },
-          { value: '3:2', label: '3:2' },
-          { value: '3:4', label: '3:4' },
-          { value: '4:3', label: '4:3' },
-          { value: '4:5', label: '4:5' },
-          { value: '5:4', label: '5:4' },
-          { value: '9:16', label: '9:16 (竖屏)' },
-          { value: '16:9', label: '16:9 (横屏)' },
-          { value: '21:9', label: '21:9' }
-        ];
-        // Seedream 5.0 支持的宽高比
-        if (this.model === 'seedream-5.0') {
-          const seedreamSupported = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
-          return allOptions.filter(opt => seedreamSupported.includes(opt.value));
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.ratios) {
+          return [
+            { value: '1:1', label: '1:1' },
+            { value: '9:16', label: '9:16 (竖屏)' },
+            { value: '16:9', label: '16:9 (横屏)' }
+          ];
         }
-        return allOptions;
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1',
+          '3:4': '3:4',
+          '4:3': '4:3',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '21:9': '21:9',
+          '4:5': '4:5',
+          '5:4': '5:4'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       imageSizeOptions() {
-        return [
-          { value: '1K', label: '1K' },
-          { value: '2K', label: '2K' },
-          { value: '4K', label: '4K' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.image_sizes) {
+          return [
+            { value: '1K', label: '1K' },
+            { value: '2K', label: '2K' }
+          ];
+        }
+        return config.image_sizes.map(size => ({
+          value: size,
+          label: size
+        }));
       },
       countOptions() {
         return [
@@ -2754,9 +2849,15 @@
     },
     watch: {
       model(newModel) {
-        // 当选择 seedream-5.0 时，默认分辨率为 2K
-        if (newModel === 'seedream-5.0' && !['2K', '3K'].includes(this.imageSize)) {
-          this.imageSize = '2K';
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          if (config.default_ratio && !config.ratios.includes(this.aspectRatio)) {
+            this.aspectRatio = config.default_ratio;
+          }
+          if (config.default_image_size && config.image_sizes && !config.image_sizes.includes(this.imageSize)) {
+            this.imageSize = config.default_image_size;
+          }
         }
       }
     },
@@ -2771,6 +2872,37 @@
           console.error('获取驱动状态异常:', error);
         }
       },
+
+      async fetchTaskTypeConfig() {
+        try {
+          const response = await axios.get('/api/task-type-config');
+          if (response.data.success) {
+            this.taskTypeConfig = response.data.data;
+          } else {
+            console.error('获取任务类型配置失败:', response.data.message);
+          }
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          const response = await axios.get('/api/all-model-configs');
+          if (response.data.code === 0) {
+            this.modelConfigs = response.data.data;
+            // 设置初始默认值
+            const config = this.modelConfigs[this.model];
+            if (config) {
+              if (config.default_ratio) this.aspectRatio = config.default_ratio;
+              if (config.default_image_size) this.imageSize = config.default_image_size;
+            }
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       async submit(){
         if(!this.canSubmit) return;
         
@@ -3186,7 +3318,8 @@
         enhanceTaskIds: {},   // Track enhancement task IDs by index
         taskComputingPower: {},  // 从接口获取的算力配置
         taskTypeConfig: null,  // 从接口获取的任务类型配置
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        modelConfigs: {}  // 从后端获取的模型配置
       }
     },
     mounted() {
@@ -3196,27 +3329,21 @@
       this.fetchComputingPowerConfig();
       // 获取任务类型配置
       this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     watch: {
       videoModel(newModel, oldModel) {
-        // 当切换模型时，自动设置合适的默认时长
-        if (newModel === 'ltx2') {
-          // LTX2.0: 5, 8, 10秒
-          if (![5, 8, 10].includes(this.durationSeconds)) {
-            this.durationSeconds = 5;
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          // 更新比例
+          if (config.default_ratio && config.ratios && !config.ratios.includes(this.model)) {
+            this.model = config.default_ratio;
           }
-        } else if (newModel === 'wan22' || newModel === 'kling'|| newModel === 'vidu') {
-          // Wan2.2 和可灵: 5, 10秒
-          if (![5, 10].includes(this.durationSeconds)) {
-            this.durationSeconds = 5;
-          }
-        } else if (newModel === 'veo3') {
-          // VEO3: 固定8秒
-          this.durationSeconds = 8;
-        } else {
-          // Sora2: 10, 15秒
-          if (![10, 15].includes(this.durationSeconds)) {
-            this.durationSeconds = 10;
+          // 更新时长
+          if (config.durations && !config.durations.includes(this.durationSeconds)) {
+            this.durationSeconds = config.default_duration || config.durations[0] || 5;
           }
         }
       }
@@ -3247,41 +3374,41 @@
         });
       },
       modelOptions() {
-        // Wan2.2、LTX2.0、Sora2、可灵都只支持横屏和竖屏
-        return [
-          { value: '9:16', label: '竖屏' },
-          { value: '16:9', label: '横屏' }
-        ];
-      },
-      durationOptions() {
-        if (this.videoModel === 'ltx2') {
+        const config = this.modelConfigs[this.videoModel];
+        if (!config || !config.ratios) {
           return [
-            { value: 5, label: '5秒 (121帧)' },
-            { value: 8, label: '8秒 (201帧)' },
-            { value: 10, label: '10秒 (241帧)' }
+            { value: '9:16', label: '竖屏' },
+            { value: '16:9', label: '横屏' }
           ];
         }
-        if (this.videoModel === 'wan22' || this.videoModel === 'kling') {
+        const labelMap = {
+          '9:16': '竖屏',
+          '16:9': '横屏',
+          '1:1': '正方形'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
+      },
+      durationOptions() {
+        const config = this.modelConfigs[this.videoModel];
+        if (!config || !config.durations) {
           return [
             { value: 5, label: '5秒' },
             { value: 10, label: '10秒' }
           ];
         }
-        if (this.videoModel === 'vidu') {
-          return [
-            { value: 5, label: '5秒' },
-            { value: 8, label: '8秒' }
-          ];
-        }
-        if (this.videoModel === 'veo3') {
-          return [
-            { value: 8, label: '8秒' }
-          ];
-        }
-        return [
-          { value: 10, label: '10秒' },
-          { value: 15, label: '15秒' }
-        ];
+        // LTX2 特殊标签
+        const ltx2Labels = {
+          5: '5秒 (121帧)',
+          8: '8秒 (201帧)',
+          10: '10秒 (241帧)'
+        };
+        return config.durations.map(duration => ({
+          value: duration,
+          label: this.videoModel === 'ltx2' ? (ltx2Labels[duration] || `${duration}秒`) : `${duration}秒`
+        }));
       },
       countOptions() {
         return [
@@ -3365,6 +3492,23 @@
           }
         } catch (error) {
           console.error('获取任务类型配置异常:', error);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          const response = await axios.get('/api/all-model-configs');
+          if (response.data.code === 0) {
+            this.modelConfigs = response.data.data;
+            // 设置初始默认值
+            const config = this.modelConfigs[this.videoModel];
+            if (config) {
+              if (config.default_ratio) this.model = config.default_ratio;
+              if (config.default_duration) this.durationSeconds = config.default_duration;
+            }
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
         }
       },
       
