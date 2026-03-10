@@ -2,8 +2,6 @@
 数据库迁移执行模块
 提供应用启动时自动执行 Alembic 迁移的功能
 """
-import os
-import sys
 import logging
 from pathlib import Path
 

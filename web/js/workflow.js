@@ -84,16 +84,28 @@
       }
     }
 
-    // 算力配置（用于节点算力预估）
+    // 算力配置（用于节点算力预估）- 从 TaskConfig 模块获取
     let taskComputingPowerConfig = {};
-    // 视频模型时长选项配置（全局缓存，只请求一次）
+    // 视频模型时长选项配置（全局缓存）- 从 TaskConfig 模块获取
     let videoModelDurationOptions = {};
     // 驱动可用状态（用于禁用未配置的功能）
     let driverStatusConfig = {};
+    // 模型配置（比例、尺寸、时长等）- 从 TaskConfig 模块获取
+    let modelConfigs = {};
     // 工作流配置（轮询间隔等，单位：毫秒）
     let workflowConfig = {
       poll_status_interval: 60000  // 默认60秒
     };
+    
+    // 使用统一配置模块更新本地缓存
+    function syncFromTaskConfig() {
+      if (window.TaskConfig && window.TaskConfig.isLoaded()) {
+        taskComputingPowerConfig = window.TaskConfig.getTaskComputingPowerConfig();
+        videoModelDurationOptions = window.TaskConfig.getVideoModelDurationOptions();
+        modelConfigs = window.TaskConfig.getModelConfigs();
+        console.log('[工作流] 已从 TaskConfig 同步配置');
+      }
+    }
     
     async function fetchWorkflowConfig(){
       try {
@@ -126,11 +138,33 @@
       // 图片模型
       'gemini-2.5-pro-image-preview': 1,
       'gemini-3-pro-image-preview': 7,
-      'gemini-3-pro-4grid': 7  // 4宫格也用加强版
+      'gemini-3-pro-4grid': 7,  // 4宫格也用加强版
+      'seedream-5.0': 16  // Seedream 5.0 文生图
     };
     
     async function fetchComputingPowerConfig(){
       try {
+        // 优先使用统一配置模块
+        if (window.TaskConfig) {
+          await window.TaskConfig.load();
+          syncFromTaskConfig();
+          // 配置加载完成后，更新所有图生视频节点和分镜节点的算力显示
+          updateAllImageToVideoNodesPower();
+          updateAllShotFrameNodesPower();
+          
+          // 驱动状态仍从原接口获取（暂未迁移）
+          const response = await fetch('/api/computing-power-config');
+          if(response.ok){
+            const data = await response.json();
+            if(data.success && data.data && data.data.driver_status){
+              driverStatusConfig = data.data.driver_status;
+              console.log('[驱动状态] 已加载:', driverStatusConfig);
+            }
+          }
+          return;
+        }
+        
+        // 回退：使用旧接口
         const response = await fetch('/api/computing-power-config');
         if(response.ok){
           const data = await response.json();
@@ -138,7 +172,6 @@
             if(data.data.task_computing_power){
               taskComputingPowerConfig = data.data.task_computing_power;
               console.log('[算力配置] 已加载:', taskComputingPowerConfig);
-              // 配置加载完成后，更新所有图生视频节点和分镜节点的算力显示
               updateAllImageToVideoNodesPower();
               updateAllShotFrameNodesPower();
             }
@@ -175,6 +208,24 @@
     // 获取模型任务类型映射（供节点使用）
     function getModelTaskTypeMap(){
       return MODEL_TASK_TYPE_MAP;
+    }
+    
+    // 获取模型配置（供节点使用）
+    function getModelConfigs(){
+      return modelConfigs;
+    }
+    
+    // 获取模型配置
+    async function fetchModelConfigs(){
+      try {
+        // 使用统一配置模块
+        if (window.TaskConfig) {
+          await window.TaskConfig.load();
+          syncFromTaskConfig();
+        }
+      } catch(error){
+        console.error('[模型配置] 加载失败:', error);
+      }
     }
     
     // 计算视频生成算力（公共函数）
@@ -272,6 +323,8 @@
       }
       // 加载算力配置
       fetchComputingPowerConfig();
+      // 加载模型配置
+      fetchModelConfigs();
     });
 
     window.addEventListener('beforeunload', () => {
@@ -959,7 +1012,14 @@
       form.append('prompt', prompt || '');
       form.append('ratio', ratio || '9:16');
       form.append('count', count || 1);
-      form.append('model', model || 'gemini-2.5-pro-image-preview');
+      
+      // 根据 model 获取 task_id
+      const taskId = TaskConfig.getTaskIdByKey(model || 'gemini-2.5-pro-image-preview', 'image_edit');
+      if(!taskId){
+        throw new Error(`未找到模型 ${model} 对应的任务配置`);
+      }
+      form.append('task_id', taskId);
+      
       if(userId){
         form.append('user_id', userId);
       }
@@ -1041,67 +1101,54 @@
           const videoModelSelect = el.querySelector('.video-model-select');
           if(videoModelSelect) videoModelSelect.value = node.data.videoModel;
           
-          // 根据模型更新时长选项
+          // 根据模型更新时长选项（从后端配置获取）
           const durationSelect = el.querySelector('.duration-select');
           if(durationSelect && videoModelSelect) {
             const videoModel = node.data.videoModel;
-            if(videoModel === 'ltx2') {
-              durationSelect.innerHTML = `
-                <option value="5">5秒 (121帧)</option>
-                <option value="8">8秒 (201帧)</option>
-                <option value="10">10秒 (241帧)</option>
-              `;
-              if(![5, 8, 10].includes(node.data.duration)) {
-                node.data.duration = 5;
-              }
-            } else if(videoModel === 'wan22' || videoModel === 'kling') {
-              durationSelect.innerHTML = `
-                <option value="5">5秒</option>
-                <option value="10">10秒</option>
-              `;
-              if(![5, 10].includes(node.data.duration)) {
-                node.data.duration = 5;
-              }
-            } else if(videoModel === 'vidu') {
-              durationSelect.innerHTML = `
-                <option value="5">5秒</option>
-                <option value="8">8秒</option>
-              `;
-              if(![5, 8].includes(node.data.duration)) {
-                node.data.duration = 5;
+            const config = modelConfigs[videoModel];
+            const ltx2Labels = { 5: '5秒 (121帧)', 8: '8秒 (201帧)', 10: '10秒 (241帧)' };
+            
+            if(config && config.durations && config.durations.length > 0) {
+              durationSelect.innerHTML = '';
+              config.durations.forEach(duration => {
+                const label = videoModel === 'ltx2' ? (ltx2Labels[duration] || `${duration}秒`) : `${duration}秒`;
+                durationSelect.innerHTML += `<option value="${duration}">${label}</option>`;
+              });
+              if(!config.durations.includes(node.data.duration)) {
+                node.data.duration = config.default_duration || config.durations[0];
               }
             } else {
-              durationSelect.innerHTML = `
-                <option value="10">10秒</option>
-                <option value="15">15秒</option>
-              `;
-              if(![10, 15].includes(node.data.duration)) {
-                node.data.duration = 10;
-              }
+              durationSelect.innerHTML = `<option value="5">5秒</option><option value="10">10秒</option>`;
+              if(![5, 10].includes(node.data.duration)) node.data.duration = 5;
             }
             durationSelect.value = node.data.duration;
           }
           
-          // 根据模型更新比例选项
+          // 根据模型更新比例选项（从后端配置获取）
           const ratioSelect = el.querySelector('.ratio-select');
           if(ratioSelect) {
             const ratioField = ratioSelect.closest('.field');
             const videoModel = node.data.videoModel;
+            const config = modelConfigs[videoModel];
+            const labelMap = { '9:16': '9:16 (竖屏)', '16:9': '16:9 (横屏)', '1:1': '1:1 (方形)' };
             
             // vidu 模型隐藏比例选择器
             if(videoModel === 'vidu') {
               if(ratioField) ratioField.style.display = 'none';
             } else {
-              // 其他模型显示比例选择器
               if(ratioField) ratioField.style.display = '';
               
-              ratioSelect.innerHTML = `
-                <option value="9:16">9:16 (竖屏)</option>
-                <option value="16:9">16:9 (横屏)</option>
-              `;
-              // 如果保存的比例不在支持列表中，使用16:9
-              if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') {
-                node.data.ratio = '16:9';
+              if(config && config.ratios && config.ratios.length > 0) {
+                ratioSelect.innerHTML = '';
+                config.ratios.forEach(ratio => {
+                  ratioSelect.innerHTML += `<option value="${ratio}">${labelMap[ratio] || ratio}</option>`;
+                });
+                if(!config.ratios.includes(node.data.ratio)) {
+                  node.data.ratio = config.default_ratio || config.ratios[0];
+                }
+              } else {
+                ratioSelect.innerHTML = `<option value="9:16">9:16 (竖屏)</option><option value="16:9">16:9 (横屏)</option>`;
+                if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') node.data.ratio = '16:9';
               }
               ratioSelect.value = node.data.ratio;
             }
@@ -1281,8 +1328,22 @@
           const titleEl = el.querySelector('.node-title');
           
           if(promptEl) promptEl.value = node.data.prompt;
-          if(ratioEl) ratioEl.value = node.data.ratio;
           if(modelEl) modelEl.value = node.data.model;
+          // 根据模型动态更新比例选项
+          if(ratioEl && node.data.model) {
+            const config = modelConfigs[node.data.model];
+            const labelMap = { '9:16': '竖屏 (9:16)', '16:9': '横屏 (16:9)', '1:1': '正方形 (1:1)', '3:4': '竖屏 (3:4)', '4:3': '横屏 (4:3)' };
+            if(config && config.ratios && config.ratios.length > 0) {
+              ratioEl.innerHTML = '';
+              config.ratios.forEach(ratio => {
+                ratioEl.innerHTML += `<option value="${ratio}">${labelMap[ratio] || ratio}</option>`;
+              });
+              if(!config.ratios.includes(node.data.ratio)) {
+                node.data.ratio = config.default_ratio || config.ratios[0];
+              }
+            }
+          }
+          if(ratioEl) ratioEl.value = node.data.ratio;
           if(drawCountLabel) drawCountLabel.textContent = `抽卡次数：X${node.data.drawCount}`;
           if(titleEl && nodeData.title) titleEl.textContent = nodeData.title;
           

@@ -3,7 +3,6 @@ System Config Model - Database operations for system_config table
 系统配置表，支持动态配置热更新
 """
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 from config.constant import CONFIG_KEY_MAX_LENGTH
 import logging

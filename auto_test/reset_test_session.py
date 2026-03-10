@@ -11,7 +11,6 @@
 """
 
 import json
-import os
 import shutil
 import argparse
 from datetime import datetime

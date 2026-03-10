@@ -14,7 +14,7 @@ from model.video_workflow import VideoWorkflowModel
 from model.system_config import SystemConfigModel
 from model.system_config_history import SystemConfigHistoryModel
 from config.config_util import get_current_env, invalidate_dynamic_cache
-from config.default_configs import DEFAULT_CONFIGS, init_default_configs, get_default_config_by_key
+from config.default_configs import init_default_configs, get_default_config_by_key
 
 logger = logging.getLogger(__name__)
 

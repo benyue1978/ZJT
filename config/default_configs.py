@@ -170,7 +170,17 @@ DEFAULT_CONFIGS: List[Dict[str, Any]] = [
         'is_sensitive': True,
         'quick_config': True
     },
-    
+
+    # ==================== 火山引擎配置 ====================
+    {
+        'key': 'volcengine.api_key',
+        'value_type': 'string',
+        'description': '火山引擎 API Key（Seedream 5.0 文生图）',
+        'editable': True,
+        'is_sensitive': True,
+        'quick_config': True
+    },
+
     # ==================== 微信支付配置 ====================
     {
         'key': 'pay.wxpay.appId',
@@ -268,6 +278,50 @@ DEFAULT_CONFIGS: List[Dict[str, Any]] = [
         'key': 'sentry.environment',
         'value_type': 'string',
         'description': 'Sentry 环境标识',
+        'editable': True,
+        'is_sensitive': False
+    },
+    
+    # ==================== 媒体文件缓存配置 ====================
+    {
+        'key': 'media_cache.enabled',
+        'value_type': 'bool',
+        'description': '是否启用媒体文件缓存',
+        'editable': True,
+        'is_sensitive': False
+    },
+    {
+        'key': 'media_cache.cache_dir',
+        'value_type': 'string',
+        'description': '缓存目录（相对于项目根目录）',
+        'editable': True,
+        'is_sensitive': False
+    },
+    {
+        'key': 'media_cache.max_days',
+        'value_type': 'int',
+        'description': '文件保留天数（0=不限制）',
+        'editable': True,
+        'is_sensitive': False
+    },
+    {
+        'key': 'media_cache.max_size_gb',
+        'value_type': 'int',
+        'description': '最大缓存容量GB（0=不限制）',
+        'editable': True,
+        'is_sensitive': False
+    },
+    {
+        'key': 'media_cache.cleanup_on_startup',
+        'value_type': 'bool',
+        'description': '启动时执行清理',
+        'editable': True,
+        'is_sensitive': False
+    },
+    {
+        'key': 'media_cache.cleanup_interval_hours',
+        'value_type': 'int',
+        'description': '定时清理间隔（小时）',
         'editable': True,
         'is_sensitive': False
     },

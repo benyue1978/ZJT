@@ -49,8 +49,7 @@ task/visual_drivers/
 ├── 多米供应商驱动 (Duomi)
 ├── sora2_duomi_v1_driver.py            # Sora2 图生视频 ✅
 ├── kling_duomi_v1_driver.py            # Kling 图生视频 ✅
-├── gemini_duomi_v1_driver.py           # Gemini 图片编辑（标准版）✅
-├── gemini_pro_duomi_v1_driver.py       # Gemini 图片编辑（加强版）✅
+├── gemini_duomi_v1_driver.py           # Gemini 图片编辑（标准版/Pro）✅
 ├── veo3_duomi_v1_driver.py             # VEO3 图生视频 ✅
 │
 ├── RunningHub 驱动
@@ -390,7 +389,7 @@ assert driver.driver_type == 14
 | 3 | sora2_image_to_video | sora2_duomi_v1 | Sora2DuomiV1Driver | 图生视频 |
 | 12 | kling_image_to_video | kling_duomi_v1 | KlingDuomiV1Driver | 图生视频 |
 | 1 | gemini_image_edit | gemini_duomi_v1 | GeminiDuomiV1Driver | 图片编辑（标准）|
-| 7 | gemini_image_edit_pro | gemini_pro_duomi_v1 | GeminiProDuomiV1Driver | 图片编辑（加强）|
+| 7 | gemini_image_edit_pro | gemini_duomi_v1 | GeminiDuomiV1Driver | 图片编辑（Pro）|
 | 15 | veo3_image_to_video | veo3_duomi_v1 | Veo3DuomiV1Driver | 图生视频（8秒）|
 
 ### RunningHub

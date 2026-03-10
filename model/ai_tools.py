@@ -6,9 +6,7 @@ from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 from config.constant import (
     AI_TOOL_STATUS_PENDING,
-    AI_TOOL_STATUS_PROCESSING,
-    AI_TOOL_STATUS_FAILED,
-    AI_TOOL_STATUS_COMPLETED
+    AI_TOOL_STATUS_PROCESSING
 )
 import logging
 

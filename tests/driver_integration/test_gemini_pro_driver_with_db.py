@@ -9,7 +9,7 @@ sys.modules['duomi_api_requset'] = MagicMock()
 sys.modules['utils.sentry_util'] = MagicMock()
 
 from tests.base_video_driver_test import BaseVideoDriverTest
-from task.visual_drivers.gemini_pro_duomi_v1_driver import GeminiProDuomiV1Driver
+from task.visual_drivers.gemini_duomi_v1_driver import GeminiDuomiV1Driver
 from config.constant import AI_TOOL_STATUS_PENDING, AI_TOOL_STATUS_PROCESSING, AI_TOOL_STATUS_COMPLETED, AI_TOOL_STATUS_FAILED
 
 GEMINI_PRO_IMAGE_TO_VIDEO_TYPE = 7
@@ -21,13 +21,13 @@ class TestGeminiProDuomiWithDB(BaseVideoDriverTest):
     def setUp(self):
         """测试前准备"""
         super().setUp()
-        self.driver = GeminiProDuomiV1Driver()
+        self.driver = GeminiDuomiV1Driver()
     
     def test_driver_initialization(self):
         """测试驱动初始化"""
         self.assertIsNotNone(self.driver)
-        self.assertEqual(self.driver.driver_name, 'gemini_pro_duomi_v1')
-        self.assertEqual(self.driver.driver_type, GEMINI_PRO_IMAGE_TO_VIDEO_TYPE)
+        self.assertEqual(self.driver.driver_name, 'gemini_duomi_v1')
+        self.assertEqual(self.driver.driver_type, 1)  # GeminiDuomiV1Driver 默认类型
     
     def test_build_create_request(self):
         """测试构建创建任务请求参数"""

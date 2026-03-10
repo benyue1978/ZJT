@@ -4,7 +4,7 @@
 
 import os
 import json
-from typing import Any, Union
+from typing import Any
 
 # 生产环境检测
 IS_PRODUCTION = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'

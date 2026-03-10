@@ -12,11 +12,8 @@ import threading
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.jobstores.memory import MemoryJobStore
-from PIL import Image
-from io import BytesIO
 from script_writer_core.image_grid_splitter import ImageGridSplitter
 from config.config_util import get_config
 from config.constant import FilePathConstants

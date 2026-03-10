@@ -12,7 +12,7 @@ import asyncio
 import threading
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Request, Query as QueryParam, Header
+from fastapi import APIRouter, Request, Query as QueryParam, Header
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from perseids_server.utils.permission import require_permission
@@ -38,10 +38,6 @@ _load_api_config()
 
 # 导入数据模型
 from model.world import WorldModel
-from model.character import CharacterModel
-from model.location import LocationModel
-from model.script import ScriptModel
-from model.props import PropsModel
 
 # 导入服务
 from perseids_client import async_make_perseids_request

@@ -427,6 +427,7 @@
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://unpkg.com/vue-router@4"></script>
   <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="/js/task_config.js"></script>
   <script>
   const ListPage = {
     name: 'ListPage',
@@ -568,10 +569,13 @@
         historyLoading: false,
         historyPage: 1,
         historyTotal: 0,
+        modelConfigs: {}  // 从后端获取的模型配置
       }
     },
     mounted() {
       this.authToken = localStorage.getItem('auth_token') || '';
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() {
@@ -586,21 +590,47 @@
         return '';
       },
       aspectRatioOptions() {
-        return [
-          { value: '9:16', label: '9:16 (竖屏)' },
-          { value: '16:9', label: '16:9 (横屏)' },
-          { value: '1:1', label: '1:1 (方形)' },
-          { value: '3:2', label: '3:2' },
-          { value: '4:3', label: '4:3' },
-          { value: '2:3', label: '2:3' },
-          { value: '3:4', label: '3:4' }
-        ];
+        const config = this.modelConfigs['digital_human'];
+        if (!config || !config.ratios) {
+          return [
+            { value: '9:16', label: '9:16 (竖屏)' },
+            { value: '16:9', label: '16:9 (横屏)' },
+            { value: '1:1', label: '1:1 (方形)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1 (方形)',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '3:4': '3:4',
+          '4:3': '4:3'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       computingPower() {
         return 12;
       }
     },
     methods: {
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          // 设置初始默认值
+          const config = this.modelConfigs['digital_human'];
+          if (config && config.default_ratio) {
+            this.aspectRatio = config.default_ratio;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       onImageFile(e) {
         this.imageFile = e.target.files[0] || null;
       },
@@ -1986,7 +2016,7 @@
         prompt: '',
         ratio: '9:16',
         count: 1,
-        model: 'gemini-2.5-pro-image-preview',
+        model: 'gemini',  // 简短 key，对应 gemini_image_edit
         imageSize: '1K',
         loading: false,
         error: '',
@@ -2005,7 +2035,10 @@
         upscaleProjectIds: {},
         upscaleResults: {},
         upscaleStatusIntervals: {},
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        taskTypeConfig: null,  // 从后端获取的任务类型配置
+        modelConfigs: {},  // 从后端获取的模型配置
+        configLoaded: false  // 配置是否已加载
       }
     },
     mounted() {
@@ -2013,17 +2046,38 @@
       this.authToken = localStorage.getItem('auth_token') || '';
       // 获取驱动状态
       this.fetchDriverStatus();
+      // 获取任务类型配置
+      this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() { return this.files.length > 0 && this.files.length <= 5 && !!this.prompt && !this.loading },
       ratioOptions() {
-        return [
-          { value: '9:16', label: '竖屏 (9:16)' },
-          { value: '16:9', label: '横屏 (16:9)' },
-          { value: '1:1', label: '正方形 (1:1)' },
-          { value: '3:4', label: '竖屏 (3:4)' },
-          { value: '4:3', label: '横屏 (4:3)' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.ratios) {
+          return [
+            { value: '9:16', label: '竖屏 (9:16)' },
+            { value: '16:9', label: '横屏 (16:9)' },
+            { value: '1:1', label: '正方形 (1:1)' },
+            { value: '3:4', label: '竖屏 (3:4)' },
+            { value: '4:3', label: '横屏 (4:3)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '竖屏 (9:16)',
+          '16:9': '横屏 (16:9)',
+          '1:1': '正方形 (1:1)',
+          '3:4': '竖屏 (3:4)',
+          '4:3': '横屏 (4:3)',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '21:9': '21:9'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       countOptions() {
         return [
@@ -2034,10 +2088,10 @@
         ];
       },
       modelOptions() {
-        const allOptions = [
-          { value: 'gemini-2.5-pro-image-preview', label: '标准版 (2算力)', taskType: 1 },
-          { value: 'gemini-3-pro-image-preview', label: '加强版 (6算力)', taskType: 7 }
-        ];
+        // 依赖 configLoaded 触发重新计算
+        if (!this.configLoaded) return [];
+        // 动态从配置获取图片编辑模型列表
+        const allOptions = TaskConfig.getModelOptionsForCategory('image_edit');
         return allOptions.map(opt => {
           const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
           return {
@@ -2048,11 +2102,17 @@
         });
       },
       imageSizeOptions() {
-        return [
-          { value: '1K', label: '1K' },
-          { value: '2K', label: '2K' },
-          { value: '4K', label: '4K' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.image_sizes) {
+          return [
+            { value: '1K', label: '1K' },
+            { value: '2K', label: '2K' }
+          ];
+        }
+        return config.image_sizes.map(size => ({
+          value: size,
+          label: size
+        }));
       },
       statusText() {
         switch(this.status) {
@@ -2062,6 +2122,20 @@
           case 'SUCCESS': return '生成完成！';
           case 'FAILED': return '任务失败';
           default: return '';
+        }
+      }
+    },
+    watch: {
+      model(newModel) {
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          if (config.default_ratio && !config.ratios.includes(this.ratio)) {
+            this.ratio = config.default_ratio;
+          }
+          if (config.default_image_size && config.image_sizes && !config.image_sizes.includes(this.imageSize)) {
+            this.imageSize = config.default_image_size;
+          }
         }
       }
     },
@@ -2076,6 +2150,40 @@
           console.error('获取驱动状态异常:', error);
         }
       },
+
+      async fetchTaskTypeConfig() {
+        try {
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          this.configLoaded = true;  // 标记配置已加载
+          
+          // 检查当前 model 是否在可用选项中，如果不在则选择第一个
+          const allOptions = TaskConfig.getModelOptionsForCategory('image_edit');
+          const validValues = allOptions.map(opt => opt.value);
+          if (!validValues.includes(this.model) && allOptions.length > 0) {
+            this.model = allOptions[0].value;
+          }
+          
+          // 设置初始默认值
+          const config = this.modelConfigs[this.model];
+          if (config) {
+            if (config.default_ratio) this.ratio = config.default_ratio;
+            if (config.default_image_size) this.imageSize = config.default_image_size;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       onFile(e){ 
         const selectedFiles = Array.from(e.target.files || []);
         const remainingSlots = 5 - this.files.length;
@@ -2118,8 +2226,14 @@
           form.append('prompt', this.prompt);
           form.append('ratio', this.ratio);
           form.append('count', this.count);
-          form.append('model', this.model);
           form.append('image_size', this.imageSize);
+          
+          // 根据 model 获取 task_id
+          const taskId = TaskConfig.getTaskIdByKey(this.model, 'image_edit');
+          if (!taskId) {
+            throw new Error(`未找到模型 ${this.model} 对应的任务配置`);
+          }
+          form.append('task_id', taskId);
           
           // Add user_id from localStorage
           const userId = localStorage.getItem('user_id');
@@ -2269,16 +2383,24 @@
         this.historyLoading = true;
         try {
           const authToken = localStorage.getItem('auth_token');
+          // 如果没有获取到任务类型配置，先获取
+          if (!this.taskTypeConfig) {
+            await this.fetchTaskTypeConfig();
+          }
+          // 图片编辑界面只查询图片编辑类型
+          const imageEditTypes = this.taskTypeConfig?.image_edit_types || [1, 7];
+          const typesStr = imageEditTypes.join(',');
+
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 1,  // 1-图片编辑
+              types: typesStr,
               auth_token: authToken || undefined
             }
           });
-          
+
           if (response.data.success) {
             const newData = response.data.data.data || [];
             if (append) {
@@ -2500,7 +2622,7 @@
             </select>
           </div>
 
-          <div class="field" v-if="model === 'gemini-3-pro-image-preview'">
+          <div class="field" v-if="imageSizeOptions.length > 0">
             <label class="label">分辨率</label>
             <select class="input" v-model="imageSize">
               <option v-for="opt in imageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -2618,7 +2740,7 @@
     data() {
       return {
         prompt: '',
-        model: 'gemini-2.5-pro-image-preview',
+        model: 'gemini',  // 简短 key，对应 gemini_image_edit
         aspectRatio: '9:16',
         imageSize: '1K',
         count: 1,
@@ -2635,21 +2757,28 @@
         historyLoading: false,
         historyPage: 1,
         historyTotal: 0,
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        taskTypeConfig: null,  // 从后端获取的任务类型配置
+        modelConfigs: {},  // 从后端获取的模型配置
+        configLoaded: false  // 配置是否已加载
       }
     },
     mounted() {
       this.authToken = localStorage.getItem('auth_token') || '';
       // 获取驱动状态
       this.fetchDriverStatus();
+      // 获取任务类型配置
+      this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() { return !!this.prompt.trim() && !this.loading },
       modelOptions() {
-        const allOptions = [
-          { value: 'gemini-3-pro-image-preview', label: 'nano-banana-pro 加强版 (6算力)', taskType: 7 },
-          { value: 'gemini-2.5-pro-image-preview', label: 'nano-banana 标准版 (2算力)', taskType: 1 }
-        ];
+        // 依赖 configLoaded 触发重新计算
+        if (!this.configLoaded) return [];
+        // 动态从配置获取文生图模型列表
+        const allOptions = TaskConfig.getModelOptionsForCategory('text_to_image');
         return allOptions.map(opt => {
           const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
           return {
@@ -2660,25 +2789,43 @@
         });
       },
       aspectRatioOptions() {
-        return [
-          { value: '1:1', label: '1:1' },
-          { value: '2:3', label: '2:3' },
-          { value: '3:2', label: '3:2' },
-          { value: '3:4', label: '3:4' },
-          { value: '4:3', label: '4:3' },
-          { value: '4:5', label: '4:5' },
-          { value: '5:4', label: '5:4' },
-          { value: '9:16', label: '9:16 (竖屏)' },
-          { value: '16:9', label: '16:9 (横屏)' },
-          { value: '21:9', label: '21:9' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.ratios) {
+          return [
+            { value: '1:1', label: '1:1' },
+            { value: '9:16', label: '9:16 (竖屏)' },
+            { value: '16:9', label: '16:9 (横屏)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1',
+          '3:4': '3:4',
+          '4:3': '4:3',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '21:9': '21:9',
+          '4:5': '4:5',
+          '5:4': '5:4'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       imageSizeOptions() {
-        return [
-          { value: '1K', label: '1K' },
-          { value: '2K', label: '2K' },
-          { value: '4K', label: '4K' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.image_sizes) {
+          return [
+            { value: '1K', label: '1K' },
+            { value: '2K', label: '2K' }
+          ];
+        }
+        return config.image_sizes.map(size => ({
+          value: size,
+          label: size
+        }));
       },
       countOptions() {
         return [
@@ -2699,6 +2846,20 @@
         }
       }
     },
+    watch: {
+      model(newModel) {
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          if (config.default_ratio && !config.ratios.includes(this.aspectRatio)) {
+            this.aspectRatio = config.default_ratio;
+          }
+          if (config.default_image_size && config.image_sizes && !config.image_sizes.includes(this.imageSize)) {
+            this.imageSize = config.default_image_size;
+          }
+        }
+      }
+    },
     methods: {
       async fetchDriverStatus() {
         try {
@@ -2710,6 +2871,40 @@
           console.error('获取驱动状态异常:', error);
         }
       },
+
+      async fetchTaskTypeConfig() {
+        try {
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          this.configLoaded = true;  // 标记配置已加载
+          
+          // 检查当前 model 是否在可用选项中，如果不在则选择第一个
+          const allOptions = TaskConfig.getModelOptionsForCategory('text_to_image');
+          const validValues = allOptions.map(opt => opt.value);
+          if (!validValues.includes(this.model) && allOptions.length > 0) {
+            this.model = allOptions[0].value;
+          }
+          
+          // 设置初始默认值
+          const config = this.modelConfigs[this.model];
+          if (config) {
+            if (config.default_ratio) this.aspectRatio = config.default_ratio;
+            if (config.default_image_size) this.imageSize = config.default_image_size;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       async submit(){
         if(!this.canSubmit) return;
         
@@ -2730,12 +2925,18 @@
         try {
           const form = new FormData();
           form.append('prompt', this.prompt);
-          form.append('model', this.model);
           form.append('aspect_ratio', this.aspectRatio);
           form.append('count', this.count);
           form.append('user_id', userId);
           
-          if (this.model === 'gemini-3-pro-image-preview' && this.imageSize) {
+          // 根据 model 获取 task_id
+          const taskId = TaskConfig.getTaskIdByKey(this.model, 'text_to_image');
+          if (!taskId) {
+            throw new Error(`未找到模型 ${this.model} 对应的任务配置`);
+          }
+          form.append('task_id', taskId);
+          
+          if (this.imageSize) {
             form.append('image_size', this.imageSize);
           }
           
@@ -2868,12 +3069,20 @@
         this.historyLoading = true;
         try {
           const authToken = localStorage.getItem('auth_token');
+          // 如果没有获取到任务类型配置，先获取
+          if (!this.taskTypeConfig) {
+            await this.fetchTaskTypeConfig();
+          }
+          // 文生图界面只查询文生图类型
+          const textToImageTypes = this.taskTypeConfig?.text_to_image_types || [16];
+          const typesStr = textToImageTypes.join(',');
+
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 1,
+              types: typesStr,
               auth_token: authToken || undefined
             }
           });
@@ -2943,6 +3152,15 @@
       getAspectRatioLabel(value) {
         const option = this.aspectRatioOptions.find(opt => opt.value === value);
         return option ? option.label : value || '未知';
+      },
+
+      async fetchTaskTypeConfig() {
+        try {
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
       }
     },
     
@@ -2971,12 +3189,11 @@
             </select>
           </div>
 
-          <div class="field" v-if="model === 'gemini-3-pro-image-preview'">
+          <div class="field" v-if="imageSizeOptions.length > 0">
             <label class="label">分辨率</label>
             <select class="input" v-model="imageSize">
               <option v-for="opt in imageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
-            <div class="muted" style="margin-top: 4px;">nano-banana-pro 支持 1K/2K/4K 分辨率</div>
           </div>
 
           <div class="field">
@@ -3095,7 +3312,9 @@
         enhanceTaskIds: {},   // Track enhancement task IDs by index
         taskComputingPower: {},  // 从接口获取的算力配置
         taskTypeConfig: null,  // 从接口获取的任务类型配置
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        modelConfigs: {},  // 从后端获取的模型配置
+        configLoaded: false  // 配置是否已加载
       }
     },
     mounted() {
@@ -3105,27 +3324,21 @@
       this.fetchComputingPowerConfig();
       // 获取任务类型配置
       this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     watch: {
       videoModel(newModel, oldModel) {
-        // 当切换模型时，自动设置合适的默认时长
-        if (newModel === 'ltx2') {
-          // LTX2.0: 5, 8, 10秒
-          if (![5, 8, 10].includes(this.durationSeconds)) {
-            this.durationSeconds = 5;
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          // 更新比例
+          if (config.default_ratio && config.ratios && !config.ratios.includes(this.model)) {
+            this.model = config.default_ratio;
           }
-        } else if (newModel === 'wan22' || newModel === 'kling'|| newModel === 'vidu') {
-          // Wan2.2 和可灵: 5, 10秒
-          if (![5, 10].includes(this.durationSeconds)) {
-            this.durationSeconds = 5;
-          }
-        } else if (newModel === 'veo3') {
-          // VEO3: 固定8秒
-          this.durationSeconds = 8;
-        } else {
-          // Sora2: 10, 15秒
-          if (![10, 15].includes(this.durationSeconds)) {
-            this.durationSeconds = 10;
+          // 更新时长
+          if (config.durations && !config.durations.includes(this.durationSeconds)) {
+            this.durationSeconds = config.default_duration || config.durations[0] || 5;
           }
         }
       }
@@ -3138,14 +3351,10 @@
         return '';
       },
       videoModelOptions() {
-        const allOptions = [
-          { value: 'sora2', label: 'Sora2', taskType: 3 },
-          { value: 'ltx2', label: 'LTX2.0', taskType: 10 },
-          { value: 'wan22', label: 'Wan2.2', taskType: 11 },
-          { value: 'kling', label: '可灵', taskType: 12 },
-          { value: 'vidu', label: 'Vidu', taskType: 14 },
-          { value: 'veo3', label: 'VEO3.1', taskType: 15 }
-        ];
+        // 依赖 configLoaded 触发重新计算
+        if (!this.configLoaded) return [];
+        // 动态从配置获取图生视频模型列表
+        const allOptions = TaskConfig.getModelOptionsForCategory('image_to_video');
         return allOptions.map(opt => {
           const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
           return {
@@ -3156,41 +3365,41 @@
         });
       },
       modelOptions() {
-        // Wan2.2、LTX2.0、Sora2、可灵都只支持横屏和竖屏
-        return [
-          { value: '9:16', label: '竖屏' },
-          { value: '16:9', label: '横屏' }
-        ];
-      },
-      durationOptions() {
-        if (this.videoModel === 'ltx2') {
+        const config = this.modelConfigs[this.videoModel];
+        if (!config || !config.ratios) {
           return [
-            { value: 5, label: '5秒 (121帧)' },
-            { value: 8, label: '8秒 (201帧)' },
-            { value: 10, label: '10秒 (241帧)' }
+            { value: '9:16', label: '竖屏' },
+            { value: '16:9', label: '横屏' }
           ];
         }
-        if (this.videoModel === 'wan22' || this.videoModel === 'kling') {
+        const labelMap = {
+          '9:16': '竖屏',
+          '16:9': '横屏',
+          '1:1': '正方形'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
+      },
+      durationOptions() {
+        const config = this.modelConfigs[this.videoModel];
+        if (!config || !config.durations) {
           return [
             { value: 5, label: '5秒' },
             { value: 10, label: '10秒' }
           ];
         }
-        if (this.videoModel === 'vidu') {
-          return [
-            { value: 5, label: '5秒' },
-            { value: 8, label: '8秒' }
-          ];
-        }
-        if (this.videoModel === 'veo3') {
-          return [
-            { value: 8, label: '8秒' }
-          ];
-        }
-        return [
-          { value: 10, label: '10秒' },
-          { value: 15, label: '15秒' }
-        ];
+        // LTX2 特殊标签
+        const ltx2Labels = {
+          5: '5秒 (121帧)',
+          8: '8秒 (201帧)',
+          10: '10秒 (241帧)'
+        };
+        return config.durations.map(duration => ({
+          value: duration,
+          label: this.videoModel === 'ltx2' ? (ltx2Labels[duration] || `${duration}秒`) : `${duration}秒`
+        }));
       },
       countOptions() {
         return [
@@ -3266,14 +3475,26 @@
       
       async fetchTaskTypeConfig() {
         try {
-          const response = await axios.get('/api/task-type-config');
-          if (response.data.success) {
-            this.taskTypeConfig = response.data.data;
-          } else {
-            console.error('获取任务类型配置失败:', response.data.message);
-          }
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
         } catch (error) {
           console.error('获取任务类型配置异常:', error);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          this.configLoaded = true;  // 标记配置已加载
+          // 设置初始默认值
+          const config = this.modelConfigs[this.videoModel];
+          if (config) {
+            if (config.default_ratio) this.model = config.default_ratio;
+            if (config.default_duration) this.durationSeconds = config.default_duration;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
         }
       },
       
@@ -3393,10 +3614,16 @@
             form.append('images', file);
           });
           form.append('prompt', this.prompt);
-          form.append('video_model', this.videoModel);
           form.append('ratio', this.model);
           form.append('duration_seconds', this.durationSeconds);
           form.append('count', this.count);
+          
+          // 根据 videoModel 获取 task_id
+          const taskId = TaskConfig.getTaskIdByKey(this.videoModel, 'image_to_video');
+          if (!taskId) {
+            throw new Error(`未找到视频模型 ${this.videoModel} 对应的任务配置`);
+          }
+          form.append('task_id', taskId);
           
           // Add user_id from localStorage
           const userId = localStorage.getItem('user_id');
@@ -4509,12 +4736,8 @@
     methods: {
       async fetchTaskTypeConfig() {
         try {
-          const response = await axios.get('/api/task-type-config');
-          if (response.data.success) {
-            this.taskTypeConfig = response.data.data;
-          } else {
-            console.error('获取任务类型配置失败:', response.data.message);
-          }
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
         } catch (error) {
           console.error('获取任务类型配置异常:', error);
         }

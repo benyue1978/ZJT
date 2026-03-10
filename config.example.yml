@@ -63,6 +63,9 @@ duomi:
 vidu:
   token: "vda_xxxx"
 
+volcengine:
+  api_key: "your_volcengine_api_key"  # 火山引擎 API Key（用于 Seedream 5.0 文生图）
+
 pay:
   wxpay:
       #公众账号ID
@@ -168,6 +171,15 @@ file_storage:
 
 image:
   enable_download: true
+
+# 媒体文件缓存配置
+media_cache:
+  enabled: true                    # 是否启用缓存
+  cache_dir: "upload/cache"        # 缓存目录（相对于项目根目录）
+  max_days: 30                     # 文件保留天数（0=不限制）
+  max_size_gb: 10                  # 最大缓存容量GB（0=不限制）
+  cleanup_on_startup: true         # 启动时执行清理
+  cleanup_interval_hours: 24       # 定时清理间隔（小时）
 
 # Sentry 配置
 sentry:

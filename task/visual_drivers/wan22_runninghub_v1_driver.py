@@ -3,7 +3,6 @@ Wan22 RunningHub v1 版本驱动实现
 """
 from typing import Dict, Any, Optional
 import traceback
-import asyncio
 from .base_video_driver import BaseVideoDriver
 from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
@@ -143,7 +142,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
         
         return True, None
     
-    def build_create_request(self, ai_tool) -> Dict[str, Any]:
+    async def build_create_request(self, ai_tool) -> Dict[str, Any]:
         """
         构建创建 Wan22 任务的完整请求参数
         
@@ -157,7 +156,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
         image_path = ai_tool.image_path
         if self._is_local and image_path:
             self.logger.info(f"本地环境检测到图片路径，准备上传到 RunningHub: {image_path}")
-            result = asyncio.run(self._storage.upload_file("", image_path))
+            result = await self._storage.upload_file("", image_path)
             if result.success:
                 image_path = result.key
                 self.logger.info(f"图片上传完成，使用 fileName: {image_path}")
@@ -260,7 +259,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
             }
         }
     
-    def submit_task(self, ai_tool) -> Dict[str, Any]:
+    async def submit_task(self, ai_tool) -> Dict[str, Any]:
         """
         提交 Wan22 视频生成任务
         
@@ -278,7 +277,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
             self.logger.info(f"Submitting Wan22 task: prompt='{ai_tool.prompt[:50]}...', ratio={ai_tool.ratio}, duration={ai_tool.duration}")
             
             # 构建请求参数
-            request_params = self.build_create_request(ai_tool)
+            request_params = await self.build_create_request(ai_tool)
             
             # 调用统一请求方法
             try:
