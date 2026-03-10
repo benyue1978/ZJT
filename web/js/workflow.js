@@ -327,11 +327,13 @@
         if(nodeData.file) delete nodeData.file;
         if(nodeData.startFile) delete nodeData.startFile;
         if(nodeData.endFile) delete nodeData.endFile;
+        if(nodeData.videoFile) delete nodeData.videoFile;  // 提取帧节点的视频文件
         // 对于本地blob URL，需要清除（这些是临时的）
         // 服务器URL（以http开头）保留
         if(nodeData.url && nodeData.url.startsWith('blob:')) nodeData.url = '';
         if(nodeData.startUrl && nodeData.startUrl.startsWith('blob:')) nodeData.startUrl = '';
         if(nodeData.endUrl && nodeData.endUrl.startsWith('blob:')) nodeData.endUrl = '';
+        if(nodeData.videoUrl && nodeData.videoUrl.startsWith('blob:')) nodeData.videoUrl = '';  // 提取帧节点
         if(nodeData.preview && nodeData.preview.startsWith('data:') && nodeData.url) nodeData.preview = nodeData.url;
         if(nodeData.startPreview && nodeData.startPreview.startsWith('data:') && nodeData.startUrl) nodeData.startPreview = nodeData.startUrl;
         if(nodeData.endPreview && nodeData.endPreview.startsWith('data:') && nodeData.endUrl) nodeData.endPreview = nodeData.endUrl;
@@ -794,6 +796,8 @@
         createDialogueGroupNodeWithData(nodeData);
       } else if(nodeData.type === 'text'){
         createTextNodeWithData(nodeData);
+      } else if(nodeData.type === 'extract_frame'){
+        createExtractFrameNodeWithData(nodeData);
       }
     }
 

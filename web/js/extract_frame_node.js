@@ -1,4 +1,4 @@
-    // ============ 提取首帧节点 ============
+    // ============ 提取帧节点 ============
 
     function createExtractFrameNode(opts){
       const id = state.nextNodeId++;
@@ -9,14 +9,15 @@
       const node = {
         id,
         type: 'extract_frame',
-        title: '提取首帧',
+        title: '提取帧',
         x,
         y,
         data: {
           videoFile: null,
           videoUrl: '',
           videoName: '',
-          imageUrl: '',
+          frameType: 'first',  // first=首帧, last=尾帧
+          extractedImageNodeId: null,  // 提取成功后创建的图片节点ID
           status: 'idle'  // idle, extracting, success, error
         }
       };
@@ -30,7 +31,7 @@
 
       el.innerHTML = `
         <div class="port input" title="输入（连接视频节点）"></div>
-        <div class="port output" title="输出（提取的首帧图片）"></div>
+        <div class="port output" title="输出（提取的帧图片）"></div>
         <div class="node-header">
           <div class="node-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
@@ -54,18 +55,15 @@
             </div>
             <div class="gen-meta video-name"></div>
           </div>
-          <div class="field field-always-visible extract-actions-field">
-            <button class="gen-btn" type="button" title="提取首帧">提取首帧</button>
+          <div class="field field-always-visible frame-type-field">
+            <div class="label">帧类型</div>
+            <select class="frame-type-select">
+              <option value="first">首帧</option>
+              <option value="last">尾帧</option>
+            </select>
           </div>
-          <div class="field field-always-visible image-result-field" style="display:none;">
-            <div class="label">提取结果</div>
-            <div class="image-result">
-              <img class="result-image" style="max-width: 100%; max-height: 150px; object-fit: contain; border-radius: 4px;" />
-            </div>
-            <div class="preview-row" style="margin-top: 8px;">
-              <button class="mini-btn" type="button" title="下载">下载</button>
-              <button class="mini-btn secondary clear-result-btn" type="button" title="清除">清除</button>
-            </div>
+          <div class="field field-always-visible extract-actions-field">
+            <button class="gen-btn" type="button" title="提取帧">提取帧</button>
           </div>
           <div class="field field-always-visible status-field" style="display:none;">
             <div class="gen-meta status"></div>
@@ -81,11 +79,8 @@
       const previewField = el.querySelector('.video-preview-field');
       const thumbVideo = el.querySelector('.video-thumb');
       const nameEl = el.querySelector('.video-name');
+      const frameTypeSelect = el.querySelector('.frame-type-select');
       const extractBtn = el.querySelector('.gen-btn');
-      const resultField = el.querySelector('.image-result-field');
-      const resultImage = el.querySelector('.result-image');
-      const downloadBtn = el.querySelector('.preview-row button:first-of-type');
-      const clearResultBtn = el.querySelector('.clear-result-btn');
       const statusField = el.querySelector('.status-field');
       const statusEl = el.querySelector('.status');
 
@@ -128,10 +123,12 @@
               // 接收视频URL
               node.data.videoUrl = fromNode.data.url;
               node.data.videoName = fromNode.data.name || '视频';
-              thumbVideo.src = proxyDownloadUrl(fromNode.data.url);
-              previewField.style.display = '';
-              nameEl.textContent = node.data.videoName;
-              renderImageConnections();  // 更新图片连接
+              if(node.data.videoUrl){
+                thumbVideo.src = proxyDownloadUrl(node.data.videoUrl);
+                previewField.style.display = '';
+                nameEl.textContent = node.data.videoName;
+              }
+              try{ autoSaveWorkflow(); } catch(e){}
             }
           }
         }
@@ -167,7 +164,7 @@
 
           // 清除之前的提取结果
           clearResult();
-          showToast('视频已加载，点击"提取首帧"按钮提取', 'success');
+          showToast('视频已加载，点击"提取帧"按钮提取', 'success');
 
           // 自动保存工作流
           try{ autoSaveWorkflow(); } catch(e){}
@@ -177,26 +174,16 @@
         }
       });
 
-      // 提取首帧按钮
+      // 帧类型选择
+      frameTypeSelect.addEventListener('change', (e) => {
+        node.data.frameType = e.target.value;
+        try{ autoSaveWorkflow(); } catch(e){}
+      });
+
+      // 提取帧按钮
       extractBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        await extractFirstFrame();
-      });
-
-      // 下载提取的图片
-      downloadBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if(!node.data.imageUrl){
-          showToast('没有可下载的图片', 'error');
-          return;
-        }
-        window.open(node.data.imageUrl, '_blank');
-      });
-
-      // 清除结果
-      clearResultBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        clearResult();
+        await extractFrame();
       });
 
       // 设置视频（从连接或上传）
@@ -223,16 +210,14 @@
       }
 
       function clearResult(){
-        node.data.imageUrl = '';
+        node.data.extractedImageNodeId = null;
         node.data.status = 'idle';
-        resultField.style.display = 'none';
-        resultImage.src = '';
         statusField.style.display = 'none';
         extractBtn.disabled = false;
-        extractBtn.textContent = '提取首帧';
+        extractBtn.textContent = '提取帧';
       }
 
-      async function extractFirstFrame(){
+      async function extractFrame(){
         // 检查是否有视频（来自上传或连接）
         const hasVideoFile = node.data.videoFile !== null;
         const hasVideoUrl = node.data.videoUrl && node.data.videoUrl.length > 0;
@@ -242,44 +227,40 @@
           return;
         }
 
-        // 如果是URL，需要上传到服务器
-        let fileToExtract = null;
-        if(node.data.videoFile){
-          fileToExtract = node.data.videoFile;
-        } else if(node.data.videoUrl){
-          // 从连接的视频节点获取
-          try {
-            // 尝试从URL获取文件对象
-            showToast('正在下载视频...', 'info');
-            const response = await fetch(proxyDownloadUrl(node.data.videoUrl));
-            const blob = await response.blob();
-            fileToExtract = new File([blob], node.data.videoName || 'video.mp4', { type: 'video/mp4' });
-          } catch(error){
-            console.error('下载视频失败:', error);
-            showToast('下载视频失败', 'error');
-            return;
-          }
-        }
-
-        if(!fileToExtract){
-          showToast('没有可提取的视频', 'error');
-          return;
-        }
+        const frameType = node.data.frameType || 'first';
+        const frameTypeName = frameType === 'last' ? '尾帧' : '首帧';
 
         // 显示处理状态
         node.data.status = 'extracting';
         statusField.style.display = '';
-        statusEl.textContent = '正在提取首帧...';
+        statusEl.textContent = `正在提取${frameTypeName}...`;
         extractBtn.disabled = true;
         extractBtn.textContent = '提取中...';
 
         try {
           // 构建FormData
           const formData = new FormData();
-          formData.append('file', fileToExtract);
 
-          // 调用API提取首帧
-          const response = await fetch('/api/video-workflow/extract-first-frame', {
+          // 判断视频来源：如果有URL且是服务器URL，直接传URL；否则上传文件
+          const isServerUrl = node.data.videoUrl && (node.data.videoUrl.startsWith('/upload/') || node.data.videoUrl.includes('/upload/'));
+
+          if(hasVideoFile && !isServerUrl){
+            // 本地上传的文件
+            formData.append('file', node.data.videoFile);
+          } else if(node.data.videoUrl){
+            // 服务器上的视频URL
+            formData.append('video_url', node.data.videoUrl);
+          } else {
+            showToast('没有可提取的视频', 'error');
+            extractBtn.disabled = false;
+            extractBtn.textContent = '提取帧';
+            return;
+          }
+
+          formData.append('frame_type', frameType);
+
+          // 调用API提取帧
+          const response = await fetch('/api/video-workflow/extract-frame', {
             method: 'POST',
             headers: {
               'Authorization': localStorage.getItem('auth_token') || '',
@@ -291,20 +272,59 @@
           const result = await response.json();
 
           if(result.code === 0 && result.data && result.data.url){
-            // 提取成功
-            node.data.imageUrl = result.data.url;
+            // 提取成功 - 创建新的图片节点
+            const imageUrl = result.data.url;
             node.data.status = 'success';
-            resultField.style.display = '';
-            resultImage.src = result.data.url;
-            statusEl.textContent = '提取成功';
+            statusEl.textContent = '提取成功，正在创建图片节点...';
             statusEl.style.color = '#22c55e';
 
-            // 1秒后隐藏状态
+            // 创建新的图片节点
+            const imageNodeId = createImageNode({
+              x: node.x + 280,  // 放在提取帧节点右侧
+              y: node.y
+            });
+            const imageNode = state.nodes.find(n => n.id === imageNodeId);
+            if(imageNode){
+              // 设置图片节点的数据
+              imageNode.data.url = imageUrl;
+              imageNode.data.preview = imageUrl;
+              imageNode.data.name = node.data.videoName ? node.data.videoName.replace(/\.[^.]+$/, `_${frameTypeName}.png`) : `${frameTypeName}.png`;
+
+              // 更新图片节点的预览显示
+              const imageNodeEl = canvasEl.querySelector(`.node[data-node-id="${imageNodeId}"]`);
+              if(imageNodeEl){
+                const previewRow = imageNodeEl.querySelector('.image-preview-row');
+                const previewImg = imageNodeEl.querySelector('.image-preview');
+                if(previewRow && previewImg){
+                  previewRow.style.display = 'flex';
+                  previewImg.src = imageUrl;
+                }
+              }
+
+              // 创建图片连接（从提取帧节点到图片节点）
+              state.imageConnections.push({
+                id: state.nextImgConnId++,
+                from: id,
+                to: imageNodeId,
+                portType: 'extracted'
+              });
+
+              // 记录创建的图片节点ID
+              node.data.extractedImageNodeId = imageNodeId;
+
+              // 渲染连接线（使用 requestAnimationFrame 确保 DOM 已更新）
+              requestAnimationFrame(() => {
+                renderImageConnections();
+              });
+            }
+
+            // 隐藏状态
             setTimeout(() => {
               statusField.style.display = 'none';
             }, 2000);
 
-            showToast('首帧提取成功', 'success');
+            showToast(`${frameTypeName}提取成功，已创建图片节点`, 'success');
+            renderMinimap();
 
             // 自动保存工作流
             try{ autoSaveWorkflow(); } catch(e){}
@@ -313,21 +333,63 @@
             node.data.status = 'error';
             statusEl.textContent = result.message || '提取失败';
             statusEl.style.color = '#ef4444';
-            showToast(result.message || '提取首帧失败', 'error');
+            showToast(result.message || `提取${frameTypeName}失败`, 'error');
           }
         } catch(error){
-          console.error('提取首帧失败:', error);
+          console.error('提取帧失败:', error);
           node.data.status = 'error';
           statusEl.textContent = '网络错误';
           statusEl.style.color = '#ef4444';
-          showToast('提取首帧失败，请检查网络连接', 'error');
+          showToast(`提取${frameTypeName}失败，请检查网络连接`, 'error');
         } finally {
           extractBtn.disabled = false;
-          extractBtn.textContent = '提取首帧';
+          extractBtn.textContent = '提取帧';
         }
       }
 
       canvasEl.appendChild(el);
       setSelected(id);
       return id;
+    }
+
+    // 带数据创建提取帧节点（用于恢复工作流）
+    function createExtractFrameNodeWithData(nodeData){
+      const savedNextNodeId = state.nextNodeId;
+      state.nextNodeId = nodeData.id;
+
+      createExtractFrameNode({ x: nodeData.x, y: nodeData.y });
+
+      state.nextNodeId = Math.max(savedNextNodeId, nodeData.id + 1);
+
+      const node = state.nodes.find(n => n.id === nodeData.id);
+      if(node && nodeData.data){
+        // 恢复节点数据
+        node.data.videoUrl = nodeData.data.videoUrl || '';
+        node.data.videoName = nodeData.data.videoName || '';
+        node.data.frameType = nodeData.data.frameType || 'first';
+        node.data.extractedImageNodeId = nodeData.data.extractedImageNodeId || null;
+        node.data.status = nodeData.data.status || 'idle';
+
+        // 更新UI显示
+        const nodeEl = canvasEl.querySelector(`.node[data-node-id="${nodeData.id}"]`);
+        if(nodeEl){
+          const previewField = nodeEl.querySelector('.video-preview-field');
+          const thumbVideo = nodeEl.querySelector('.video-thumb');
+          const nameEl = nodeEl.querySelector('.video-name');
+
+          if(node.data.videoUrl){
+            thumbVideo.src = proxyDownloadUrl(node.data.videoUrl);
+            previewField.style.display = '';
+            nameEl.textContent = node.data.videoName;
+          }
+
+          // 恢复帧类型选择
+          if(nodeData.data.frameType){
+            const frameTypeSelect = nodeEl.querySelector('.frame-type-select');
+            if(frameTypeSelect){
+              frameTypeSelect.value = nodeData.data.frameType;
+            }
+          }
+        }
+      }
     }

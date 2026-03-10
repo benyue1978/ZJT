@@ -2075,9 +2075,17 @@
         const fromEl = canvasEl.querySelector(`.node[data-node-id="${conn.from}"]`);
         const toEl = canvasEl.querySelector(`.node[data-node-id="${conn.to}"]`);
         if(!fromEl || !toEl) continue;
-        
+
         const outputPort = fromEl.querySelector('.port.output');
-        const imagePort = toEl.querySelector(`.${conn.portType}-image-port`);
+        // 根据 portType 选择不同的目标端口
+        let imagePort = null;
+        if(conn.portType === 'extracted'){
+          // extracted 类型连接到图片节点的 input 端口
+          imagePort = toEl.querySelector('.port.input');
+        } else {
+          // 其他类型使用特定端口
+          imagePort = toEl.querySelector(`.${conn.portType}-image-port`);
+        }
         if(!outputPort || !imagePort) continue;
         
         const fromRect = outputPort.getBoundingClientRect();
