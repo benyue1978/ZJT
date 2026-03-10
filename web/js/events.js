@@ -208,6 +208,13 @@
       startNodePlacing(nodeId);
     });
 
+    document.getElementById('menuAddExtractFrame').addEventListener('click', () => {
+      const nodeId = createExtractFrameNode();
+      renderMinimap();
+      addMenu.classList.remove('show');
+      startNodePlacing(nodeId);
+    });
+
     document.getElementById('menuAddText').addEventListener('click', () => {
       const nodeId = createTextNode();
       renderMinimap();
@@ -297,10 +304,19 @@
       if(state.selectedConnId !== null){
         removeConnection(state.selectedConnId);
       } else if(state.selectedImgConnId !== null){
+        const conn = state.imageConnections.find(c => c.id === state.selectedImgConnId);
         state.imageConnections = state.imageConnections.filter(c => c.id !== state.selectedImgConnId);
         state.selectedImgConnId = null;
         hideConnDeleteBtn();
         renderImageConnections();
+        // 如果删除的是 extracted 类型的连接，清除 extract_frame 节点的引用
+        if(conn && conn.portType === 'extracted'){
+          const fromNode = state.nodes.find(n => n.id === conn.from);
+          if(fromNode && fromNode.type === 'extract_frame'){
+            fromNode.data.extractedImageNodeId = null;
+          }
+        }
+        try{ autoSaveWorkflow(); } catch(e){}
       } else if(state.selectedFirstFrameConnId !== null){
         removeFirstFrameConnection(state.selectedFirstFrameConnId);
       } else if(state.selectedVideoConnId !== null){
@@ -347,10 +363,19 @@
           removeConnection(state.selectedConnId);
         } else if(state.selectedImgConnId !== null){
           e.preventDefault();
+          const conn = state.imageConnections.find(c => c.id === state.selectedImgConnId);
           state.imageConnections = state.imageConnections.filter(c => c.id !== state.selectedImgConnId);
           state.selectedImgConnId = null;
           hideConnDeleteBtn();
           renderImageConnections();
+          // 如果删除的是 extracted 类型的连接，清除 extract_frame 节点的引用
+          if(conn && conn.portType === 'extracted'){
+            const fromNode = state.nodes.find(n => n.id === conn.from);
+            if(fromNode && fromNode.type === 'extract_frame'){
+              fromNode.data.extractedImageNodeId = null;
+            }
+          }
+          try{ autoSaveWorkflow(); } catch(e){}
         } else if(state.selectedFirstFrameConnId !== null){
           e.preventDefault();
           removeFirstFrameConnection(state.selectedFirstFrameConnId);

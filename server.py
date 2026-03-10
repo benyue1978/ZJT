@@ -4487,6 +4487,194 @@ async def upload_workflow_asset(
         )
 
 
+@app.post('/api/video-workflow/extract-frame')
+@require_permission("video_workflow:upload")
+async def extract_video_frame(
+    request: Request,
+    file: Optional[UploadFile] = File(None, description="视频文件"),
+    video_url: Optional[str] = Form(None, description="视频URL（与file二选一）"),
+    frame_type: str = Form("first", description="帧类型: first=首帧, last=尾帧"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: Optional[int] = Header(None, alias="X-User-Id")
+):
+    """
+    从视频中提取首帧或尾帧图片
+
+    接收视频文件或视频URL，使用FFmpeg提取指定帧，返回图片URL
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+
+        # 验证帧类型
+        if frame_type not in ["first", "last"]:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "帧类型必须是 first 或 last"}
+            )
+
+        # 验证输入：file 或 video_url 必须有一个
+        if not file and not video_url:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "必须提供视频文件或视频URL"}
+            )
+
+        request_host = str(request.base_url).rstrip("/")
+        temp_dir = os.path.join(UPLOAD_DIR, "temp", datetime.now().strftime("%Y%m%d"))
+        os.makedirs(temp_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        video_path = None
+        video_filename = None
+        need_cleanup = False  # 是否需要清理临时视频文件
+
+        # 获取视频文件
+        if video_url:
+            # 从URL获取视频路径（本地服务器上的文件）
+            # URL格式: http://host/upload/temp/20250101/video_xxx.mp4 或 /upload/xxx
+            if video_url.startswith("/upload/") or "/upload/" in video_url:
+                # 提取相对路径
+                if video_url.startswith("http"):
+                    # 完整URL，提取路径部分
+                    from urllib.parse import urlparse
+                    parsed = urlparse(video_url)
+                    relative_path = parsed.path
+                else:
+                    relative_path = video_url
+
+                # 转换为本地文件路径
+                # /upload/temp/20250101/xxx.mp4 -> UPLOAD_DIR/temp/20250101/xxx.mp4
+                if relative_path.startswith("/upload/"):
+                    relative_path = relative_path[8:]  # 移除 /upload/
+                video_path = os.path.join(UPLOAD_DIR, relative_path)
+                video_filename = os.path.basename(video_path)
+
+                if not os.path.exists(video_path):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"code": -1, "message": "视频文件不存在"}
+                    )
+            else:
+                # 外部URL，需要下载
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": -1, "message": "不支持外部视频URL，请上传视频文件"}
+                )
+        else:
+            # 从上传的文件获取
+            content_type = file.content_type or ""
+            if not content_type.startswith("video/"):
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": -1, "message": "仅支持视频文件"}
+                )
+
+            ext = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
+            video_filename = f"video_{timestamp}_{unique_id}{ext}"
+            video_path = os.path.join(temp_dir, video_filename)
+
+            # 保存视频文件
+            content = await file.read()
+            with open(video_path, "wb") as f:
+                f.write(content)
+            need_cleanup = True  # 上传的文件需要清理
+
+        # 2. 使用FFmpeg提取帧
+        ffmpeg_path = resolve_bin_path(get_config_value("bin", "ffmpeg", default="ffmpeg"), APP_DIR)
+        ffmpeg_timeout = get_config_value("bin", "ffmpeg_timeout", default=30)
+
+        # 输出图片文件名
+        frame_name = "first_frame" if frame_type == "first" else "last_frame"
+        image_filename = f"{frame_name}_{timestamp}_{unique_id}.jpg"
+        image_path = os.path.join(temp_dir, image_filename)
+
+        # FFmpeg命令: 根据帧类型选择不同的提取方式
+        if frame_type == "first":
+            # 提取首帧
+            ffmpeg_cmd = [
+                ffmpeg_path,
+                "-i", video_path,
+                "-vframes", "1",      # 只提取1帧
+                "-q:v", "2",          # 高质量（2 = 很好）
+                "-y",                # 覆盖输出文件
+                image_path
+            ]
+        else:
+            # 提取尾帧: 使用 -sseof 从文件末尾开始定位
+            ffmpeg_cmd = [
+                ffmpeg_path,
+                "-sseof", "-0.1",     # 从文件末尾前0.1秒开始
+                "-i", video_path,
+                "-vframes", "1",      # 只提取1帧
+                "-q:v", "2",          # 高质量
+                "-y",                # 覆盖输出文件
+                image_path
+            ]
+
+        # 在线程池中执行FFmpeg命令
+        try:
+            process = await asyncio.to_thread(
+                lambda: subprocess.run(
+                    ffmpeg_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=ffmpeg_timeout
+                )
+            )
+
+            if process.returncode != 0:
+                error_msg = process.stderr or "未知错误"
+                logger.error(f"FFmpeg提取{frame_name}失败: {error_msg}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"code": -1, "message": f"提取{frame_name}失败: {error_msg}"}
+                )
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"FFmpeg提取{frame_name}超时: {video_path}")
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": f"提取{frame_name}超时，请尝试较小的视频文件"}
+            )
+        except FileNotFoundError:
+            logger.error(f"FFmpeg未找到: {ffmpeg_path}")
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": "FFmpeg未配置或不可用"}
+            )
+
+        # 3. 验证生成的图片
+        if not os.path.exists(image_path) or os.path.getsize(image_path) == 0:
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": f"提取{frame_name}失败，生成的图片无效"}
+            )
+
+        # 4. 返回图片URL
+        image_url = f"{request_host}/upload/temp/{datetime.now().strftime('%Y%m%d')}/{image_filename}"
+
+        logger.info(f"成功提取{frame_name}: {video_filename} -> {image_filename}")
+
+        return JSONResponse({
+            "code": 0,
+            "message": "提取成功",
+            "data": {
+                "url": image_url,
+                "filename": image_filename,
+                "frame_type": frame_type
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to extract frame: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"提取帧失败: {str(e)}"}
+        )
+
+
 @app.get('/api/ai-tools/{ai_tools_id}/grid-split')
 @require_permission("image:grid_split")
 async def get_grid_split_image(
