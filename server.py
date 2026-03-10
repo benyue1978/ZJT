@@ -195,7 +195,7 @@ MP_VERIFY_ROUTE = "/MP_verify_lXQewBFqjUipl3B8.txt"
 
 
 # Load server configuration
-from config.config_util import get_config, get_config_value, get_dynamic_config_value
+from config.config_util import get_config_value, get_dynamic_config_value
 
 
 # Choose appropriate host based on HTTPS configuration
@@ -207,14 +207,6 @@ if not https_enabled or not SERVER_HOST:
 API_KEY = get_dynamic_config_value("runninghub", "api_key", default="")
 
 SCRIPT_WRITER_URL = get_config_value("script_writer", "url", default="")
-
-def _get_max_image_size_mb():
-    """动态获取上传图片最大大小配置（MB）"""
-    return get_dynamic_config_value("upload", "max_image_size_mb", default=10)
-
-def _get_max_image_size_bytes():
-    """动态获取上传图片最大大小（字节）"""
-    return _get_max_image_size_mb() * 1024 * 1024
 
 # 兼容旧代码，默认值用于静态引用
 MAX_IMAGE_SIZE_MB = 10

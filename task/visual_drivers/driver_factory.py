@@ -240,13 +240,6 @@ def register_all_drivers():
         logger.warning(f"Failed to import GeminiDuomiV1Driver: {e}")
     
     try:
-        from .gemini_pro_duomi_v1_driver import GeminiProDuomiV1Driver
-        # 注册 Gemini Pro 多米供应商 v1 版本（加强版）
-        VideoDriverFactory.register_driver(DriverImplementation.GEMINI_PRO_DUOMI_V1, GeminiProDuomiV1Driver)
-    except ImportError as e:
-        logger.warning(f"Failed to import GeminiProDuomiV1Driver: {e}")
-    
-    try:
         from .veo3_duomi_v1_driver import Veo3DuomiV1Driver
         # 注册 VEO3 多米供应商 v1 版本
         VideoDriverFactory.register_driver(DriverImplementation.VEO3_DUOMI_V1, Veo3DuomiV1Driver)

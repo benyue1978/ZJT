@@ -18,8 +18,7 @@
 适用驱动：
 - `sora2_duomi_v1` - Sora2 文生视频/图生视频（任务类型 2, 3）
 - `kling_duomi_v1` - 可灵图生视频（任务类型 12）
-- `gemini_duomi_v1` - Gemini 图片编辑（任务类型 1）
-- `gemini_pro_duomi_v1` - Gemini Pro 图片编辑（任务类型 7）
+- `gemini_duomi_v1` - Gemini 图片编辑（任务类型 1, 7, 17）
 - `veo3_duomi_v1` - VEO3 图生视频（任务类型 15）
 
 配置示例：

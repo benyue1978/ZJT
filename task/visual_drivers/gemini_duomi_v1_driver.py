@@ -19,12 +19,13 @@ class GeminiDuomiV1Driver(BaseVideoDriver):
     
     # 模型映射：task_id -> 模型名称
     MODEL_MAPPING = {
-        TaskTypeId.GEMINI_2_5_FLASH_IMAGE: "gemini-2.5-pro-image-preview",
+        TaskTypeId.GEMINI_2_5_FLASH_IMAGE: "gemini-2.5-flash-image",
         TaskTypeId.GEMINI_3_1_FLASH_IMAGE: "gemini-3.1-flash-image-preview",
+        TaskTypeId.GEMINI_3_PRO_IMAGE: "gemini-3-pro-image-preview",
     }
     
     # 默认模型
-    DEFAULT_MODEL = "gemini-2.5-pro-image-preview"
+    DEFAULT_MODEL = "gemini-2.5-flash-image"
     
     def __init__(self):
         super().__init__(driver_name="gemini_duomi_v1", driver_type=1)

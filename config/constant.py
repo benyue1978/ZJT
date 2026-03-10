@@ -140,7 +140,7 @@ DRIVER_IMPLEMENTATION_MAPPING = {
     
     # Gemini 相关驱动
     DriverKey.GEMINI_IMAGE_EDIT: DriverImplementation.GEMINI_DUOMI_V1,       # 使用多米供应商的 Gemini v1 版本（标准版）
-    DriverKey.GEMINI_IMAGE_EDIT_PRO: DriverImplementation.GEMINI_PRO_DUOMI_V1,  # 使用多米供应商的 Gemini Pro v1 版本（加强版）
+    DriverKey.GEMINI_IMAGE_EDIT_PRO: DriverImplementation.GEMINI_DUOMI_V1,   # 使用多米供应商的 Gemini v1 版本（Pro模型）
     
     # VEO3 相关驱动
     DriverKey.VEO3_IMAGE_TO_VIDEO: DriverImplementation.VEO3_DUOMI_V1,       # 使用多米供应商的 VEO3 v1 版本

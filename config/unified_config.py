@@ -302,7 +302,6 @@ class DriverImplementation:
     
     # Gemini
     GEMINI_DUOMI_V1 = 'gemini_duomi_v1'
-    GEMINI_PRO_DUOMI_V1 = 'gemini_pro_duomi_v1'
     
     # VEO3
     VEO3_DUOMI_V1 = 'veo3_duomi_v1'
@@ -396,7 +395,7 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
     # ==================== 图片编辑 ====================
     UnifiedTaskConfig(
         id=TaskTypeId.GEMINI_2_5_FLASH_IMAGE,
-        key='gemini-2.5-pro-image-preview',
+        key='gemini-2.5-flash-image-preview',
         name='nano-banana',
         category=TaskCategory.IMAGE_EDIT,
         categories=[TaskCategory.TEXT_TO_IMAGE],  # 同时支持文生图
@@ -418,7 +417,7 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
         categories=[TaskCategory.TEXT_TO_IMAGE],  # 同时支持文生图
         provider=TaskProvider.DUOMI,
         driver_name=DriverKey.GEMINI_IMAGE_EDIT_PRO,
-        implementation=DriverImplementation.GEMINI_PRO_DUOMI_V1,
+        implementation=DriverImplementation.GEMINI_DUOMI_V1,
         computing_power=6,
         supported_ratios=['9:16', '16:9', '1:1', '3:4', '4:3'],
         supported_sizes=['1K', '2K', '4K'],
@@ -436,8 +435,8 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
         driver_name=DriverKey.GEMINI_IMAGE_EDIT,
         implementation=DriverImplementation.GEMINI_DUOMI_V1,
         computing_power=3,
-        supported_ratios=['9:16', '16:9', '1:1', '3:4', '4:3'],
-        supported_sizes=['1K'],
+        supported_ratios=['9:16', '16:9', '1:1', '3:4', '4:3', '21:9', '1:4', '4:1', '1:8', '8:1'],
+        supported_sizes=['1K', '2K', '4K'],
         default_ratio='9:16',
         default_size='1K',
         sort_order=12,
@@ -541,7 +540,7 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
     UnifiedTaskConfig(
         id=TaskTypeId.KLING_IMAGE_TO_VIDEO,
         key='kling_image_to_video',
-        name='图片生成视频 (可灵)',
+        name='图片生成视频 (可灵v2.5-turbo)',
         category=TaskCategory.IMAGE_TO_VIDEO,
         provider=TaskProvider.DUOMI,
         driver_name=DriverKey.KLING_IMAGE_TO_VIDEO,
@@ -556,7 +555,7 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
     UnifiedTaskConfig(
         id=TaskTypeId.VIDU_IMAGE_TO_VIDEO,
         key='vidu_image_to_video',
-        name='图片生成视频 (Vidu)',
+        name='图片生成视频 (Vidu-q2-pro-fast)',
         category=TaskCategory.IMAGE_TO_VIDEO,
         provider=TaskProvider.VIDU,
         driver_name=DriverKey.VIDU_IMAGE_TO_VIDEO,
@@ -571,7 +570,7 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
     UnifiedTaskConfig(
         id=TaskTypeId.VEO3_IMAGE_TO_VIDEO,
         key='veo3_image_to_video',
-        name='图片生成视频 (VEO3.1)',
+        name='图片生成视频 (VEO3.1-fast)',
         category=TaskCategory.IMAGE_TO_VIDEO,
         provider=TaskProvider.DUOMI,
         driver_name=DriverKey.VEO3_IMAGE_TO_VIDEO,
@@ -588,7 +587,7 @@ ALL_TASK_CONFIGS: List[UnifiedTaskConfig] = [
     UnifiedTaskConfig(
         id=TaskTypeId.DIGITAL_HUMAN,
         key='digital_human',
-        name='数字人生成',
+        name='wan2.2 数字人',
         category=TaskCategory.DIGITAL_HUMAN,
         provider=TaskProvider.RUNNINGHUB,
         driver_name=DriverKey.DIGITAL_HUMAN,
