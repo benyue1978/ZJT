@@ -74,6 +74,51 @@ class PropsModel:
         except Exception as e:
             logger.error(f"Failed to create props record: {e}")
             raise
+
+    @staticmethod
+    def create_or_update(
+        world_id: int,
+        name: str,
+        user_id: int,
+        content: Optional[str] = None,
+        reference_image: Optional[str] = None,
+        other_info: Optional[str] = None
+    ) -> int:
+        """
+        Create a new props record or update if exists (based on world_id, name unique constraint)
+        Uses INSERT ... ON DUPLICATE KEY UPDATE to handle race conditions
+        
+        Args:
+            world_id: World ID
+            name: Props name
+            user_id: User ID
+            content: Props description (optional)
+            reference_image: Reference image URL (optional)
+            other_info: Other information (optional)
+        
+        Returns:
+            Record ID (inserted or existing)
+        """
+        sql = """
+            INSERT INTO props 
+            (world_id, name, user_id, content, reference_image, other_info)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                content = VALUES(content),
+                reference_image = VALUES(reference_image),
+                other_info = VALUES(other_info),
+                user_id = VALUES(user_id)
+        """
+        params = (world_id, name, user_id, content, reference_image, other_info)
+        
+        try:
+            from .database import execute_insert
+            record_id = execute_insert(sql, params)
+            logger.info(f"Created or updated props record for world_id={world_id}, name={name}")
+            return record_id
+        except Exception as e:
+            logger.error(f"Failed to create or update props record: {e}")
+            raise
     
     @staticmethod
     def get_by_id(props_id: int) -> Optional[Props]:

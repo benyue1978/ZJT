@@ -1082,33 +1082,57 @@
             }
         }
 
+        // 提交状态标志，防止重复提交
+        let isSubmitting = false;
+
         async function submitToDatabase() {
+            // 防止重复提交
+            if (isSubmitting) {
+                console.log('[提交] 已有提交任务进行中，跳过');
+                return;
+            }
+
             // 检查是否选择了世界
             if (!WORLD_ID) {
                 showError('请先选择世界');
                 return;
             }
-            try {
-                    updateStatus('正在提交数据...');
-                    const response = await fetch('/api/submit-to-database', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_id: USER_ID, world_id: WORLD_ID })
-                    });
 
-                    const data = await response.json();
-                    if (data.success) {
-                        showSuccess(`✓ 提交成功！共保存 ${data.total} 个文件到数据库`);
-                        updateStatus('数据已提交到数据库');
-                    } else {
-                        showError('提交失败: ' + (data.error || '未知错误'));
-                        updateStatus('提交失败');
-                    }
-                } catch (error) {
-                    showError('提交失败: ' + error.message);
+            // 设置提交状态并禁用按钮
+            isSubmitting = true;
+            const submitBtn = document.querySelector('.header-action-btn.primary');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('disabled');
+            }
+
+            try {
+                updateStatus('正在提交数据...');
+                const response = await fetch('/api/submit-to-database', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: USER_ID, world_id: WORLD_ID })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showSuccess(`✓ 提交成功！共保存 ${data.total} 个文件到数据库`);
+                    updateStatus('数据已提交到数据库');
+                } else {
+                    showError('提交失败: ' + (data.error || '未知错误'));
                     updateStatus('提交失败');
                 }
-            
+            } catch (error) {
+                showError('提交失败: ' + error.message);
+                updateStatus('提交失败');
+            } finally {
+                // 恢复提交状态并启用按钮
+                isSubmitting = false;
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('disabled');
+                }
+            }
         }
 
         // ========== 自动提交功能 ==========
