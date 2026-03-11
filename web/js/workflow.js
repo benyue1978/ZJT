@@ -1112,6 +1112,7 @@
           }
           
           // 先更新视频模型选择
+
           // 根据图片模式筛选并填充视频模型选项
           const videoModelSelect = el.querySelector('.video-model-select');
           if(videoModelSelect) {
