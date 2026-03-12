@@ -84,10 +84,11 @@ def main():
     time.sleep(2)
     
     # 2. 启动 Web 服务进程
-    is_windows = platform.system() == "Windows"
+    system = platform.system()
     
-    if is_windows:
-        # Windows 使用 uvicorn（gunicorn 不支持 Windows）
+    if system == "Windows" or system == "Darwin":
+        # Windows 和 macOS 使用 uvicorn
+        # macOS 使用 uvicorn 避免 gunicorn fork 导致的 objc 崩溃问题
         print(f"[Manager] Starting uvicorn on port {port}...")
         web_cmd = [
             sys.executable, "-m", "uvicorn", "server:app",
@@ -97,7 +98,7 @@ def main():
         ]
         web_server_name = "uvicorn"
     else:
-        # Linux/macOS 使用 gunicorn（性能更好）
+        # Linux 使用 gunicorn（性能更好）
         print(f"[Manager] Starting gunicorn on port {port}...")
         web_cmd = [
             sys.executable, "-m", "gunicorn", "server:app",
@@ -111,7 +112,12 @@ def main():
         ]
         web_server_name = "gunicorn"
     
-    web_proc = subprocess.Popen(web_cmd, cwd=cwd)
+    # macOS 需要设置环境变量避免 fork 崩溃
+    env = os.environ.copy()
+    if system == "Darwin":
+        env['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    
+    web_proc = subprocess.Popen(web_cmd, cwd=cwd, env=env)
     processes.append(web_proc)
     
     print("[Manager] All processes started. Press Ctrl+C to stop.")
