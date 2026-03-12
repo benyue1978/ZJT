@@ -990,36 +990,21 @@ async def submit_to_database(request: SubmitDatabaseRequest):
                         other_info = char_data.get('other_info')
                         reference_image = char_data.get('reference_image')
                         
-                        existing_char = CharacterModel.get_by_name(world_id, name)
-                        
-                        if existing_char:
-                            CharacterModel.update(
-                                existing_char.id,
-                                age=age,
-                                identity=identity,
-                                appearance=appearance,
-                                personality=personality,
-                                behavior=behavior,
-                                other_info=other_info if other_info != "" else "",
-                                reference_image=reference_image
-                            )
-                            results['characters']['success'] += 1
-                            results['total'] += 1
-                        else:
-                            CharacterModel.create(
-                                world_id=world_id,
-                                name=name,
-                                user_id=user_id,
-                                age=age,
-                                identity=identity,
-                                appearance=appearance,
-                                personality=personality,
-                                behavior=behavior,
-                                other_info=other_info,
-                                reference_image=reference_image
-                            )
-                            results['characters']['success'] += 1
-                            results['total'] += 1
+                        # 使用 create_or_update 避免并发竞态导致的重复创建
+                        CharacterModel.create_or_update(
+                            world_id=world_id,
+                            name=name,
+                            user_id=user_id,
+                            age=age,
+                            identity=identity,
+                            appearance=appearance,
+                            personality=personality,
+                            behavior=behavior,
+                            other_info=other_info,
+                            reference_image=reference_image
+                        )
+                        results['characters']['success'] += 1
+                        results['total'] += 1
                     else:
                         results['characters']['skipped'] += 1
                 except Exception as e:
@@ -1089,28 +1074,17 @@ async def submit_to_database(request: SubmitDatabaseRequest):
                             except (ValueError, TypeError):
                                 parent_id = None
                         
-                        existing_loc = LocationModel.get_by_name(world_id, name)
-                        
-                        if existing_loc:
-                            LocationModel.update(
-                                existing_loc.id,
-                                parent_id=parent_id,
-                                description=description,
-                                reference_image=reference_image
-                            )
-                            results['locations']['success'] += 1
-                            results['total'] += 1
-                        else:
-                            LocationModel.create(
-                                world_id=world_id,
-                                name=name,
-                                user_id=user_id,
-                                parent_id=parent_id,
-                                reference_image=reference_image,
-                                description=description
-                            )
-                            results['locations']['success'] += 1
-                            results['total'] += 1
+                        # 使用 create_or_update 避免并发竞态导致的重复创建
+                        LocationModel.create_or_update(
+                            world_id=world_id,
+                            name=name,
+                            user_id=user_id,
+                            parent_id=parent_id,
+                            reference_image=reference_image,
+                            description=description
+                        )
+                        results['locations']['success'] += 1
+                        results['total'] += 1
                     else:
                         results['locations']['skipped'] += 1
                 except Exception as e:
@@ -1127,26 +1101,16 @@ async def submit_to_database(request: SubmitDatabaseRequest):
                         description = prop_data.get('description')
                         reference_image = prop_data.get('reference_image')
                         
-                        existing_prop = PropsModel.get_by_name(world_id, name)
-                        
-                        if existing_prop:
-                            PropsModel.update(
-                                existing_prop.id,
-                                content=description,
-                                reference_image=reference_image
-                            )
-                            results['props']['success'] += 1
-                            results['total'] += 1
-                        else:
-                            PropsModel.create(
-                                world_id=world_id,
-                                name=name,
-                                user_id=user_id,
-                                content=description,
-                                reference_image=reference_image
-                            )
-                            results['props']['success'] += 1
-                            results['total'] += 1
+                        # 使用 create_or_update 避免并发竞态导致的重复创建
+                        PropsModel.create_or_update(
+                            world_id=world_id,
+                            name=name,
+                            user_id=user_id,
+                            content=description,
+                            reference_image=reference_image
+                        )
+                        results['props']['success'] += 1
+                        results['total'] += 1
                     else:
                         results['props']['skipped'] += 1
                 except Exception as e:
