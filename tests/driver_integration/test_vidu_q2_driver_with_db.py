@@ -52,7 +52,8 @@ class TestViduQ2WithDB(BaseVideoDriverTest):
 
         # 验证 json 结构
         self.assertEqual(req['json']['model'], 'viduq2')
-        self.assertEqual(req['json']['prompt'], '测试提示词')
+        # prompt 会自动添加 @subject1 前缀
+        self.assertEqual(req['json']['prompt'], '@subject1 测试提示词')
         self.assertEqual(req['json']['duration'], 8)
         self.assertTrue(req['json']['audio'])
 
@@ -74,10 +75,11 @@ class TestViduQ2WithDB(BaseVideoDriverTest):
 
     def test_build_create_request_multiple_images(self):
         """测试构建创建任务请求参数 - 多张参考图"""
+        # image_path 会被解析为 first_frame 和 last_frame（取前 2 张）
         task_id = self.create_test_ai_tool(
             ai_tool_type=VIDU_Q2_IMAGE_TO_VIDEO_TYPE,
             prompt='测试多张参考图',
-            image_path='https://example.com/img1.jpg,https://example.com/img2.jpg,https://example.com/img3.jpg',
+            image_path='https://example.com/img1.jpg,https://example.com/img2.jpg',
             duration=8,
             status=AI_TOOL_STATUS_PENDING
         )
@@ -88,12 +90,11 @@ class TestViduQ2WithDB(BaseVideoDriverTest):
         # 验证 url
         self.assertIn('/ent/v2/reference2video', req['url'])
 
-        # 验证 subjects 包含所有图片
-        self.assertEqual(len(req['json']['subjects'][0]['images']), 3)
+        # image_path 解析为 first_frame + last_frame，共 2 张图片
+        self.assertEqual(len(req['json']['subjects'][0]['images']), 2)
         self.assertEqual(req['json']['subjects'][0]['images'], [
             'https://example.com/img1.jpg',
-            'https://example.com/img2.jpg',
-            'https://example.com/img3.jpg'
+            'https://example.com/img2.jpg'
         ])
 
     def test_build_create_request_no_image_raises_error(self):
