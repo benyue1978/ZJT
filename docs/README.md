@@ -42,20 +42,44 @@ uv run start_windows.py
 
 或直接双击 `start.bat`（显示日志，适合调试）。
 
-### Linux/macOS 启动
-
-```bash
-python3 server.py
-```
-
-### 启动流程说明
-
 `start_windows.py` 会自动：
 1. 检查 Python 和 uv 环境
 2. 启动本地 MySQL 服务（首次自动初始化）
 3. 执行数据库迁移
 4. 启动 Web 服务和定时任务
 5. 监控服务状态，异常时自动重启
+
+### Linux/macOS 启动
+
+```bash
+# 1. 复制配置文件（首次运行）
+cp config.example.yml config_prod.yml
+
+# 2. 修改数据库配置（重要！）
+# 编辑 config_prod.yml，修改以下配置项：
+#   - database.host: 数据库地址
+#   - database.port: 数据库端口（默认 3306）
+#   - database.user: 数据库用户名
+#   - database.password: 数据库密码
+#   - database.name: 数据库名称
+
+# 3. 导入数据库基线（首次运行）
+mysql -u root -p your_database < model/sql/baseline.sql
+
+# 4. 启动服务
+# 生产环境
+python3 run_prod.py
+
+# 或开发环境
+python3 run_dev.py
+```
+
+### run_prod.py 与 run_dev.py 的区别
+
+| 启动方式 | 配置文件 | 日志级别 | 用途 |
+|----------|----------|----------|------|
+| `run_prod.py` | `config_prod.yml` | WARNING | 生产环境，日志精简 |
+| `run_dev.py` | `config_dev.yml` | DEBUG | 开发环境，日志详细 |
 
 ---
 
