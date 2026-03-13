@@ -24,18 +24,9 @@ echo ""
 ARCH=$(uname -m)
 echo "[INFO] Detected CPU architecture: $ARCH"
 
-# 定义 uv 下载 URL
-UV_DOWNLOAD_URL=""
-UV_PYTHON_TARGET=""
-
 case "$ARCH" in
-    arm64)
-        UV_DOWNLOAD_URL="https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz"
-        UV_PYTHON_TARGET="cpython-3.12-macos-aarch64-64-none"
-        ;;
-    x86_64)
-        UV_DOWNLOAD_URL="https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz"
-        UV_PYTHON_TARGET="cpython-3.12-macos-x86_64-64-none"
+    arm64|x86_64)
+        # 支持 M 芯片和 Intel 芯片
         ;;
     *)
         echo "[ERROR] Unsupported CPU architecture: $ARCH"
@@ -49,26 +40,12 @@ echo "[1/4] Checking uv package manager..."
 UV_CMD="$SCRIPT_DIR/bin/uv/uv"
 
 if [ ! -f "$UV_CMD" ]; then
-    echo "[INFO] Downloading uv for $ARCH..."
-    mkdir -p "bin/uv"
-
-    # 下载 uv
-    if ! curl -L "$UV_DOWNLOAD_URL" -o "bin/uv/uv.tar.gz"; then
-        echo "[ERROR] Failed to download uv"
-        exit 1
-    fi
-
-    # 解压
-    tar -xzf "bin/uv/uv.tar.gz" -C "bin/uv" --strip-components=1
-    rm "bin/uv/uv.tar.gz"
-
-    # 添加执行权限
-    chmod +x "$UV_CMD"
-
-    echo "[OK] uv downloaded"
-else
-    echo "[OK] uv found"
+    echo "[ERROR] uv not found: $UV_CMD"
+    echo "[INFO] Please ensure uv is installed in bin/uv/ directory"
+    exit 1
 fi
+
+echo "[OK] uv found"
 
 # [2/4] 检查配置文件
 echo ""
