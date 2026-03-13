@@ -25,19 +25,30 @@ CODE_PATH = Path(__file__).parent.resolve()
 # 输出目录
 OUTPUT_PATH = CODE_PATH / "dist"
 
-# 不需要打包的文件/目录
-EXCLUDE_PATTERNS = [
+# 不需要打包的目录
+EXCLUDE_DIRS = [
     "bin",
     ".git",
     "__pycache__",
     "dist",
     "auto_test",
     ".python-version",
+    "upload",
+    "data",
+    "logs",
+    "script_parser_logs",
+]
+
+# 不需要打包的目录（相对路径，只排除特定子目录）
+EXCLUDE_SUBDIRS = [
+    "files/script_writer",
 ]
 
 # 不需要打包的文件
 EXCLUDE_FILES = [
     "config_unit.yml",
+    "config_prod.yml",
+    "config_dev.yml",
     "package.py",
     "package.bat",
 ]
@@ -101,28 +112,44 @@ def get_version():
     return datetime.now().strftime("%Y%m%d")
 
 
-def should_exclude(name: str, is_dir: bool = False) -> bool:
-    """判断文件/目录是否应该被排除"""
-    if is_dir:
-        return name in EXCLUDE_PATTERNS
-    return name in EXCLUDE_FILES or name.startswith("config_") and name.endswith(".yml")
+def should_exclude_dir(name: str) -> bool:
+    """判断目录是否应该被排除"""
+    return name in EXCLUDE_DIRS
+
+
+def should_exclude_file(name: str) -> bool:
+    """判断文件是否应该被排除"""
+    return name in EXCLUDE_FILES
 
 
 def copy_source_files(src_dir: Path, dst_dir: Path, exclude_files: list):
-    """复制源代码文件"""
-    for item in src_dir.iterdir():
-        # 跳过排除项
-        if should_exclude(item.name, item.is_dir()):
-            continue
-        if item.name in exclude_files:
-            continue
+    """复制源代码文件（递归处理，排除指定目录和文件）"""
 
-        dst = dst_dir / item.name
+    def copy_recursive(current_src: Path, current_dst: Path, rel_path: str = ""):
+        for item in current_src.iterdir():
+            item_rel_path = f"{rel_path}/{item.name}" if rel_path else item.name
 
-        if item.is_dir():
-            shutil.copytree(item, dst)
-        else:
-            shutil.copy2(item, dst)
+            # 跳过排除的目录
+            if item.is_dir():
+                if should_exclude_dir(item.name):
+                    continue
+                # 检查是否是排除的子目录
+                if any(item_rel_path == sub or item_rel_path.startswith(sub + "/") for sub in EXCLUDE_SUBDIRS):
+                    continue
+                # 递归复制
+                new_dst = current_dst / item.name
+                new_dst.mkdir(parents=True, exist_ok=True)
+                copy_recursive(item, new_dst, item_rel_path)
+            else:
+                # 跳过排除的文件
+                if should_exclude_file(item.name):
+                    continue
+                if item.name in exclude_files:
+                    continue
+                # 复制文件
+                shutil.copy2(item, current_dst / item.name)
+
+    copy_recursive(src_dir, dst_dir)
 
 
 def copy_binaries(dst_dir: Path, platform_config: dict):
