@@ -75,12 +75,17 @@ def wait_for_service(port, timeout=60):
 
 def get_current_dir():
     """
-    获取当前目录，兼容打包后的路径
+    获取项目根目录，兼容打包后的路径
     """
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        # 打包后的可执行文件，返回可执行文件所在目录的上级目录
+        current_dir = os.path.dirname(sys.executable)
     else:
-        return os.path.dirname(os.path.abspath(__file__))
+        # 开发环境，从脚本路径向上三级到达项目根目录
+        # scripts/launchers/start_windows.py -> scripts/ -> project_root
+        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    return current_dir
 
 
 def create_config_from_example(config_file):

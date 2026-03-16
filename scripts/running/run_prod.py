@@ -13,6 +13,12 @@ import sys
 import time
 import yaml
 import platform
+
+# 添加项目根目录到 Python 路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+sys.path.insert(0, project_root)
+
 from config.config_util import get_config_path
 
 
@@ -51,7 +57,9 @@ def main():
     signal.signal(signal.SIGTERM, cleanup)
     signal.signal(signal.SIGINT, cleanup)
     
-    cwd = os.path.dirname(os.path.abspath(__file__))
+    # 使用项目根目录作为工作目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.path.dirname(os.path.dirname(current_dir))
     
     # 在启动服务之前先执行数据库迁移
     from model.migration import get_alembic_config, run_migrations
