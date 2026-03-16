@@ -43,7 +43,7 @@
 打开终端,进入项目目录,执行:
 
 ```bash
-bash create_mac_app.sh
+bash scripts/tools/create_mac_app.sh
 ```
 
 ### 日常启动
@@ -99,3 +99,14 @@ bash create_mac_app.sh
 ## 技术支持
 
 如有问题,请联系技术支持团队。
+
+---
+
+## 📁 项目结构说明
+
+为了更好的项目组织，部分脚本已重新分类到 `scripts/` 目录下：
+- `scripts/tools/` - 工具脚本（如 create_mac_app.sh）
+- `scripts/launchers/` - 启动器脚本
+- `scripts/running/` - 运行脚本
+
+**注意**: 这不影响日常使用，所有启动方式保持不变。

@@ -20,7 +20,8 @@ from pathlib import Path
 NAS_PATH = Path(r"U:\智剧通")
 
 # 当前脚本所在目录（代码目录）
-CODE_PATH = Path(__file__).parent.resolve()
+# 获取项目根目录（scripts 的父目录）
+CODE_PATH = Path(__file__).parent.parent.resolve()
 
 # 输出目录
 OUTPUT_PATH = CODE_PATH / "dist"

@@ -25,8 +25,12 @@ import os
 import argparse
 import unittest
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, APP_DIR)
+# 添加项目根目录到 Python 路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+sys.path.insert(0, project_root)
+
+APP_DIR = project_root
 
 from tests.db_test_config import get_test_db_config
 

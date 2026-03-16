@@ -107,7 +107,7 @@ echo "[4/4] Starting services..."
 # 使用 uv 启动 Mac 启动管理器
 # 让 uv 自动选择合适的 Python 版本(系统 Python 或自动下载)
 echo "[INFO] Starting with uv (auto-detect Python)..."
-"$UV_CMD" run --with-requirements requirements.txt start_mac.py
+"$UV_CMD" run --with-requirements requirements.txt scripts/launchers/start_mac.py
 
 echo ""
 echo "========================================"

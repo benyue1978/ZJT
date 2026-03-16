@@ -5,7 +5,7 @@
 import os
 import subprocess
 from typing import Optional, Tuple
-from jianying_config import JianyingConfig
+from jianying.config import JianyingConfig
 
 
 class MediaUtils:

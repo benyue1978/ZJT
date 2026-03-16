@@ -6,8 +6,8 @@
 # ]
 # ///
 """
-Windows 启动脚本
-用于 Windows 系统上启动和管理本地服务
+Mac 启动脚本
+用于 macOS 系统上启动和管理本地服务
 
 功能：
 1. 启动 MySQL 服务（bin/mysql）
@@ -28,6 +28,7 @@ import signal
 import shutil
 import yaml
 import webbrowser
+import platform
 
 import mysql.connector
 from mysql.connector import Error as MysqlError
@@ -50,11 +51,11 @@ tray_mode = '--tray' in sys.argv or os.environ.get('TRAY_MODE') == '1'
 def wait_for_service(port, timeout=60):
     """
     等待服务可用
-    
+
     Args:
         port: 服务端口
         timeout: 超时时间（秒）
-    
+
     Returns:
         bool: 服务是否可用
     """
@@ -75,12 +76,17 @@ def wait_for_service(port, timeout=60):
 
 def get_current_dir():
     """
-    获取当前目录，兼容打包后的路径
+    获取项目根目录，兼容打包后的路径
     """
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        # 打包后的可执行文件，返回可执行文件所在目录的上级目录
+        current_dir = os.path.dirname(sys.executable)
     else:
-        return os.path.dirname(os.path.abspath(__file__))
+        # 开发环境，从脚本路径向上三级到达项目根目录
+        # scripts/launchers/start_mac.py -> scripts/ -> project_root
+        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    return current_dir
 
 
 def create_config_from_example(config_file):
@@ -94,35 +100,44 @@ def create_config_from_example(config_file):
     try:
         current_dir = get_current_dir()
         example_file = os.path.join(current_dir, "config.example.yml")
-        
+
         if not os.path.exists(example_file):
             logger.error(f"模板配置文件不存在: {example_file}")
             return False
-        
+
         logger.info(f"从 {example_file} 创建配置文件: {config_file}")
-        
+
         with open(example_file, 'r', encoding='utf-8') as f:
             config_content = f.read()
-        
-        current_dir_forward_slash = current_dir.replace('\\', '/')
-        
+
+        # Mac 使用无 .exe 后缀的路径，更新为绝对路径
+        # 替换 Windows 路径（如果有）
+        config_content = config_content.replace(
+            'ffmpeg: "bin/ffmpeg/ffmpeg.exe"',
+            f'ffmpeg: "{current_dir}/bin/ffmpeg/ffmpeg"'
+        )
+        config_content = config_content.replace(
+            'ffprobe: "bin/ffmpeg/ffprobe.exe"',
+            f'ffprobe: "{current_dir}/bin/ffmpeg/ffprobe"'
+        )
+        # 替换相对路径（Mac/Linux 默认）
         config_content = config_content.replace(
             'ffmpeg: "bin/ffmpeg/ffmpeg"',
-            f'ffmpeg: "{current_dir_forward_slash}/bin/ffmpeg/ffmpeg.exe"'
+            f'ffmpeg: "{current_dir}/bin/ffmpeg/ffmpeg"'
         )
         config_content = config_content.replace(
             'ffprobe: "bin/ffmpeg/ffprobe"',
-            f'ffprobe: "{current_dir_forward_slash}/bin/ffmpeg/ffprobe.exe"'
+            f'ffprobe: "{current_dir}/bin/ffmpeg/ffprobe"'
         )
-        
+
         with open(config_file, 'w', encoding='utf-8') as f:
             f.write(config_content)
-        
+
         logger.info(f"配置文件创建成功: {config_file}")
-        logger.info(f"已更新 ffmpeg 路径为: {current_dir_forward_slash}/bin/ffmpeg/ffmpeg.exe")
-        logger.info(f"已更新 ffprobe 路径为: {current_dir_forward_slash}/bin/ffmpeg/ffprobe.exe")
+        logger.info(f"已更新 ffmpeg 路径为: {current_dir}/bin/ffmpeg/ffmpeg")
+        logger.info(f"已更新 ffprobe 路径为: {current_dir}/bin/ffmpeg/ffprobe")
         return True
-        
+
     except Exception as e:
         logger.error(f"创建配置文件失败: {e}")
         return False
@@ -141,11 +156,11 @@ def load_config():
     if not os.path.exists(config_file):
         logger.warning(f"配置文件不存在: {config_file}")
         logger.info("尝试从 config.example.yml 创建配置文件...")
-        
+
         if not create_config_from_example(config_file):
             logger.error("无法创建配置文件")
             return None
-        
+
         logger.info("配置文件已自动创建，请根据实际情况修改配置")
 
     try:
@@ -162,7 +177,7 @@ def check_and_update_ffmpeg_paths(config, config_file):
     """
     检查并更新配置文件中的 ffmpeg/ffprobe 路径
     确保路径指向当前项目目录下的正确位置
-    
+
     Args:
         config: 配置字典
         config_file: 配置文件路径
@@ -171,28 +186,33 @@ def check_and_update_ffmpeg_paths(config, config_file):
     """
     try:
         current_dir = get_current_dir()
-        current_dir_forward_slash = current_dir.replace('\\', '/')
-        
-        expected_ffmpeg = f"{current_dir_forward_slash}/bin/ffmpeg/ffmpeg.exe"
-        expected_ffprobe = f"{current_dir_forward_slash}/bin/ffmpeg/ffprobe.exe"
-        
-        current_ffmpeg = config.get('ffmpeg', '')
-        current_ffprobe = config.get('ffprobe', '')
-        
+
+        expected_ffmpeg = f"{current_dir}/bin/ffmpeg/ffmpeg"
+        expected_ffprobe = f"{current_dir}/bin/ffmpeg/ffprobe"
+
+        # ffmpeg/ffprobe 在 bin: 下面
+        bin_config = config.get('bin', {})
+        current_ffmpeg = bin_config.get('ffmpeg', '')
+        current_ffprobe = bin_config.get('ffprobe', '')
+
         need_update = False
-        
+
         # 检查 ffmpeg 路径
         if current_ffmpeg != expected_ffmpeg:
             logger.info(f"更新 ffmpeg 路径: {current_ffmpeg} -> {expected_ffmpeg}")
-            config['ffmpeg'] = expected_ffmpeg
+            if 'bin' not in config:
+                config['bin'] = {}
+            config['bin']['ffmpeg'] = expected_ffmpeg
             need_update = True
-        
+
         # 检查 ffprobe 路径
         if current_ffprobe != expected_ffprobe:
             logger.info(f"更新 ffprobe 路径: {current_ffprobe} -> {expected_ffprobe}")
-            config['ffprobe'] = expected_ffprobe
+            if 'bin' not in config:
+                config['bin'] = {}
+            config['bin']['ffprobe'] = expected_ffprobe
             need_update = True
-        
+
         # 如果有更新，写回配置文件
         if need_update:
             with open(config_file, 'w', encoding='utf-8') as f:
@@ -200,9 +220,9 @@ def check_and_update_ffmpeg_paths(config, config_file):
             logger.info("配置文件已更新")
         else:
             logger.info("ffmpeg/ffprobe 路径已是最新")
-        
+
         return config
-        
+
     except Exception as e:
         logger.error(f"检查/更新 ffmpeg 路径失败: {e}")
         return config
@@ -211,6 +231,7 @@ def check_and_update_ffmpeg_paths(config, config_file):
 def check_mysql_path():
     """
     检查 MySQL 相关路径
+    如果 my.cnf 不存在,则从模板自动创建
     Returns:
         tuple: (bool, dict|str) - (是否找到所有必需文件, 包含所有路径的字典或错误信息)
     """
@@ -225,24 +246,44 @@ def check_mysql_path():
         if not os.path.exists(mysql_bin_dir):
             return False, f"MySQL bin目录不存在: {mysql_bin_dir}"
 
-        mysqld_exe = os.path.join(mysql_bin_dir, 'mysqld.exe')
+        mysqld_exe = os.path.join(mysql_bin_dir, 'mysqld')
         if not os.path.exists(mysqld_exe):
-            return False, f"mysqld.exe不存在: {mysqld_exe}"
+            return False, f"mysqld不存在: {mysqld_exe}"
 
-        mysql_client = os.path.join(mysql_bin_dir, 'mysql.exe')
+        mysql_client = os.path.join(mysql_bin_dir, 'mysql')
         if not os.path.exists(mysql_client):
-            return False, f"mysql.exe不存在: {mysql_client}"
+            return False, f"mysql不存在: {mysql_client}"
 
-        mysql_ini = os.path.join(mysql_dir, 'my.ini')
-        if not os.path.exists(mysql_ini):
-            return False, f"my.ini不存在: {mysql_ini}"
+        mysql_cnf = os.path.join(mysql_dir, 'my.cnf')
+        mysql_cnf_template = os.path.join(mysql_dir, 'my.cnf.template')
+
+        if not os.path.exists(mysql_cnf):
+            logger.warning(f"my.cnf不存在: {mysql_cnf}")
+
+            if os.path.exists(mysql_cnf_template):
+                logger.info(f"从模板创建 my.cnf: {mysql_cnf_template}")
+                basedir = mysql_dir
+                datadir = os.path.join(current_dir, 'data', 'mysql')
+
+                with open(mysql_cnf_template, 'r', encoding='utf-8') as f:
+                    template_content = f.read()
+
+                cnf_content = template_content.replace('{BASEDIR}', basedir)
+                cnf_content = cnf_content.replace('{DATADIR}', datadir)
+
+                with open(mysql_cnf, 'w', encoding='utf-8') as f:
+                    f.write(cnf_content)
+
+                logger.info(f"my.cnf 创建成功: basedir={basedir}, datadir={datadir}")
+            else:
+                return False, f"my.cnf 和 my.cnf.template 都不存在: {mysql_cnf}"
 
         paths = {
             'mysql_dir': mysql_dir,
             'mysql_bin_dir': mysql_bin_dir,
             'mysqld_exe': mysqld_exe,
             'mysql_client': mysql_client,
-            'mysql_ini': mysql_ini
+            'mysql_cnf': mysql_cnf
         }
         return True, paths
 
@@ -281,13 +322,13 @@ def get_mysql_port():
     """
     try:
         current_dir = get_current_dir()
-        mysql_ini = os.path.join(current_dir, 'bin', 'mysql', 'my.ini')
+        mysql_cnf = os.path.join(current_dir, 'bin', 'mysql', 'my.cnf')
 
-        if not os.path.exists(mysql_ini):
-            logger.warning(f"MySQL配置文件不存在: {mysql_ini}，使用默认端口3306")
+        if not os.path.exists(mysql_cnf):
+            logger.warning(f"MySQL配置文件不存在: {mysql_cnf}，使用默认端口3306")
             return 3306
 
-        with open(mysql_ini, 'r', encoding='utf-8') as f:
+        with open(mysql_cnf, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line.startswith('port='):
@@ -318,47 +359,46 @@ def check_port_in_use(port):
         return False
 
 
-def update_mysql_ini_paths():
+def update_mysql_cnf_paths():
     """
-    更新 my.ini 中的路径为当前项目路径
+    更新 my.cnf 中的路径为当前项目路径
     Returns:
         tuple: (bool, str) - (是否成功, 消息)
     """
     try:
         current_dir = get_current_dir()
         mysql_dir = os.path.join(current_dir, 'bin', 'mysql')
-        mysql_ini = os.path.join(mysql_dir, 'my.ini')
-        mysql_ini_template = os.path.join(mysql_dir, 'my.ini.template')
-        
-        # 将Windows路径转换为正斜杠格式（MySQL配置文件要求）
-        basedir = mysql_dir.replace('\\', '/')
-        datadir = os.path.join(current_dir, 'data', 'mysql').replace('\\', '/')
-        
+        mysql_cnf = os.path.join(mysql_dir, 'my.cnf')
+        mysql_cnf_template = os.path.join(mysql_dir, 'my.cnf.template')
+
+        basedir = mysql_dir
+        datadir = os.path.join(current_dir, 'data', 'mysql')
+
         # 如果存在模板文件，使用模板
-        if os.path.exists(mysql_ini_template):
-            logger.info(f"使用模板文件更新MySQL配置: {mysql_ini_template}")
-            with open(mysql_ini_template, 'r', encoding='utf-8') as f:
+        if os.path.exists(mysql_cnf_template):
+            logger.info(f"使用模板文件更新MySQL配置: {mysql_cnf_template}")
+            with open(mysql_cnf_template, 'r', encoding='utf-8') as f:
                 template_content = f.read()
-            
+
             # 替换占位符
-            ini_content = template_content.replace('{BASEDIR}', basedir)
-            ini_content = ini_content.replace('{DATADIR}', datadir)
-            
-            # 写入 my.ini
-            with open(mysql_ini, 'w', encoding='utf-8') as f:
-                f.write(ini_content)
-            
+            cnf_content = template_content.replace('{BASEDIR}', basedir)
+            cnf_content = cnf_content.replace('{DATADIR}', datadir)
+
+            # 写入 my.cnf
+            with open(mysql_cnf, 'w', encoding='utf-8') as f:
+                f.write(cnf_content)
+
             logger.info(f"MySQL配置文件已更新: basedir={basedir}, datadir={datadir}")
             return True, "MySQL配置文件路径更新成功"
-        
-        # 如果没有模板文件，直接修改现有的 my.ini
-        if not os.path.exists(mysql_ini):
-            return False, f"MySQL配置文件不存在: {mysql_ini}"
-        
-        logger.info(f"直接修改MySQL配置文件: {mysql_ini}")
-        with open(mysql_ini, 'r', encoding='utf-8') as f:
+
+        # 如果没有模板文件，直接修改现有的 my.cnf
+        if not os.path.exists(mysql_cnf):
+            return False, f"MySQL配置文件不存在: {mysql_cnf}"
+
+        logger.info(f"直接修改MySQL配置文件: {mysql_cnf}")
+        with open(mysql_cnf, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
+
         # 更新路径
         updated_lines = []
         for line in lines:
@@ -368,14 +408,14 @@ def update_mysql_ini_paths():
                 updated_lines.append(f'datadir={datadir}\n')
             else:
                 updated_lines.append(line)
-        
+
         # 写回文件
-        with open(mysql_ini, 'w', encoding='utf-8') as f:
+        with open(mysql_cnf, 'w', encoding='utf-8') as f:
             f.writelines(updated_lines)
-        
+
         logger.info(f"MySQL配置文件已更新: basedir={basedir}, datadir={datadir}")
         return True, "MySQL配置文件路径更新成功"
-        
+
     except Exception as e:
         logger.error(f"更新MySQL配置文件时出错: {e}")
         return False, f"更新MySQL配置文件失败: {e}"
@@ -394,16 +434,16 @@ def start_mysql_service():
         if not mysql_exists:
             return False, mysql_paths, False
 
-        # 更新 my.ini 中的路径为当前项目路径
+        # 更新 my.cnf 中的路径为当前项目路径
         logger.info("正在更新MySQL配置文件路径...")
-        success, message = update_mysql_ini_paths()
+        success, message = update_mysql_cnf_paths()
         if not success:
             logger.warning(f"更新MySQL配置文件路径失败: {message}，继续尝试启动")
         else:
             logger.info(message)
 
         mysqld_exe = mysql_paths['mysqld_exe']
-        mysql_ini = mysql_paths['mysql_ini']
+        mysql_cnf = mysql_paths['mysql_cnf']
 
         port = get_mysql_port()
         is_first_init = check_mysql_data_dir()
@@ -414,14 +454,13 @@ def start_mysql_service():
 
         if is_first_init:
             logger.info("MySQL数据目录为空，正在初始化...")
-            cmd = [mysqld_exe, f'--defaults-file={mysql_ini}', '--initialize-insecure']
+            cmd = [mysqld_exe, f'--defaults-file={mysql_cnf}', '--initialize-insecure']
             logger.info(f"正在执行初始化命令: {' '.join(cmd)}")
 
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                stderr=subprocess.PIPE
             )
 
             stdout, stderr = process.communicate()
@@ -430,14 +469,13 @@ def start_mysql_service():
                 return False, f"MySQL初始化失败，错误信息：{error_msg}", False
             logger.info("MySQL数据目录初始化成功")
 
-        cmd = [mysqld_exe, f"--defaults-file={mysql_ini}"]
+        cmd = [mysqld_exe, f"--defaults-file={mysql_cnf}"]
         logger.info(f"正在执行启动命令: {' '.join(cmd)}")
 
         mysql_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            stderr=subprocess.PIPE
         )
 
         retry_count = 0
@@ -594,8 +632,7 @@ def init_database(config):
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                stderr=subprocess.PIPE
             )
             stdout, stderr = process.communicate()
 
@@ -670,21 +707,22 @@ def start_app_service():
     try:
         env = get_env()
         current_dir = get_current_dir()
-        run_script = os.path.join(current_dir, f"run_{env}.py")
+        run_script = os.path.join(current_dir, "scripts", "running", f"run_{env}.py")
 
         if not os.path.exists(run_script):
             return False, f"启动脚本不存在: {run_script}"
 
-        uv_path = os.path.join(current_dir, "bin", "uv", "uv.exe")
+        uv_path = os.path.join(current_dir, "bin", "uv", "uv")
         if not os.path.exists(uv_path):
             uv_path = shutil.which("uv")
             if uv_path is None:
-                return False, "找不到 uv 可执行文件，请确保 bin\\uv\\uv.exe 存在或已安装 uv"
+                return False, "找不到 uv 可执行文件，请确保 bin/uv/uv 存在或已安装 uv"
 
         logger.info(f"使用 uv 启动: {run_script}")
         requirements_file = os.path.join(current_dir, "requirements.txt")
 
-        cmd = [uv_path, "run", "--python", "cpython-3.10-windows-x86_64-none"]
+        # Mac 有多种架构(x86_64/arm64)，让 uv 自动选择合适的 Python 版本
+        cmd = [uv_path, "run", "--python", "3.10"]
         if os.path.exists(requirements_file):
             cmd.extend(["--with-requirements", requirements_file])
             logger.info(f"使用依赖文件: {requirements_file}")
@@ -787,7 +825,7 @@ def stop_mysql_gracefully():
 
         current_dir = get_current_dir()
         mysql_client = mysql_paths['mysql_client']
-        mysqladmin = os.path.join(mysql_paths['mysql_bin_dir'], 'mysqladmin.exe')
+        mysqladmin = os.path.join(mysql_paths['mysql_bin_dir'], 'mysqladmin')
 
         if not os.path.exists(mysqladmin):
             logger.warning(f"mysqladmin 不存在: {mysqladmin}")
@@ -805,8 +843,7 @@ def stop_mysql_gracefully():
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            stderr=subprocess.PIPE
         )
         stdout, stderr = process.communicate(timeout=15)
 
@@ -881,7 +918,7 @@ def main():
 
     env = get_env()
     logger.info("=" * 50)
-    logger.info(f"Windows 启动脚本 (环境: {env})")
+    logger.info(f"Mac 启动脚本 (环境: {env})")
     logger.info("=" * 50)
 
     config, config_file = load_config()
@@ -928,7 +965,7 @@ def main():
     # 从配置文件读取端口号
     server_port = config.get('server', {}).get('port', 9003)
     url = f"http://localhost:{server_port}"
-    
+
     # 等待服务真正可用后再打开浏览器（托盘模式由托盘启动器处理）
     if not tray_mode:
         logger.info(f"等待服务就绪 (端口 {server_port})...")
@@ -948,7 +985,7 @@ def main():
     finally:
         cleanup()
 
-    logger.info("Windows启动脚本退出")
+    logger.info("Mac启动脚本退出")
 
 
 if __name__ == "__main__":

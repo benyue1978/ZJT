@@ -4,7 +4,7 @@
 """
 
 from typing import Optional, Tuple
-from perseids_client import make_perseids_request
+from perseids_server.client import make_perseids_request
 from config.constant import Edition
 
 

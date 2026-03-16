@@ -9,7 +9,7 @@ import logging
 import requests
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from perseids_client import make_perseids_request
+from perseids_server.client import make_perseids_request
 from config.config_util import get_dynamic_config_value
 from config.constant import GEMINI_URL_FORMATS
 
@@ -26,7 +26,7 @@ from script_writer_core.log_utils import should_log_debug, should_log_info, trun
 # 配置 LLM 日志记录器
 def setup_llm_logger():
     """设置 LLM 日志记录器，输出到 logs/llm.{date}.log"""
-    from logger_config import DailyFileHandler
+    from utils.logger_config import DailyFileHandler
     
     llm_logger = logging.getLogger('llm')
     llm_logger.setLevel(logging.DEBUG)

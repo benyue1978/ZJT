@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 from config.config_util import get_config, get_dynamic_config_value
-from logger_config import setup_logger
+from utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

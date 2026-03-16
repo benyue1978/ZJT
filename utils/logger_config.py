@@ -10,8 +10,10 @@ import logging
 import os
 from datetime import datetime
 
+# 获取项目根目录（utils 的父目录）
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 确保 logs 目录存在
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # 日志格式
@@ -100,8 +102,8 @@ def setup_logger(name=None, level=logging.INFO):
     logger.addHandler(file_handler)
     
     # API 请求日志 - 单独的文件
-    # 为 runninghub_request 和 duomi_api_requset 添加 API 日志处理器
-    if name in ['runninghub_request', 'duomi_api_requset', 'api_requests']:
+    # 为 API 客户端模块添加 API 日志处理器
+    if name in ['api.clients.runninghub_client', 'api.clients.duomi_client', 'api_requests', 'runninghub_request', 'duomi_api_requset']:
         api_handler = DailyFileHandler('api_requests', encoding='utf-8')
         api_handler.setLevel(level)
         api_handler.setFormatter(formatter)

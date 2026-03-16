@@ -10,9 +10,10 @@ import yaml
 from typing import Dict, Any, Optional
 
 # 添加项目根目录到路径，以便导入 config_util
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
+# 获取项目根目录（jianying 的父目录）
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from config.config_util import resolve_bin_path, get_config_path
 
@@ -25,12 +26,9 @@ def get_main_config() -> Dict[str, Any]:
         主配置字典
     """
     try:
-        # 获取项目根目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-
         # 使用 config_util 的 get_config_path 获取配置文件名
         config_file = get_config_path()
-        config_path = os.path.join(current_dir, config_file)
+        config_path = os.path.join(PROJECT_ROOT, config_file)
 
         if os.path.exists(config_path):
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -52,9 +50,8 @@ class JianyingConfig:
             config_path: 配置文件路径，默认为jianying目录下的config.json
         """
         if config_path is None:
-            # 获取当前文件所在目录（项目根目录）
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            config_path = os.path.join(current_dir, "jianying", "config.json")
+            # 配置文件在 jianying 目录下
+            config_path = os.path.join(PROJECT_ROOT, "jianying", "config.json")
         
         self.config_path = config_path
         self._config = self._load_config()
@@ -155,17 +152,13 @@ class JianyingConfig:
     def ffmpeg_path(self) -> str:
         """获取ffmpeg路径（自动解析相对路径）"""
         raw_path = self.get('ffmpeg.ffmpeg_path', 'ffmpeg')
-        # 获取项目根目录用于解析相对路径
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        return resolve_bin_path(raw_path, app_dir)
-    
+        return resolve_bin_path(raw_path, PROJECT_ROOT)
+
     @property
     def ffprobe_path(self) -> str:
         """获取ffprobe路径（自动解析相对路径）"""
         raw_path = self.get('ffmpeg.ffprobe_path', 'ffprobe')
-        # 获取项目根目录用于解析相对路径
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        return resolve_bin_path(raw_path, app_dir)
+        return resolve_bin_path(raw_path, PROJECT_ROOT)
     
     @property
     def ffmpeg_timeout(self) -> int:

@@ -26,7 +26,7 @@
 ----------------------------------------
 点我启动.exe / start_silent.vbs / start.bat
     ↓
-start_windows.py（Windows 启动管理器）
+scripts/launchers/start_windows.py（Windows 启动管理器）
     ↓
 1. 检查并更新配置文件（ffmpeg 路径等）
 2. 启动 MySQL 服务
@@ -43,10 +43,21 @@ start_windows.py（Windows 启动管理器）
 
 【注意事项】
 ----------------------------------------
+- 安装路径不能有中文
 - 确保 bin/mysql 目录存在（MySQL 服务）
 - 确保 bin/ffmpeg 目录存在（视频处理）
 - 关闭窗口或按 Ctrl+C 停止服务
 
 ========================================
 推荐使用"点我启动.exe"，简单方便！
+========================================
+
+【项目结构说明】
+----------------------------------------
+为了更好的项目组织，部分脚本已重新分类：
+- scripts/launchers/ - 启动器脚本（如 start_windows.py）
+- scripts/tools/ - 工具脚本（如 create_shortcuts.vbs）
+- scripts/running/ - 运行脚本（如 run_prod.py）
+
+注意：这不影响使用方式，所有启动操作保持不变。
 ========================================
