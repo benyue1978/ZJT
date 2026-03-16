@@ -20,7 +20,7 @@ objShortcut.Save
 
 strShortcutPath = strDesktopPath & "\ComfyUI Server Start (Silent).lnk"
 Set objShortcut = objShell.CreateShortcut(strShortcutPath)
-objShortcut.TargetPath = strScriptDir & "\start_silent.vbs"
+objShortcut.TargetPath = strScriptDir & "\scripts\tools\start_silent.vbs"
 objShortcut.WorkingDirectory = strScriptDir
 objShortcut.Description = "Start ComfyUI Server (Silent Mode)"
 objShortcut.IconLocation = "shell32.dll,137"

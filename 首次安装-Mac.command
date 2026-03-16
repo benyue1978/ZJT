@@ -13,7 +13,7 @@ echo "正在创建启动应用..."
 echo ""
 
 # 执行创建应用脚本
-bash create_mac_app.sh
+bash scripts/tools/create_mac_app.sh
 
 echo ""
 echo "安装完成!"
