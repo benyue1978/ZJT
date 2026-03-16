@@ -19,9 +19,9 @@ from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlparse
 from pydantic import BaseModel
-from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
+from api.clients.runninghub_client import RunningHubClient, TaskStatus, run_ai_app_task
 from config.config_util import resolve_bin_path
-from perseids_client import make_perseids_request, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
+from perseids_server.client import make_perseids_request, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
 from model.users import UsersModel
 from model.user_tokens import UserTokensModel
@@ -31,7 +31,7 @@ from model.location import LocationModel
 from model.script import ScriptModel
 from model.props import PropsModel
 import uuid
-from duomi_api_requset import create_video_remix, create_character as create_character_task, get_character_task_result
+from api.clients.duomi_client import create_video_remix, create_character as create_character_task, get_character_task_result
 from PIL import Image
 from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
@@ -227,7 +227,7 @@ wechat_pay_util = _get_wechat_pay_util()
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
 
 # 导入并注册 script_writer API 路由
-from script_writer_api import router as script_writer_router
+from api.script_writer import router as script_writer_router
 app.include_router(script_writer_router)
 
 # 注册管理员 API 路由
@@ -2987,7 +2987,7 @@ async def video_enhance(
         
         # Submit video enhancement task using runninghub_request module
         try:
-            from runninghub_request import run_ai_app_task
+            from api.clients.runninghub_client import run_ai_app_task
             
             node_info_list = [{
                 "nodeId": "6",
@@ -6685,7 +6685,7 @@ async def export_timeline_draft(
         
         from core import JianyingMultiTrackLibrary
         from draft_generator import DraftGenerator
-        from jianying_utils import seconds_to_microseconds
+        from utils import seconds_to_microseconds
         
         # 生成唯一的草稿名称（使用工作流名称作为前缀）
         # 清理工作流名称，移除不适合文件名的字符

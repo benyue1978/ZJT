@@ -4,7 +4,7 @@ Video generation task processing
 import logging
 from datetime import datetime, timedelta
 import uuid
-from perseids_client import make_perseids_request
+from perseids_server.client import make_perseids_request
 from config.constant import TASK_COMPUTING_POWER
 from config.config_util import get_dynamic_config_value
 from model import TasksModel, AIToolsModel, RunningHubSlotsModel

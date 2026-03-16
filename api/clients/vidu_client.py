@@ -1,7 +1,7 @@
 import requests
 from config.config_util import get_dynamic_config_value
 import json
-from logger_config import setup_logger
+from utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

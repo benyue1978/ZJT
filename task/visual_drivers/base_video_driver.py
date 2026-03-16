@@ -10,7 +10,7 @@ from datetime import datetime
 import json
 import requests
 from .exceptions import DriverConfigError
-from logger_config import DailyFileHandler
+from utils.logger_config import DailyFileHandler
 
 
 class ImageMode:

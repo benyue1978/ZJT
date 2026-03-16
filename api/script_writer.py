@@ -2,7 +2,6 @@
 Script Writer API 集成模块
 将 script_writer 的 Flask API 集成到 FastAPI 中
 """
-# todo 后续移到 api路径下
 
 import os
 import json
@@ -40,7 +39,7 @@ _load_api_config()
 from model.world import WorldModel
 
 # 导入服务
-from perseids_client import async_make_perseids_request
+from perseids_server.client import async_make_perseids_request
 
 # 导入智能体系统
 from script_writer_core.agents import TaskManager, TaskStatus, ToolExecutor
@@ -70,7 +69,7 @@ set_file_manager(file_manager)
 
 # 加载智能体配置
 import json
-agents_config_path = os.path.join(os.path.dirname(__file__), 'script_writer_core', 'config', 'agents_config.json')
+agents_config_path = os.path.join(os.path.dirname(__file__), '..', 'script_writer_core', 'config', 'agents_config.json')
 try:
     with open(agents_config_path, 'r', encoding='utf-8') as f:
         agents_config = json.load(f)
