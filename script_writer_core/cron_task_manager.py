@@ -18,7 +18,9 @@ from script_writer_core.image_grid_splitter import ImageGridSplitter
 from config.config_util import get_config
 from config.constant import FilePathConstants
 from utils.network_utils import is_local_file_path
-    
+
+logger = logging.getLogger(__name__)
+
 class TaskManager:
     """任务管理器，使用APScheduler处理后台任务"""
     
