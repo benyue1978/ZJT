@@ -392,15 +392,16 @@ async def _handle_task_success(project_id, task_id, media_url):
             status=AI_TOOL_STATUS_COMPLETED
         )
         TasksModel.update_by_task_id(task_id, status=TASK_STATUS_COMPLETED)
-        
-        # 释放 RunningHub 槽位（通过 project_id）
-        RunningHubSlotsModel.release_slot_by_project_id(project_id)
-        
-        logger.info(f"Task {project_id} completed successfully, slot released")
+
+        logger.info(f"Task {project_id} completed successfully")
         return True
     except Exception as db_error:
         logger.error(f"Failed to update records for success task {project_id}: {db_error}")
         return False
+    finally:
+        # 无论如何都释放 RunningHub 槽位
+        RunningHubSlotsModel.release_slot_by_project_id(project_id)
+        logger.info(f"Released RunningHub slot for project_id: {project_id}")
 
 
 def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
