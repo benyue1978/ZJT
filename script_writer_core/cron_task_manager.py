@@ -502,9 +502,9 @@ class TaskManager:
                         config_comfyui_base_url = get_config()["server"]["host"]
                         
                         for split_path in split_paths:
-                            # 获取相对路径
-                            rel_path = os.path.relpath(split_path, start=os.path.dirname(__file__))
-                            split_url = f"{config_comfyui_base_url.rstrip('/')}/{rel_path}"
+                            # 获取文件名，使用预定义的 output_dir 构建 URL
+                            filename = os.path.basename(split_path)
+                            split_url = f"{config_comfyui_base_url.rstrip('/')}/{output_dir}/{filename}"
                             split_image_urls.append(split_url)
                         
                         print(f"[SUCCESS] 4宫格图片拆分成功: {len(split_paths)} 张图片")

@@ -4,6 +4,7 @@ ZJT 打包脚本
 生成三个平台的发布包：Windows、macOS x86_64、macOS ARM
 """
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ from pathlib import Path
 # ============================================
 
 # NAS 盘路径（存放二进制文件）
-NAS_PATH = Path(r"U:\智剧通")
+NAS_PATH = Path(r"H:\智剧通")
 
 # 当前脚本所在目录（代码目录）
 # 获取项目根目录（scripts 的父目录）
@@ -124,6 +125,10 @@ def should_exclude_dir(name: str) -> bool:
 
 def should_exclude_file(name: str, rel_path: str = "") -> bool:
     """判断文件是否应该被排除"""
+    # Windows 特殊设备文件名（不区分大小写）
+    windows_device_names = {"nul", "con", "prn", "aux"} | {f"com{i}" for i in range(1, 10)} | {f"lpt{i}" for i in range(1, 10)}
+    if name.lower() in windows_device_names:
+        return True
     # 检查文件名匹配
     if name in EXCLUDE_FILES:
         return True
@@ -132,6 +137,25 @@ def should_exclude_file(name: str, rel_path: str = "") -> bool:
         if any(name.endswith(ext) for ext in [".zip", ".tar", ".tar.gz", ".7z", ".rar"]):
             return True
     return False
+
+
+def fix_line_endings(file_path: Path, extensions: list[str] = [".sh", ".command"]):
+    """将文本文件的 CRLF 行尾符转换为 LF（Unix 格式）"""
+    # 只处理指定扩展名的文件
+    if not any(file_path.name.lower().endswith(ext) for ext in extensions):
+        return
+
+    try:
+        # 读取文件内容
+        content = file_path.read_text(encoding="utf-8")
+        # 替换 CRLF 为 LF
+        content = content.replace("\r\n", "\n")
+        # 写回文件（使用 newline="" 禁止 Windows 自动转换 \n 为 \r\n）
+        file_path.write_text(content, encoding="utf-8", newline="")
+        print(f"      - Fixed line endings: {file_path.name}")
+    except Exception:
+        # 忽略非文本文件或其他错误
+        pass
 
 
 def copy_source_files(src_dir: Path, dst_dir: Path, exclude_files: list):
@@ -160,6 +184,8 @@ def copy_source_files(src_dir: Path, dst_dir: Path, exclude_files: list):
                     continue
                 # 复制文件
                 shutil.copy2(item, current_dst / item.name)
+                # 修复 shell 脚本的行尾符
+                fix_line_endings(current_dst / item.name)
 
     copy_recursive(src_dir, dst_dir)
 
@@ -190,14 +216,76 @@ def copy_binaries(dst_dir: Path, platform_config: dict):
     shutil.copy2(uv_src, uv_dst)
 
 
+def is_executable_file(file_path: Path, rel_path: Path) -> bool:
+    """判断文件是否应该是可执行的（白名单模式）"""
+    filename = file_path.name
+
+    # MySQL 可执行文件
+    mysql_executables = {"mysqld", "mysql", "mysqladmin", "mysqld_safe", "mysqlcheck", "mysqldump"}
+
+    # FFmpeg 可执行文件
+    ffmpeg_executables = {"ffmpeg", "ffprobe", "ffplay"}
+
+    # UV 可执行文件
+    uv_executables = {"uv"}
+
+    # 检查是否在对应的目录下
+    # arcname 格式为: ZJT-macOS-ARM/bin/ffmpeg/ffmpeg
+    # parts[0] = 包名, parts[1] = bin, parts[2] = 子目录名, parts[3] = 文件名
+    parts = rel_path.parts
+
+    # 查找 bin 目录的位置（可能在 parts[0] 或 parts[1]）
+    bin_index = -1
+    for i, part in enumerate(parts):
+        if part == "bin":
+            bin_index = i
+            break
+
+    if bin_index >= 0 and len(parts) >= bin_index + 3:
+        subdir = parts[bin_index + 1]
+        if subdir == "mysql" and filename in mysql_executables:
+            return True
+        if subdir == "ffmpeg" and filename in ffmpeg_executables:
+            return True
+        if subdir == "uv" and filename in uv_executables:
+            return True
+
+    # shell 脚本
+    if file_path.suffix in [".sh", ".command"]:
+        return True
+
+    return False
+
+
 def create_zip(src_dir: Path, output_file: Path):
-    """创建 ZIP 压缩包"""
+    """创建 ZIP 压缩包（保留 Unix 可执行权限）"""
     with zipfile.ZipFile(output_file, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(src_dir):
             for file in files:
                 file_path = Path(root) / file
                 arcname = file_path.relative_to(src_dir.parent)
-                zf.write(file_path, arcname)
+
+                # 判断是否需要可执行权限
+                is_exec = is_executable_file(file_path, arcname)
+
+                # 创建 ZipInfo 对象
+                zinfo = zipfile.ZipInfo(str(arcname))
+                zinfo.compress_type = zipfile.ZIP_DEFLATED
+
+                # 设置 Unix 权限（对 Windows 无影响，对 macOS/Linux 有效）
+                # create_system = 3 表示 Unix 格式，解压工具会根据运行环境自动处理
+                zinfo.create_system = 3
+                if is_exec:
+                    # Unix 可执行权限: 0o100755 (S_IFREG | 0755)
+                    zinfo.external_attr = 0o100755 << 16
+                    print(f"    [EXEC] {arcname} -> 0o755")
+                else:
+                    # 普通文件权限: 0o100644 (S_IFREG | 0644)
+                    zinfo.external_attr = 0o100644 << 16
+
+                # 读取文件内容并写入
+                with open(file_path, "rb") as f:
+                    zf.writestr(zinfo, f.read())
 
 
 def build_platform(name: str, config: dict, version: str):
@@ -229,6 +317,8 @@ def build_platform(name: str, config: dict, version: str):
         src = CODE_PATH / extra_file
         if src.exists():
             shutil.copy2(src, package_dir / extra_file)
+            # 修复额外脚本文件的行尾符
+            fix_line_endings(package_dir / extra_file)
 
     # 创建 ZIP
     output_file = OUTPUT_PATH / f"{package_name}-{version}.zip"
@@ -249,6 +339,23 @@ def build_platform(name: str, config: dict, version: str):
 # ============================================
 
 def main():
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="ZJT Package Builder")
+    parser.add_argument(
+        "-v", "--version",
+        type=str,
+        default=None,
+        help="指定版本号（默认使用 git tag 或日期）"
+    )
+    parser.add_argument(
+        "-p", "--platform",
+        type=str,
+        choices=list(PLATFORMS.keys()) + ["all"],
+        default="all",
+        help="指定构建平台（默认: all）"
+    )
+    args = parser.parse_args()
+
     print()
     print("=" * 50)
     print("  ZJT Package Builder")
@@ -265,18 +372,24 @@ def main():
     # 创建输出目录
     OUTPUT_PATH.mkdir(parents=True, exist_ok=True)
 
-    # 获取版本号
-    version = get_version()
+    # 获取版本号（优先使用命令行参数）
+    version = args.version if args.version else get_version()
     print(f"[INFO] Version: {version}")
     print(f"[INFO] Source: {CODE_PATH}")
     print(f"[INFO] Binaries: {NAS_PATH}")
     print(f"[INFO] Output: {OUTPUT_PATH}")
     print()
 
+    # 确定要构建的平台
+    if args.platform == "all":
+        platforms_to_build = list(PLATFORMS.items())
+    else:
+        platforms_to_build = [(args.platform, PLATFORMS[args.platform])]
+
     # 构建各平台
     output_files = []
-    for i, (name, config) in enumerate(PLATFORMS.items(), 1):
-        print(f"[{i}/{len(PLATFORMS)}] ", end="")
+    for i, (name, config) in enumerate(platforms_to_build, 1):
+        print(f"[{i}/{len(platforms_to_build)}] ", end="")
         output_file = build_platform(name, config, version)
         output_files.append(output_file)
 

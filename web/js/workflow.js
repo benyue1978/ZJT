@@ -1623,7 +1623,15 @@
           if(Array.isArray(result.data.locations)){
             state.worldLocations = result.data.locations;
           }
-          
+
+          // 刷新所有分镜节点的引用显示（角色、道具、场景）
+          // 这样当世界数据加载完成后，节点中的引用标签会自动更新
+          state.nodes.forEach(node => {
+            if(node.updateReferences) {
+              node.updateReferences();
+            }
+          });
+
           const updatedNodes = result.data.updated_nodes || [];
           
           if(updatedNodes.length > 0){

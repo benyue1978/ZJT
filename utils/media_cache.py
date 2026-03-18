@@ -44,10 +44,10 @@ class MediaCacheManager:
     def _get_date_dir(self, date: Optional[datetime] = None) -> Path:
         """
         获取日期目录路径
-        
+
         Args:
             date: 日期对象，默认为当前日期
-            
+
         Returns:
             日期目录路径
         """
@@ -57,52 +57,58 @@ class MediaCacheManager:
         date_dir = self.cache_path / date_str
         date_dir.mkdir(parents=True, exist_ok=True)
         return date_dir
-    
-    def _generate_filename(self, task_id: int, url: str, media_type: str) -> str:
+
+    def _generate_filename(self, task_id: int, url: str, media_type: str, timestamp: Optional[datetime] = None) -> str:
         """
         生成缓存文件名
-        
+
         Args:
             task_id: 任务ID
             url: 原始URL
             media_type: 媒体类型 (video/image)
-            
+            timestamp: 时间戳对象，默认为当前时间
+
         Returns:
             文件名，格式: {task_id}_{timestamp}_{hash8}.{ext}
         """
         # 获取文件扩展名
         ext = Path(url.split('?')[0]).suffix or ('.mp4' if media_type == 'video' else '.png')
-        
+
         # 生成8位hash
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
-        
+
         # 生成时间戳
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        
-        return f"{task_id}_{timestamp}_{url_hash}{ext}"
+        if timestamp is None:
+            timestamp = datetime.now()
+        timestamp_str = timestamp.strftime("%Y%m%d%H%M%S")
+
+        return f"{task_id}_{timestamp_str}_{url_hash}{ext}"
     
     async def download_and_cache(self, url: str, task_id: int, media_type: str = "video") -> Optional[str]:
         """
         下载媒体文件并缓存到本地
-        
+
         Args:
             url: 媒体文件URL
             task_id: 任务ID
             media_type: 媒体类型 (video/image)
-            
+
         Returns:
             本地URL路径，失败返回None
         """
         if not self.enabled:
             logger.info("媒体缓存未启用，跳过下载")
             return None
-        
+
         try:
+            # 使用同一个时间戳生成日期目录和文件名，避免跨秒导致路径不匹配
+            current_time = datetime.now()
+
             # 获取日期目录
-            date_dir = self._get_date_dir()
-            
-            # 生成文件名
-            filename = self._generate_filename(task_id, url, media_type)
+            date_dir = self._get_date_dir(current_time)
+
+            # 生成文件名（使用相同的时间戳）
+            filename = self._generate_filename(task_id, url, media_type, current_time)
             file_path = date_dir / filename
             
             # 下载文件

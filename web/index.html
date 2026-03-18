@@ -5980,7 +5980,7 @@
       this.isAdminMode = localStorage.getItem('admin_mode') === 'true';
       
       // 已登录用户检查创作模式
-      if (this.authToken) {
+      if (this.authToken && this.userPhone) {
         this.checkCreationMode();
       }
     },
