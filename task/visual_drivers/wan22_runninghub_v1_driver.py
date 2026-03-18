@@ -3,8 +3,7 @@ Wan22 RunningHub v1 版本驱动实现
 """
 from typing import Dict, Any, Optional
 import traceback
-import asyncio
-from .base_video_driver import BaseVideoDriver
+from .base_video_driver import BaseVideoDriver, ImageMode
 from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
 from utils.file_storage import RunningHubFileStorage
@@ -143,9 +142,14 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
         
         return True, None
     
-    def build_create_request(self, ai_tool) -> Dict[str, Any]:
+    async def build_create_request(self, ai_tool) -> Dict[str, Any]:
         """
         构建创建 Wan22 任务的完整请求参数
+        
+        支持三种图片模式：
+        - first_last_frame: 首尾帧模式（使用首帧图片）
+        - multi_reference: 多参考图模式（暂不支持，使用第一张参考图）
+        - first_last_with_ref: 首尾帧+参考图模式（暂不支持，仅使用首帧）
         
         Args:
             ai_tool: AITool 对象
@@ -153,11 +157,38 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
         Returns:
             Dict[str, Any]: 请求参数字典
         """
+        # 解析图片模式
+        image_info = self.get_all_images_by_mode(ai_tool)
+        img_mode = image_info['mode']
+        first_frame = image_info['first_frame']
+        last_frame = image_info['last_frame']
+        reference_images = image_info['reference_images']
+        
+        self.logger.info(f"Wan22 驱动图片模式: {img_mode}, 首帧: {first_frame}, 尾帧: {last_frame}, 参考图: {len(reference_images)}张")
+        
+        # 根据模式获取图片
+        image_path = None
+        if img_mode == ImageMode.FIRST_LAST_FRAME:
+            image_path = first_frame
+            if last_frame:
+                self.logger.warning(f"Wan22 当前仅支持单图，已忽略尾帧")
+        elif img_mode == ImageMode.MULTI_REFERENCE:
+            if reference_images:
+                image_path = reference_images[0]
+                if len(reference_images) > 1:
+                    self.logger.warning(f"Wan22 不支持多参考图模式，仅使用第一张参考图")
+        elif img_mode == ImageMode.FIRST_LAST_WITH_REF:
+            image_path = first_frame
+            if last_frame or reference_images:
+                self.logger.warning(f"Wan22 不支持首尾帧+参考图模式，仅使用首帧")
+        
+        if not image_path:
+            raise ValueError("Wan22 任务需要至少1张图片")
+
         # 处理图片路径 - 如果是本地环境，上传到 RunningHub
-        image_path = ai_tool.image_path
         if self._is_local and image_path:
             self.logger.info(f"本地环境检测到图片路径，准备上传到 RunningHub: {image_path}")
-            result = asyncio.run(self._storage.upload_file("", image_path))
+            result = await self._storage.upload_file("", image_path)
             if result.success:
                 image_path = result.key
                 self.logger.info(f"图片上传完成，使用 fileName: {image_path}")
@@ -260,7 +291,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
             }
         }
     
-    def submit_task(self, ai_tool) -> Dict[str, Any]:
+    async def submit_task(self, ai_tool) -> Dict[str, Any]:
         """
         提交 Wan22 视频生成任务
         
@@ -278,7 +309,7 @@ class Wan22RunninghubV1Driver(BaseVideoDriver):
             self.logger.info(f"Submitting Wan22 task: prompt='{ai_tool.prompt[:50]}...', ratio={ai_tool.ratio}, duration={ai_tool.duration}")
             
             # 构建请求参数
-            request_params = self.build_create_request(ai_tool)
+            request_params = await self.build_create_request(ai_tool)
             
             # 调用统一请求方法
             try:

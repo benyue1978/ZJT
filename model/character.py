@@ -1,8 +1,7 @@
 """
 Character Model - Database operations for character table
 """
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import Optional, Dict, Any
 from .database import execute_query, execute_update, execute_insert
 from config.constant import Edition
 import logging
@@ -129,6 +128,59 @@ class CharacterModel:
             return record_id
         except Exception as e:
             logger.error(f"Failed to create character record: {e}")
+            raise
+
+    @staticmethod
+    def create_or_update(
+        world_id: int,
+        name: str,
+        user_id: int,
+        age: Optional[str] = None,
+        identity: Optional[str] = None,
+        appearance: Optional[str] = None,
+        personality: Optional[str] = None,
+        behavior: Optional[str] = None,
+        other_info: Optional[str] = None,
+        reference_image: Optional[str] = None,
+        default_voice: Optional[str] = None,
+        emotion_voices: Optional[Dict] = None,
+        sora_character: Optional[str] = None
+    ) -> int:
+        """
+        Create a new character record or update if exists (based on world_id, name unique constraint)
+        Uses INSERT ... ON DUPLICATE KEY UPDATE to handle race conditions
+        
+        Returns:
+            Record ID (inserted or existing)
+        """
+        emotion_voices_str = json.dumps(emotion_voices) if emotion_voices else None
+        sql = """
+            INSERT INTO `character` 
+            (world_id, name, age, identity, appearance, personality, behavior, other_info, 
+             reference_image, default_voice, emotion_voices, sora_character, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                age = VALUES(age),
+                identity = VALUES(identity),
+                appearance = VALUES(appearance),
+                personality = VALUES(personality),
+                behavior = VALUES(behavior),
+                other_info = VALUES(other_info),
+                reference_image = VALUES(reference_image),
+                default_voice = VALUES(default_voice),
+                emotion_voices = VALUES(emotion_voices),
+                sora_character = VALUES(sora_character),
+                user_id = VALUES(user_id)
+        """
+        params = (world_id, name, age, identity, appearance, personality, behavior, other_info, reference_image,
+                 default_voice, emotion_voices_str, sora_character, user_id)
+        
+        try:
+            record_id = execute_insert(sql, params)
+            logger.info(f"Created or updated character record for world_id={world_id}, name={name}")
+            return record_id
+        except Exception as e:
+            logger.error(f"Failed to create or update character record: {e}")
             raise
     
     @staticmethod

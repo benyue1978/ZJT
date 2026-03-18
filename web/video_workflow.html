@@ -8,6 +8,26 @@
   <link rel="stylesheet" href="/css/video_workflow.css" />
 </head>
 <body>
+  <!-- 左侧导览条 - 悬浮模式 -->
+  <nav class="step-nav" id="step-nav">
+    <div class="step-nav-content">
+      <div class="step-nav-title">创作流程</div>
+      <div class="step-nav-list">
+        <div class="step-nav-item clickable" data-step="script" onclick="goToScriptWriter()">
+          <div class="step-nav-icon">📚</div>
+          <div class="step-nav-text">剧本资产</div>
+          <div class="step-nav-arrow">←</div>
+        </div>
+        <div class="step-nav-connector"></div>
+        <div class="step-nav-item active" data-step="canvas">
+          <div class="step-nav-icon">🎬</div>
+          <div class="step-nav-text">制作工坊</div>
+          <div class="step-nav-badge current">当前</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+  
   <div class="shell">
     <div class="canvas-container" id="canvasContainer">
       <div class="brand-floating">
@@ -91,6 +111,14 @@
                 <path d="M10 9.5V14.5L14.5 12L10 9.5Z" fill="currentColor" />
               </svg>
               <span class="add-menu-text">视频</span>
+            </div>
+            <div class="add-menu-item" id="menuAddExtractFrame">
+              <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2" />
+                <path d="M10 9.5V14.5L14.5 12L10 9.5Z" fill="currentColor" />
+                <rect x="6" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="2" />
+              </svg>
+              <span class="add-menu-text">提取帧</span>
             </div>
             <div class="add-menu-item" id="menuAddImage">
               <svg class="add-menu-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -850,6 +878,7 @@
 
   <script src="/js/state.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/task_config.js"></script>
   <script src="/js/world.js"></script>
   <script src="/js/timeline.js"></script>
   <script src="/js/workflow.js"></script>
@@ -887,6 +916,41 @@
   </div>
 
   <script>
+    // ========== 左侧导览条相关函数 ==========
+    // 导览条现在是悬浮模式，通过CSS hover自动展开/收起，无需JavaScript控制
+    
+    // 跳转到剧本创作系统
+    async function goToScriptWriter() {
+      // 获取workflow_id
+      const urlParams = new URLSearchParams(window.location.search);
+      const workflowId = urlParams.get('id');
+      
+      // 获取当前选择的世界id
+      const worldSelect = document.getElementById('defaultWorldSelect');
+      const worldId = worldSelect ? worldSelect.value : '';
+      
+      // 先保存当前工作流
+      if (typeof saveWorkflow === 'function') {
+        try {
+          await saveWorkflow();
+        } catch (e) {
+          console.error('保存工作流失败:', e);
+        }
+      }
+      
+      // 跳转到剧本创作系统
+      const userId = localStorage.getItem('user_id') || '';
+      let url = '/script-writer';
+      if (workflowId || userId || worldId) {
+        const params = new URLSearchParams();
+        if (workflowId) params.set('workflow_id', workflowId);
+        if (userId) params.set('user_id', userId);
+        if (worldId) params.set('world_id', worldId);
+        url += '?' + params.toString();
+      }
+      window.location.href = url;
+    }
+    
     // 打开算力日志弹窗
     function openComputingPowerLogs() {
       const authToken = localStorage.getItem('auth_token');
@@ -909,6 +973,7 @@
 
   <script src="/js/image_coloring_editor.js"></script>
   <script src="/js/nodes.js"></script>
+  <script src="/js/extract_frame_node.js"></script>
   <script src="/js/text_node.js"></script>
   <script src="/js/text_to_speech_node.js"></script>
   <script src="/js/dialogue_group_node.js"></script>

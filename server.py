@@ -1,9 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header, Path
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Header
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-import requests
 import httpx
 import asyncio
 import uuid
@@ -18,31 +17,29 @@ import subprocess
 import tempfile
 from datetime import datetime
 from typing import List, Optional
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
-import mimetypes
+from urllib.parse import urlparse
 from pydantic import BaseModel
-from runninghub_request import RunningHubClient, TaskStatus, run_ai_app_task
-from config.config_util import get_config_path, resolve_bin_path
-from perseids_client import make_perseids_request, call_external_auth_server, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
+from api.clients.runninghub_client import RunningHubClient, TaskStatus, run_ai_app_task
+from config.config_util import resolve_bin_path
+from perseids_server.client import make_perseids_request, get_device_uuid, async_make_perseids_request, async_call_external_auth_server
 from model import AIToolsModel, VideoWorkflowModel,TasksModel, AIAudioModel, PaymentOrdersModel
-from model.users import UsersModel, User
+from model.users import UsersModel
 from model.user_tokens import UserTokensModel
-from model.computing_power import ComputingPowerModel
 from model.world import WorldModel
 from model.character import CharacterModel
 from model.location import LocationModel
 from model.script import ScriptModel
 from model.props import PropsModel
 import uuid
-from duomi_api_requset import create_video_remix, create_character as create_character_task, get_character_task_result
+from api.clients.duomi_client import create_video_remix, create_character as create_character_task, get_character_task_result
 from PIL import Image
 from llm import call_ernie_vl_api
 from task.scheduler import init_scheduler
 from model.migration import run_migrations, get_alembic_config
+from config.unified_config import UnifiedConfigRegistry
 from config.constant import (
     TaskTypeRegistry,
     TaskCategory,
-    TaskProvider,
     TaskTypeId,
     TASK_TYPE_GENERATE_VIDEO, 
     TASK_TYPE_GENERATE_AUDIO, 
@@ -53,13 +50,9 @@ from config.constant import (
     AI_TOOL_STATUS_COMPLETED,
     AI_TOOL_STATUS_FAILED,
     AI_AUDIO_STATUS_PENDING,
-    AI_AUDIO_STATUS_PROCESSING,
     AI_AUDIO_STATUS_COMPLETED,
     AI_AUDIO_STATUS_FAILED,
     TASK_STATUS_QUEUED,
-    TASK_STATUS_PROCESSING,
-    TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED,
     GRID_SIZE_2X2,
     GRID_SIZE_3X3,
     GRID_VALID_SIZES,
@@ -74,7 +67,7 @@ from utils.image_grid_splitter import ImageGridSplitter
 from utils.image_grid_merger import ImageGridMerger
 from utils.sentry_util import SentryUtil
 from utils import file_lock
-from perseids_server.utils.permission import require_permission, admin_required
+from perseids_server.utils.permission import require_permission
 from api.admin import router as admin_router
 from api.system import router as system_router
 
@@ -202,7 +195,7 @@ MP_VERIFY_ROUTE = "/MP_verify_lXQewBFqjUipl3B8.txt"
 
 
 # Load server configuration
-from config.config_util import get_config, get_config_value, get_dynamic_config_value
+from config.config_util import get_config_value, get_dynamic_config_value
 
 
 # Choose appropriate host based on HTTPS configuration
@@ -214,14 +207,6 @@ if not https_enabled or not SERVER_HOST:
 API_KEY = get_dynamic_config_value("runninghub", "api_key", default="")
 
 SCRIPT_WRITER_URL = get_config_value("script_writer", "url", default="")
-
-def _get_max_image_size_mb():
-    """动态获取上传图片最大大小配置（MB）"""
-    return get_dynamic_config_value("upload", "max_image_size_mb", default=10)
-
-def _get_max_image_size_bytes():
-    """动态获取上传图片最大大小（字节）"""
-    return _get_max_image_size_mb() * 1024 * 1024
 
 # 兼容旧代码，默认值用于静态引用
 MAX_IMAGE_SIZE_MB = 10
@@ -239,13 +224,10 @@ def _get_wechat_pay_util():
 # 兼容旧代码，初始化时创建一个实例
 wechat_pay_util = _get_wechat_pay_util()
 
-# Default ComfyUI server address; can be overridden by request field
-DEFAULT_COMFYUI_SERVER = os.environ.get("COMFYUI_SERVER", "http://127.0.0.1:8188/")
-
 app = FastAPI(title="ComfyUI Qwen Image Edit Proxy")
 
 # 导入并注册 script_writer API 路由
-from script_writer_api import router as script_writer_router
+from api.script_writer import router as script_writer_router
 app.include_router(script_writer_router)
 
 # 注册管理员 API 路由
@@ -275,13 +257,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-def _normalize_server(server: str) -> str:
-    if not server:
-        server = DEFAULT_COMFYUI_SERVER
-    if not server.endswith("/"):
-        server += "/"
-    return server
 
 
 @app.get("/api/config/upload")
@@ -365,8 +340,47 @@ async def download_image(
 ):
     """
     Proxy download for media files (images/videos) to handle CORS and provide proper download headers
+    优先使用本地缓存文件，如果不存在则从远程下载
     """
     try:
+        # 检查是否为本地缓存文件路径
+        if url.startswith('/upload/cache/'):
+            # 本地缓存文件，直接返回
+            import os
+            from pathlib import Path
+            
+            # 获取项目根目录
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            file_path = Path(current_dir) / url.lstrip('/')
+            
+            if file_path.exists() and file_path.is_file():
+                # 确定文件名
+                if not filename:
+                    filename = file_path.name
+                
+                # 确定 content type
+                ext = file_path.suffix.lower()
+                if ext in ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv']:
+                    content_type = 'video/mp4'
+                elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+                    content_type = f'image/{ext[1:]}'
+                else:
+                    content_type = 'application/octet-stream'
+                
+                # 返回本地文件
+                return FileResponse(
+                    path=str(file_path),
+                    media_type=content_type,
+                    filename=filename,
+                    headers={
+                        "Content-Disposition": f"attachment; filename={filename}",
+                        "Cache-Control": "public, max-age=31536000, immutable"
+                    }
+                )
+            else:
+                raise HTTPException(status_code=404, detail="本地缓存文件不存在")
+        
+        # 远程文件，使用代理下载
         async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.get(url)
             response.raise_for_status()
@@ -913,11 +927,11 @@ async def image_edit(
     request: Request,
     image: List[UploadFile] = File(default=None),
     prompt: str = Form(...),
-    ratio: str = Form("9:16", description="Model type: 9:16, 16:9, 1:1 ,3:4, 4:3"),
+    task_id: int = Form(..., description="Task type ID from task-configs API"),
+    ratio: str = Form("9:16", description="Aspect ratio: 9:16, 16:9, 1:1, 3:4, 4:3"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token"),
-    model: str = Form("gemini-2.5-pro-image-preview", description="Model type: gemini-2.5-pro-image-preview, gemini-3-pro-image-preview"),
     image_size: str = Form("1K", description="Image resolution: 1K, 2K, 4K"),
     ref_image_urls: str = Form(None, description="Reference image URLs, comma separated")
 ):
@@ -930,21 +944,15 @@ async def image_edit(
     2. URL list (ref_image_urls parameter, comma separated)
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
-
-        #用uuid生成交易id
-        image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
-        if model == "gemini-2.5-pro-image-preview":
-            image_edit_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE
-        elif model == "gemini-3-pro-image-preview":
-            image_edit_type = TaskTypeId.GEMINI_3_PRO_IMAGE
+        # 通过 task_id 获取任务配置
+        task_config = UnifiedConfigRegistry.get_by_id(task_id)
+        if not task_config:
+            raise HTTPException(status_code=400, detail=f"无效的 task_id: {task_id}")
+        # 验证任务分类是否正确
+        if task_config.category != TaskCategory.IMAGE_EDIT and TaskCategory.IMAGE_EDIT not in task_config.categories:
+            raise HTTPException(status_code=400, detail=f"task_id {task_id} 不是图片编辑任务")
         
-        # 从注册表获取算力配置
-        task_config = TaskTypeRegistry.get(image_edit_type)
+        image_edit_type = task_id
         computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1060,30 +1068,26 @@ async def image_edit(
 async def text_to_image(
     request: Request,
     prompt: str = Form(...),
-    model: str = Form("gemini-2.5-pro-image-preview", description="Model type: gemini-3-pro-image-preview, gemini-2.5-pro-image-preview"),
+    task_id: int = Form(..., description="Task type ID from task-configs API"),
     aspect_ratio: str = Form("9:16", description="Aspect ratio: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9"),
-    image_size: str = Form(None, description="Image resolution: 1K, 2K, 4K (only for gemini-3-pro-image-preview)"),
+    image_size: str = Form(None, description="Image resolution: 1K, 2K, 4K"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
     """
-    Submit text-to-image task to Duomi API (Gemini nano-banana)
+    Submit text-to-image task
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
-
-        # Determine computing power based on model
-        text_to_image_type = TaskTypeId.GEMINI_2_5_FLASH_IMAGE  # gemini-2.5-pro-image-preview: 2算力
-        if model == "gemini-3-pro-image-preview":
-            text_to_image_type = TaskTypeId.GEMINI_3_PRO_IMAGE  # gemini-3-pro-image-preview: 6算力
+        # 通过 task_id 获取任务配置
+        task_config = UnifiedConfigRegistry.get_by_id(task_id)
+        if not task_config:
+            raise HTTPException(status_code=400, detail=f"无效的 task_id: {task_id}")
+        # 验证任务分类是否正确
+        if task_config.category != TaskCategory.TEXT_TO_IMAGE and TaskCategory.TEXT_TO_IMAGE not in task_config.categories:
+            raise HTTPException(status_code=400, detail=f"task_id {task_id} 不是文生图任务")
         
-        # 从注册表获取算力配置
-        task_config = TaskTypeRegistry.get(text_to_image_type)
+        text_to_image_type = task_id
         computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
@@ -1353,23 +1357,26 @@ async def get_status(
 async def ai_app_run(
     request: Request,
     prompt: str = Form(..., description="Text prompt for the AI app"),
-    ratio: str = Form("9:16", description="Model type: 9:16, 16:9"),
+    task_id: int = Form(TaskTypeId.SORA2_TEXT_TO_VIDEO, description="Task type ID, defaults to SORA2_TEXT_TO_VIDEO"),
+    ratio: str = Form("9:16", description="Aspect ratio: 9:16, 16:9"),
     duration_seconds: int = Form(15, description="Duration in seconds"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
     auth_token: str = Form(None, description="Authentication token")
 ):
     """
-    Submit task to RunningHub AI-app/run endpoint and wait for completion.
-    Automatically polls task status and returns final video/image URLs.
+    Submit text-to-video task.
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
-        task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)
+        # 通过 task_id 获取任务配置
+        task_config = UnifiedConfigRegistry.get_by_id(task_id)
+        if not task_config:
+            raise HTTPException(status_code=400, detail=f"无效的 task_id: {task_id}")
+        # 验证任务分类是否正确
+        if task_config.category != TaskCategory.TEXT_TO_VIDEO:
+            raise HTTPException(status_code=400, detail=f"task_id {task_id} 不是文生视频任务")
+        
+        text_to_video_type = task_id
         computing_power = task_config.computing_power if task_config else 0
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1431,7 +1438,7 @@ async def ai_app_run(
                     id = AIToolsModel.create(
                         prompt=prompt,
                         user_id=user_id,
-                        type=2,  # 2-AI视频生成
+                        type=text_to_video_type,
                         ratio=ratio,
                         transaction_id=transaction_id,
                         duration=duration_seconds,
@@ -1463,45 +1470,54 @@ async def ai_app_run(
 async def ai_app_run_image(
     request: Request,
     prompt: str = Form(..., description="Text prompt for the AI app"),
+    task_id: int = Form(..., description="Task type ID from task-configs API"),
     images: List[UploadFile] = File(None, description="Image files for the AI app (1-5 images)"),
+    reference_images: List[UploadFile] = File(None, description="Reference image files (for first_last_with_ref mode, 0-3 images)"),
     image_urls: str = Form(None, description="Comma-separated image URLs (alternative to uploading files)"),
-    video_model: str = Form("sora2", description="Video model: sora2, ltx2, wan22, kling, vidu, veo3"),
-    ratio: str = Form("9:16", description="Ratio type: 9:16, 16:9 (sora2/kling/veo3); 9:16, 16:9, 3:4, 1:1, 4:3 (wan22); 16:9, 9:16, 1:1 (vidu)"),
-    duration_seconds: int = Form(15, description="Duration in seconds (sora2: 10/15, ltx2: 5/8/10, wan22: 5/10, kling: 5/10, vidu: 5/8, veo3: 8)"),
+    ratio: str = Form("9:16", description="Aspect ratio: 9:16, 16:9, 3:4, 1:1, 4:3"),
+    duration_seconds: int = Form(5, description="Duration in seconds"),
     count: int = Form(1, ge=1, le=4, description="Generation count (1-4)"),
     user_id: int = Form(None, description="User ID"),
-    auth_token: str = Form(None, description="Authentication token")
+    auth_token: str = Form(None, description="Authentication token"),
+    image_mode: str = Form("first_last_frame", description="Image mode: first_last_frame, multi_reference, first_last_with_ref"),
+    reference_image_urls: str = Form(None, description="Comma-separated reference image URLs (for multi_reference or first_last_with_ref mode)")
 ):
     """
     Submit image to video task.
-    Supports five video models:
-    1. sora2: Uses Sora2 model with ratio and duration parameters
-       - Ratio: 9:16, 16:9
-       - Duration: 10秒, 15秒
-    2. ltx2: Uses LTX2.0 model with duration parameter
-       - Fixed 24fps, auto-calculate frame count
-       - Duration: 5秒, 8秒, 10秒 (121帧, 201帧, 241帧)
-       - Ratio: matches input image
-    3. wan22: Uses Wan2.2 model with ratio and duration parameters
-       - Ratio: 9:16, 16:9, 3:4, 1:1, 4:3
-       - Duration: 5秒, 10秒
-    4. kling: Uses Kling model with ratio and duration parameters
-       - Ratio: 9:16, 16:9
-       - Duration: 5秒, 10秒
-    5. vidu: Uses Vidu model with ratio and duration parameters
-       - Ratio: 16:9, 9:16, 1:1
-       - Duration: 5秒, 8秒
-    6. veo3: Uses VEO3.1-fast model with ratio and duration parameters
-       - Ratio: 9:16, 16:9
-       - Duration: 8秒
     
-    Supports two image input modes:
-    1. Upload images: Provide 1-5 images via 'images' parameter (will be concatenated horizontally)
-    2. Use image URLs: Provide comma-separated URLs via 'image_urls' parameter
+    Supports three image modes:
+    1. first_last_frame (default): First image is start frame, second (if any) is end frame
+    2. multi_reference: All images act as reference images
+    3. first_last_with_ref: First image is start frame, last is end frame, middle images are references
+    
+    Image input options:
+    - Upload images via 'images' parameter
+    - Provide comma-separated URLs via 'image_urls' parameter
+    - For reference images, use 'reference_image_urls' parameter
     """
     try:
+        # 通过 task_id 获取任务配置
+        task_config = UnifiedConfigRegistry.get_by_id(task_id)
+        if not task_config:
+            raise HTTPException(status_code=400, detail=f"无效的 task_id: {task_id}")
+        # 验证任务分类是否正确
+        if task_config.category != TaskCategory.IMAGE_TO_VIDEO:
+            raise HTTPException(status_code=400, detail=f"task_id {task_id} 不是图生视频任务")
+        
+        image_to_video_type = task_id
+        # 根据时长获取算力
+        if isinstance(task_config.computing_power, dict):
+            computing_power = task_config.computing_power.get(duration_seconds, list(task_config.computing_power.values())[0])
+        else:
+            computing_power = task_config.computing_power if task_config else 0
+        
+        # 验证 image_mode 参数
+        valid_image_modes = ['first_last_frame', 'multi_reference', 'first_last_with_ref']
+        if image_mode not in valid_image_modes:
+            raise HTTPException(status_code=400, detail=f"无效的 image_mode: {image_mode}，合法值: {valid_image_modes}")
+        
         # 记录输入的图片信息
-        logger.info(f"AI app run image request - prompt: {prompt}, video_model: {video_model}, ratio: {ratio}, duration: {duration_seconds}, count: {count}, user_id: {user_id}")
+        logger.info(f"AI app run image request - prompt: {prompt}, task_id: {task_id}, ratio: {ratio}, duration: {duration_seconds}, count: {count}, user_id: {user_id}, image_mode: {image_mode}")
         
         if image_urls:
             url_list = [url.strip() for url in image_urls.split(',') if url.strip()]
@@ -1514,93 +1530,69 @@ async def ai_app_run_image(
         else:
             logger.warning("No image input provided")
         
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Authentication token is required"
-            )
         
-        # Determine which mode: uploaded images or image URLs
+        # 根据 image_mode 处理图片
+        image_path = None  # 首尾帧图片
+        reference_images_json = None  # 参考图 JSON
+        
+        # 获取主图片列表（上传或URL）
+        main_image_list = []
         if image_urls:
-            # Mode 1: Use provided image URLs
-            url_list = [url.strip() for url in image_urls.split(',') if url.strip()]
-            if not url_list:
-                raise HTTPException(
-                    status_code=400,
-                    detail="At least one valid image URL is required"
-                )
-            if len(url_list) > 5:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Maximum 5 image URLs allowed"
-                )
-            # Use the first URL directly (or concatenate if multiple URLs provided)
-            if len(url_list) == 1:
-                image_url = url_list[0]
-            else:
-                # For multiple URLs, we use the first one for now
-                # TODO: Consider downloading and concatenating multiple URLs if needed
-                image_url = url_list[0]
-            if video_model == "vidu":
-                image_url = image_urls
+            main_image_list = [url.strip() for url in image_urls.split(',') if url.strip()]
         elif images and len(images) > 0:
-            # Mode 2: Upload images
             if len(images) > 5:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Maximum 5 images allowed"
-                )
-            # If single image, save it directly; if multiple, concatenate them
-            if len(images) == 1:
-                image_url = await asyncio.to_thread(_save_uploaded_image, images[0])
-            else:
-                image_url = await asyncio.to_thread(_concatenate_images, images)
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Either 'images' (uploaded files) or 'image_urls' (comma-separated URLs) must be provided"
-            )
+                raise HTTPException(status_code=400, detail="最多允许5张图片")
+            for img in images:
+                saved_url = await asyncio.to_thread(_save_uploaded_image, img)
+                main_image_list.append(saved_url)
+        
+        # 获取参考图列表
+        ref_image_list = []
+        if reference_image_urls:
+            ref_image_list = [url.strip() for url in reference_image_urls.split(',') if url.strip()]
+        elif reference_images and len(reference_images) > 0:
+            # 处理上传的参考图文件
+            if len(reference_images) > 3:
+                raise HTTPException(status_code=400, detail="参考图最多允许3张")
+            for ref_img in reference_images:
+                saved_url = await asyncio.to_thread(_save_uploaded_image, ref_img)
+                ref_image_list.append(saved_url)
+        
+        # 根据模式处理图片
+        if image_mode == 'first_last_frame':
+            # 首尾帧模式：所有图片存入 image_path
+            if not main_image_list:
+                raise HTTPException(status_code=400, detail="首尾帧模式需要至少1张图片")
+            if len(main_image_list) > 2:
+                raise HTTPException(status_code=400, detail="首尾帧模式最多支持2张图片（首帧和尾帧）")
+            image_path = ','.join(main_image_list)
+            
+        elif image_mode == 'multi_reference':
+            # 多参考图模式：所有图片存入 reference_images
+            all_refs = main_image_list + ref_image_list
+            if not all_refs:
+                raise HTTPException(status_code=400, detail="多参考图模式需要至少1张参考图")
+            reference_images_json = json.dumps(all_refs)
+            
+        elif image_mode == 'first_last_with_ref':
+            # 首尾帧+参考图模式
+            if len(main_image_list) < 2:
+                raise HTTPException(status_code=400, detail="首尾帧+参考图模式需要至少2张图片（首帧和尾帧）")
+            # 第一张和最后一张作为首尾帧
+            first_frame = main_image_list[0]
+            last_frame = main_image_list[-1]
+            image_path = f"{first_frame},{last_frame}"
+            # 中间的图片 + 额外参考图作为参考图
+            middle_refs = main_image_list[1:-1] if len(main_image_list) > 2 else []
+            all_refs = middle_refs + ref_image_list
+            if all_refs:
+                reference_images_json = json.dumps(all_refs)
+        
+        # 为了向后兼容，设置 image_url 用于日志和响应
+        image_url = image_path or (main_image_list[0] if main_image_list else None)
 
         # 记录最终使用的图片URL
         logger.info(f"Final image URL for processing: {image_url}")
-
-        # Determine task type and computing power based on video_model
-        if video_model == "ltx2":
-            task_type = TaskTypeId.LTX2_IMAGE_TO_VIDEO  # LTX2.0 图生视频
-            task_config = TaskTypeRegistry.get(task_type)
-            computing_power = task_config.computing_power if task_config else 0
-        elif video_model == "wan22":
-            task_type = TaskTypeId.WAN22_IMAGE_TO_VIDEO  # Wan2.2 图生视频
-            # Wan2.2根据时长区分算力
-            task_config = TaskTypeRegistry.get(task_type)
-            if task_config and isinstance(task_config.computing_power, dict):
-                computing_power = task_config.computing_power.get(duration_seconds, 6)
-            else:
-                computing_power = 0
-        elif video_model == "kling":
-            task_type = TaskTypeId.KLING_IMAGE_TO_VIDEO  # 可灵图生视频
-            # 可灵根据时长区分算力
-            task_config = TaskTypeRegistry.get(task_type)
-            if task_config and isinstance(task_config.computing_power, dict):
-                computing_power = task_config.computing_power.get(duration_seconds, 38)
-            else:
-                computing_power = 0
-        elif video_model == "vidu":
-            task_type = TaskTypeId.VIDU_IMAGE_TO_VIDEO  # Vidu 图生视频
-            # Vidu根据时长区分算力
-            task_config = TaskTypeRegistry.get(task_type)
-            if task_config and isinstance(task_config.computing_power, dict):
-                computing_power = task_config.computing_power.get(duration_seconds, 16)
-            else:
-                computing_power = 0
-        elif video_model == "veo3":
-            task_type = TaskTypeId.VEO3_IMAGE_TO_VIDEO  # VEO3 图生视频
-            task_config = TaskTypeRegistry.get(task_type)
-            computing_power = task_config.computing_power if task_config else 0
-        else:
-            task_type = TaskTypeId.SORA2_IMAGE_TO_VIDEO   # Sora2 图生视频
-            task_config = TaskTypeRegistry.get(task_type)
-            computing_power = task_config.computing_power if task_config else 0
         
         if CHECK_AUTH_TOKEN:
             headers = {'Authorization': f'Bearer {auth_token}'}
@@ -1658,38 +1650,21 @@ async def ai_app_run_image(
                 # Create database record for each task
                 if user_id:
                     try:
-                        # Determine type and ratio based on video_model
-                        if video_model == "ltx2":
-                            # LTX2.0 图生视频
-                            # 现在 LTX2.0 也支持比例选择（横屏/竖屏）
-                            task_type = TaskTypeId.LTX2_IMAGE_TO_VIDEO
-                        elif video_model == "wan22":
-                            # Wan2.2 图生视频
-                            task_type = TaskTypeId.WAN22_IMAGE_TO_VIDEO
-                        elif video_model == "kling":
-                            # 可灵图生视频
-                            task_type = TaskTypeId.KLING_IMAGE_TO_VIDEO
-                        elif video_model == "vidu":
-                            # Vidu 图生视频
-                            task_type = TaskTypeId.VIDU_IMAGE_TO_VIDEO
-                        elif video_model == "veo3":
-                            # VEO3 图生视频
-                            task_type = TaskTypeId.VEO3_IMAGE_TO_VIDEO
-                        else:
-                            # Sora2 图生视频
-                            task_type = TaskTypeId.SORA2_IMAGE_TO_VIDEO
-                        ratio_value = ratio
-                        duration_value = duration_seconds
+                        # 构建 extra_config，包含 image_mode
+                        extra_config_data = {'image_mode': image_mode}
+                        extra_config_json = json.dumps(extra_config_data)
                         
                         id = AIToolsModel.create(
                             prompt=prompt,
                             user_id=user_id,
-                            type=task_type,
-                            image_path=image_url,
-                            ratio=ratio_value,
-                            duration=duration_value,
+                            type=image_to_video_type,
+                            image_path=image_path,
+                            ratio=ratio,
+                            duration=duration_seconds,
                             transaction_id=transaction_id,
-                            status=AI_TOOL_STATUS_PENDING
+                            status=AI_TOOL_STATUS_PENDING,
+                            extra_config=extra_config_json,
+                            reference_images=reference_images_json
                         )
                         TasksModel.create(
                             task_type=TASK_TYPE_GENERATE_VIDEO,
@@ -2107,7 +2082,6 @@ async def register(request: RegisterRequest):
         phone = request.phone
         password = request.password
         verify_code = request.code
-        agent = request.agent
         
         logger.info(f"收到注册请求 - 手机号: {phone}")
 
@@ -2192,7 +2166,6 @@ async def login(request: LoginRequest):
     try:
         phone = request.phone
         password = request.password
-        agent = request.agent
         terms_agreed = request.terms_agreed
         
         logger.info(f"收到登录请求 - 手机号: {phone}")
@@ -2590,36 +2563,6 @@ async def get_computing_power_config(request: Request):
         )
 
 
-@app.get('/api/task-type-config')
-@require_permission("computing:view_task_config")
-async def get_task_type_config(request: Request):
-    """
-    获取任务类型配置
-    返回图生视频、图片编辑等任务类型列表和类型名称映射
-    """
-    try:
-        return JSONResponse(
-            content={
-                'success': True,
-                'message': '获取成功',
-                'data': {
-                    'image_to_video_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_TO_VIDEO),
-                    'image_edit_types': TaskTypeRegistry.get_by_category(TaskCategory.IMAGE_EDIT),
-                    'task_type_name_map': TaskTypeRegistry.get_name_map()
-                }
-            }
-        )
-    except Exception as e:
-        logger.error(f'获取任务类型配置失败: {str(e)}')
-        return JSONResponse(
-            status_code=500,
-            content={
-                'success': False,
-                'message': '服务器错误'
-            }
-        )
-
-
 @app.get('/api/ai-tools/detail/{record_id}')
 @require_permission("ai_tools:view_history")
 async def get_ai_tool_detail(
@@ -2914,12 +2857,6 @@ async def video_enhance(
     """
     try:
         logger.info(f"Video enhancement request received from user: {user_id}")
-        # Check authentication
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Authentication token is required"
-            )
         # Generate transaction ID
         transaction_id = str(uuid.uuid4())
         task_config = TaskTypeRegistry.get(TaskTypeId.VIDEO_ENHANCE)
@@ -2955,10 +2892,52 @@ async def video_enhance(
         local_video_url = None
         
         if video_url:
-            # Use provided video URL directly
-            final_video_url = video_url
-            local_video_url = video_url  # URL 情况下直接使用 URL
-            logger.info(f"Using provided video URL: {video_url}")
+            # 检查是否为本地缓存文件路径
+            if video_url.startswith('/upload/cache/'):
+                # 本地缓存文件，需要上传到 RunningHub
+                import os
+                from pathlib import Path
+                from utils.file_storage import RunningHubFileStorage
+                from config.config_util import get_config, get_dynamic_config_value
+                
+                # 获取项目根目录
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                local_file_path = Path(current_dir) / video_url.lstrip('/')
+                
+                if not local_file_path.exists() or not local_file_path.is_file():
+                    raise HTTPException(
+                        status_code=404,
+                        detail="本地缓存文件不存在"
+                    )
+                
+                logger.info(f"本地缓存文件检测到，准备上传到 RunningHub: {video_url}")
+                
+                # 上传到 RunningHub
+                rh_host = get_dynamic_config_value("runninghub", "host", default="")
+                rh_api_key = get_dynamic_config_value("runninghub", "api_key", default="")
+                storage = RunningHubFileStorage(
+                    host=rh_host,
+                    api_key=rh_api_key,
+                    config=get_config(),
+                    logger=logger
+                )
+                
+                upload_result = await storage.upload_file("", str(local_file_path))
+                if not upload_result.success:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"文件上传到 RunningHub 失败: {upload_result.error}"
+                    )
+                
+                # 使用 fileName 作为 comfyUI 节点的引用
+                final_video_url = upload_result.key
+                local_video_url = video_url  # 保存本地路径到数据库
+                logger.info(f"本地缓存文件上传完成，fileName: {final_video_url}")
+            else:
+                # 远程 URL，直接使用
+                final_video_url = video_url
+                local_video_url = video_url
+                logger.info(f"Using provided video URL: {video_url}")
         elif video:
             # 读取视频文件
             file_bytes = await video.read()
@@ -3008,7 +2987,7 @@ async def video_enhance(
         
         # Submit video enhancement task using runninghub_request module
         try:
-            from runninghub_request import run_ai_app_task
+            from api.clients.runninghub_client import run_ai_app_task
             
             node_info_list = [{
                 "nodeId": "6",
@@ -3118,14 +3097,7 @@ async def video_remix(
     """
     try:
         logger.info(f"Video remix request received - video_id: {video_id}, prompt: {prompt}")
-        
-        # 检查认证
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="请提供认证令牌"
-            )
-        
+          
         # 计算所需算力（使用视频生成的算力标准）
         task_config = TaskTypeRegistry.get(TaskTypeId.SORA2_TEXT_TO_VIDEO)  # AI视频生成
         computing_power = task_config.computing_power if task_config else 0
@@ -3437,12 +3409,6 @@ async def digital_human_generate(
     Generate digital human video from image, text and audio
     """
     try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Authentication token is required"
-            )
-        
         # Validate text length
         if len(text) > 1000:
             raise HTTPException(
@@ -3567,13 +3533,7 @@ async def audio_generate(
     Submit audio generation task
     Supports voice cloning with reference audio and emotion control
     """
-    try:
-        if CHECK_AUTH_TOKEN and auth_token is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Authentication token is required"
-            )
-        
+    try:      
         # Calculate computing power cost
         ref_path = None
         if ref_audio:
@@ -4566,6 +4526,194 @@ async def upload_workflow_asset(
         )
 
 
+@app.post('/api/video-workflow/extract-frame')
+@require_permission("video_workflow:upload")
+async def extract_video_frame(
+    request: Request,
+    file: Optional[UploadFile] = File(None, description="视频文件"),
+    video_url: Optional[str] = Form(None, description="视频URL（与file二选一）"),
+    frame_type: str = Form("first", description="帧类型: first=首帧, last=尾帧"),
+    auth_token: str = Header(None, alias="Authorization"),
+    user_id: Optional[int] = Header(None, alias="X-User-Id")
+):
+    """
+    从视频中提取首帧或尾帧图片
+
+    接收视频文件或视频URL，使用FFmpeg提取指定帧，返回图片URL
+    """
+    try:
+        user_id = _get_user_id_from_header(user_id)
+
+        # 验证帧类型
+        if frame_type not in ["first", "last"]:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "帧类型必须是 first 或 last"}
+            )
+
+        # 验证输入：file 或 video_url 必须有一个
+        if not file and not video_url:
+            return JSONResponse(
+                status_code=400,
+                content={"code": -1, "message": "必须提供视频文件或视频URL"}
+            )
+
+        request_host = str(request.base_url).rstrip("/")
+        temp_dir = os.path.join(UPLOAD_DIR, "temp", datetime.now().strftime("%Y%m%d"))
+        os.makedirs(temp_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        video_path = None
+        video_filename = None
+        need_cleanup = False  # 是否需要清理临时视频文件
+
+        # 获取视频文件
+        if video_url:
+            # 从URL获取视频路径（本地服务器上的文件）
+            # URL格式: http://host/upload/temp/20250101/video_xxx.mp4 或 /upload/xxx
+            if video_url.startswith("/upload/") or "/upload/" in video_url:
+                # 提取相对路径
+                if video_url.startswith("http"):
+                    # 完整URL，提取路径部分
+                    from urllib.parse import urlparse
+                    parsed = urlparse(video_url)
+                    relative_path = parsed.path
+                else:
+                    relative_path = video_url
+
+                # 转换为本地文件路径
+                # /upload/temp/20250101/xxx.mp4 -> UPLOAD_DIR/temp/20250101/xxx.mp4
+                if relative_path.startswith("/upload/"):
+                    relative_path = relative_path[8:]  # 移除 /upload/
+                video_path = os.path.join(UPLOAD_DIR, relative_path)
+                video_filename = os.path.basename(video_path)
+
+                if not os.path.exists(video_path):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"code": -1, "message": "视频文件不存在"}
+                    )
+            else:
+                # 外部URL，需要下载
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": -1, "message": "不支持外部视频URL，请上传视频文件"}
+                )
+        else:
+            # 从上传的文件获取
+            content_type = file.content_type or ""
+            if not content_type.startswith("video/"):
+                return JSONResponse(
+                    status_code=400,
+                    content={"code": -1, "message": "仅支持视频文件"}
+                )
+
+            ext = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
+            video_filename = f"video_{timestamp}_{unique_id}{ext}"
+            video_path = os.path.join(temp_dir, video_filename)
+
+            # 保存视频文件
+            content = await file.read()
+            with open(video_path, "wb") as f:
+                f.write(content)
+            need_cleanup = True  # 上传的文件需要清理
+
+        # 2. 使用FFmpeg提取帧
+        ffmpeg_path = resolve_bin_path(get_config_value("bin", "ffmpeg", default="ffmpeg"), APP_DIR)
+        ffmpeg_timeout = get_config_value("bin", "ffmpeg_timeout", default=30)
+
+        # 输出图片文件名
+        frame_name = "first_frame" if frame_type == "first" else "last_frame"
+        image_filename = f"{frame_name}_{timestamp}_{unique_id}.jpg"
+        image_path = os.path.join(temp_dir, image_filename)
+
+        # FFmpeg命令: 根据帧类型选择不同的提取方式
+        if frame_type == "first":
+            # 提取首帧
+            ffmpeg_cmd = [
+                ffmpeg_path,
+                "-i", video_path,
+                "-vframes", "1",      # 只提取1帧
+                "-q:v", "2",          # 高质量（2 = 很好）
+                "-y",                # 覆盖输出文件
+                image_path
+            ]
+        else:
+            # 提取尾帧: 使用 -sseof 从文件末尾开始定位
+            ffmpeg_cmd = [
+                ffmpeg_path,
+                "-sseof", "-0.1",     # 从文件末尾前0.1秒开始
+                "-i", video_path,
+                "-vframes", "1",      # 只提取1帧
+                "-q:v", "2",          # 高质量
+                "-y",                # 覆盖输出文件
+                image_path
+            ]
+
+        # 在线程池中执行FFmpeg命令
+        try:
+            process = await asyncio.to_thread(
+                lambda: subprocess.run(
+                    ffmpeg_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=ffmpeg_timeout
+                )
+            )
+
+            if process.returncode != 0:
+                error_msg = process.stderr or "未知错误"
+                logger.error(f"FFmpeg提取{frame_name}失败: {error_msg}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"code": -1, "message": f"提取{frame_name}失败: {error_msg}"}
+                )
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"FFmpeg提取{frame_name}超时: {video_path}")
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": f"提取{frame_name}超时，请尝试较小的视频文件"}
+            )
+        except FileNotFoundError:
+            logger.error(f"FFmpeg未找到: {ffmpeg_path}")
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": "FFmpeg未配置或不可用"}
+            )
+
+        # 3. 验证生成的图片
+        if not os.path.exists(image_path) or os.path.getsize(image_path) == 0:
+            return JSONResponse(
+                status_code=500,
+                content={"code": -1, "message": f"提取{frame_name}失败，生成的图片无效"}
+            )
+
+        # 4. 返回图片URL
+        image_url = f"{request_host}/upload/temp/{datetime.now().strftime('%Y%m%d')}/{image_filename}"
+
+        logger.info(f"成功提取{frame_name}: {video_filename} -> {image_filename}")
+
+        return JSONResponse({
+            "code": 0,
+            "message": "提取成功",
+            "data": {
+                "url": image_url,
+                "filename": image_filename,
+                "frame_type": frame_type
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to extract frame: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"code": -1, "message": f"提取帧失败: {str(e)}"}
+        )
+
+
 @app.get('/api/ai-tools/{ai_tools_id}/grid-split')
 @require_permission("image:grid_split")
 async def get_grid_split_image(
@@ -4812,7 +4960,6 @@ async def merge_grid_images(
     - 所有非黑色位置的图片尺寸必须相同
     """
     try:
-        user_id = _get_user_id_from_header(x_user_id)
 
         merger = ImageGridMerger(upload_dir=UPLOAD_DIR, server_host=SERVER_HOST)
         result = await merger.merge_images(
@@ -6538,7 +6685,7 @@ async def export_timeline_draft(
         
         from core import JianyingMultiTrackLibrary
         from draft_generator import DraftGenerator
-        from jianying_utils import seconds_to_microseconds
+        from jianying.utils import seconds_to_microseconds
         
         # 生成唯一的草稿名称（使用工作流名称作为前缀）
         # 清理工作流名称，移除不适合文件名的字符
@@ -7148,6 +7295,8 @@ if __name__ == "__main__":
             run_migrations()
         except Exception as e:
             logger.error(f"Database migration failed on startup: {e}")
+            logger.error("Cannot start server with failed migrations. Exiting...")
+            sys.exit(1)
 
     if https_enabled:
         # HTTPS configuration

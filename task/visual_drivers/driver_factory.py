@@ -6,7 +6,7 @@ from typing import Optional
 import logging
 from .base_video_driver import BaseVideoDriver
 from .exceptions import DriverConfigError
-from config.constant import VIDEO_DRIVER_MAPPING, DRIVER_IMPLEMENTATION_MAPPING, DriverImplementation
+from config.unified_config import UnifiedConfigRegistry, DriverImplementation
 
 logger = logging.getLogger(__name__)
 
@@ -66,18 +66,22 @@ class VideoDriverFactory:
             2. 业务驱动名称 -> 实现驱动名称（通过 DRIVER_IMPLEMENTATION_MAPPING）
             3. 实现驱动名称 -> 驱动类实例（通过 _registered_drivers）
         """
-        # 第一层：根据任务类型获取业务驱动名称
-        business_driver_name = VIDEO_DRIVER_MAPPING.get(driver_type)
-        if not business_driver_name:
+        # 从统一配置获取任务配置
+        config = UnifiedConfigRegistry.get_by_id(driver_type)
+        if not config:
             logger.error(f"Unsupported driver type: {driver_type}")
-            logger.info(f"Supported types: {list(VIDEO_DRIVER_MAPPING.keys())}")
+            logger.info(f"Supported types: {[c.id for c in UnifiedConfigRegistry.get_all()]}")
             return None
         
-        # 第二层：根据业务驱动名称获取实现驱动名称
-        implementation_driver_name = DRIVER_IMPLEMENTATION_MAPPING.get(business_driver_name)
+        business_driver_name = config.driver_name
+        if not business_driver_name:
+            logger.error(f"No driver configured for task type: {driver_type}")
+            return None
+        
+        # 从统一配置获取实现驱动名称
+        implementation_driver_name = config.implementation
         if not implementation_driver_name:
             logger.error(f"No implementation configured for business driver: {business_driver_name}")
-            logger.info(f"Available business drivers: {list(DRIVER_IMPLEMENTATION_MAPPING.keys())}")
             return None
         
         # 第三层：根据实现驱动名称获取驱动类
@@ -107,7 +111,7 @@ class VideoDriverFactory:
         Returns:
             list: 支持的驱动类型列表
         """
-        return list(VIDEO_DRIVER_MAPPING.keys())
+        return [c.id for c in UnifiedConfigRegistry.get_all() if c.driver_name]
     
     @classmethod
     def get_supported_drivers(cls) -> list:
@@ -130,7 +134,8 @@ class VideoDriverFactory:
         Returns:
             bool: 是否支持
         """
-        return driver_type in VIDEO_DRIVER_MAPPING
+        config = UnifiedConfigRegistry.get_by_id(driver_type)
+        return config is not None and config.driver_name is not None
     
     @classmethod
     def is_driver_registered(cls, driver_name: str) -> bool:
@@ -159,8 +164,13 @@ class VideoDriverFactory:
                 }
         """
         result = {}
-        for task_type, business_name in VIDEO_DRIVER_MAPPING.items():
-            impl_name = DRIVER_IMPLEMENTATION_MAPPING.get(business_name)
+        for config in UnifiedConfigRegistry.get_all():
+            if not config.driver_name:
+                continue
+            
+            task_type = config.id
+            impl_name = config.implementation
+            
             if not impl_name:
                 result[str(task_type)] = {
                     "available": False,
@@ -230,13 +240,6 @@ def register_all_drivers():
         logger.warning(f"Failed to import GeminiDuomiV1Driver: {e}")
     
     try:
-        from .gemini_pro_duomi_v1_driver import GeminiProDuomiV1Driver
-        # 注册 Gemini Pro 多米供应商 v1 版本（加强版）
-        VideoDriverFactory.register_driver(DriverImplementation.GEMINI_PRO_DUOMI_V1, GeminiProDuomiV1Driver)
-    except ImportError as e:
-        logger.warning(f"Failed to import GeminiProDuomiV1Driver: {e}")
-    
-    try:
         from .veo3_duomi_v1_driver import Veo3DuomiV1Driver
         # 注册 VEO3 多米供应商 v1 版本
         VideoDriverFactory.register_driver(DriverImplementation.VEO3_DUOMI_V1, Veo3DuomiV1Driver)
@@ -270,5 +273,19 @@ def register_all_drivers():
         VideoDriverFactory.register_driver(DriverImplementation.VIDU_DEFAULT, ViduDefaultDriver)
     except ImportError as e:
         logger.warning(f"Failed to import ViduDefaultDriver: {e}")
-    
+
+    try:
+        from .vidu_q2_driver import ViduQ2Driver
+        # 注册 Vidu Q2 驱动
+        VideoDriverFactory.register_driver(DriverImplementation.VIDU_Q2, ViduQ2Driver)
+    except ImportError as e:
+        logger.warning(f"Failed to import ViduQ2Driver: {e}")
+
+    try:
+        from .seedream_volcengine_v1_driver import Seedream5VolcengineV1Driver
+        # 注册 Seedream 5.0 火山引擎 v1 版本
+        VideoDriverFactory.register_driver(DriverImplementation.SEEDREAM5_VOLCENGINE_V1, Seedream5VolcengineV1Driver)
+    except ImportError as e:
+        logger.warning(f"Failed to import Seedream5VolcengineV1Driver: {e}")
+
     logger.info(f"Registered {len(VideoDriverFactory.get_supported_drivers())} video drivers")

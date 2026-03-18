@@ -3,7 +3,6 @@ TokenLog Model - Database operations for token_log table
 对应Go的models/token_log.go
 """
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 import logging
 

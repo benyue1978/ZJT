@@ -1,7 +1,7 @@
 """
 VerifyCodeService 验证码服务 - 对应Go的handler/verify_sms.go
 """
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from datetime import datetime, timedelta
 import random
 import logging

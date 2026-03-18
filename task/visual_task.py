@@ -4,30 +4,9 @@ Video generation task processing
 import logging
 from datetime import datetime, timedelta
 import uuid
-from perseids_client import make_perseids_request
+from perseids_server.client import make_perseids_request
 from config.constant import TASK_COMPUTING_POWER
 from config.config_util import get_dynamic_config_value
-
-from duomi_api_requset import (
-    create_ai_image,
-    create_image_to_video,
-    create_image_to_video_veo,
-    get_ai_task_result,
-    create_text_to_image,
-    create_kling_image_to_video,
-    get_kling_task_status,
-)
-from runninghub_request import (
-    create_ltx2_image_to_video,
-    create_wan22_image_to_video,
-    create_digital_human,
-    check_ltx2_task_status
-)
-from vidu_api_requset import (
-    create_vidu_image_to_video,
-    create_vidu_start_end_to_video,
-    get_vidu_task_status
-)
 from model import TasksModel, AIToolsModel, RunningHubSlotsModel
 from config.constant import (
     TASK_TYPE_GENERATE_VIDEO,
@@ -83,16 +62,84 @@ def calculate_next_retry_delay(try_count):
     return min(delay_seconds, max_delay)
 
 
-def _submit_new_task(ai_tool):
+def _refund_computing_power(ai_tool, reason: str):
     """
-    使用驱动架构提交新任务 (status == AI_TOOL_STATUS_PENDING)
-    
-    这是新的实现方法，使用统一的驱动架构替代原有的 if-elif 分支逻辑。
-    测试通过后将替换 _submit_new_task 方法。
-    
+    退还算力
+
     Args:
         ai_tool: AITool 对象
-    
+        reason: 退还原因
+    """
+    try:
+        user_id = ai_tool.user_id
+        ai_tool_type = ai_tool.type
+        task_id = ai_tool.id
+
+        if not user_id:
+            logger.warning(f"Task {task_id} has no user_id, skipping refund")
+            return
+
+        computing_power_config = TASK_COMPUTING_POWER.get(ai_tool_type)
+
+        # Handle dict-based computing power (e.g., Wan2.2, Kling, Vidu)
+        if isinstance(computing_power_config, dict):
+            duration = getattr(ai_tool, 'duration', 5) or 5
+            computing_power = computing_power_config.get(duration)
+            if not computing_power:
+                computing_power = list(computing_power_config.values())[0]
+        else:
+            computing_power = computing_power_config
+
+        if not computing_power:
+            logger.warning(f"Task {task_id} type {ai_tool_type} has no computing power config")
+            return
+
+        transaction_id = str(uuid.uuid4())
+        logger.info(f"Refunding {computing_power} computing power for user {user_id}, reason: {reason}")
+
+        success, message, response_data = make_perseids_request(
+            endpoint='get_auth_token_by_user_id',
+            method='POST',
+            data={"user_id": user_id}
+        )
+
+        if not success:
+            logger.error(f"Failed to get auth token for user {user_id}: {message}")
+            return
+
+        auth_token = response_data['token']
+        headers = {'Authorization': f'Bearer {auth_token}'}
+
+        success, message, response_data = make_perseids_request(
+            endpoint='user/calculate_computing_power',
+            method='POST',
+            headers=headers,
+            data={
+                "computing_power": computing_power,
+                "behavior": "increase",
+                "transaction_id": transaction_id
+            }
+        )
+
+        if success:
+            logger.info(f"Task {task_id} refund ({computing_power}) processed successfully")
+        else:
+            logger.error(f"Task {task_id} refund ({computing_power}) failed: {message}")
+
+    except Exception as e:
+        logger.error(f"Failed to process refund for task {ai_tool.id}: {e}")
+
+
+async def _submit_new_task(ai_tool):
+    """
+    使用驱动架构提交新任务 (status == AI_TOOL_STATUS_PENDING)
+
+    这是新的实现方法，使用统一的驱动架构替代原有的 if-elif 分支逻辑。
+    测试通过后将替换 _submit_new_task 方法。
+
+    Args:
+        ai_tool: AITool 对象
+
     Returns:
         bool: True 表示成功，False 表示失败
     """
@@ -113,12 +160,18 @@ def _submit_new_task(ai_tool):
             # 更新任务状态为失败
             AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message=f"不支持的任务类型: {ai_tool_type}")
             TasksModel.update_by_task_id(task_id, status=TASK_STATUS_FAILED)
+            # 退还算力
+            _refund_computing_power(ai_tool, f"不支持的任务类型: {ai_tool_type}")
             return False
         
         logger.info(f"Using driver: {driver.driver_name} for task {task_id}")
         
         # 2. 调用驱动提交任务
-        result = driver.submit_task(ai_tool)
+        import inspect
+        if inspect.iscoroutinefunction(driver.submit_task):
+            result = await driver.submit_task(ai_tool)
+        else:
+            result = driver.submit_task(ai_tool)
         
         # 3. 处理提交结果
         if not result.get("success"):
@@ -146,12 +199,46 @@ def _submit_new_task(ai_tool):
                 AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message="服务异常，请联系技术支持")
                 TasksModel.update_by_task_id(task_id, status=TASK_STATUS_FAILED)
             
+            # 释放 RunningHub 槽位（如果是 RunningHub 任务）
+            is_runninghub = ai_tool_type in RUNNINGHUB_TASK_TYPES
+            if is_runninghub:
+                task = TasksModel.get_by_task_id(task_id)
+                if task:
+                    RunningHubSlotsModel.release_slot_by_task_table_id(task.id)
+                    logger.info(f"Released RunningHub slot for failed task {task_id}")
+            
             # 返回 True 表示任务已处理完成（虽然失败了），不需要重试
             return True
         
-        # 4. 提交成功，更新数据库
+        # 4. 提交成功，检查是否同步模式
+        if result.get("sync_mode"):
+            # 同步 API 直接返回结果，无需轮询
+            result_url = result.get("result_url")
+            
+            # 下载并缓存媒体文件
+            from utils.media_cache import download_and_cache
+            
+            # 判断媒体类型（根据URL扩展名）
+            media_type = "video"  # 默认为视频
+            if result_url:
+                ext = result_url.split('?')[0].split('.')[-1].lower()
+                if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                    media_type = "image"
+            
+            # 下载并缓存，如果失败则使用原URL
+            cached_url = await download_and_cache(result_url, task_id, media_type)
+            final_url = cached_url if cached_url else result_url
+            
+            logger.info(f"Sync task media cached: {result_url} -> {final_url}")
+            
+            AIToolsModel.update(task_id, result_url=final_url, status=AI_TOOL_STATUS_COMPLETED)
+            TasksModel.update_by_task_id(task_id, status=TASK_STATUS_COMPLETED)
+            logger.info(f"Sync task {task_id} completed with result: {final_url}")
+            return True
+
+        # 5. 异步模式，更新数据库
         project_id = result.get("project_id")
-        
+
         if not project_id:
             logger.error(f"Task {task_id} submitted but no project_id returned")
             AIToolsModel.update(task_id, status=AI_TOOL_STATUS_FAILED, message="服务异常，未返回任务ID")
@@ -187,7 +274,7 @@ def _submit_new_task(ai_tool):
         return False
 
 
-def _check_task_status(ai_tool):
+async def _check_task_status(ai_tool):
     """
     使用驱动架构检查任务状态 (status == AI_TOOL_STATUS_PROCESSING)
     
@@ -240,7 +327,7 @@ def _check_task_status(ai_tool):
                 return _handle_task_failure(project_id, task_id, ai_tool_type, "任务成功但未返回结果URL", ai_tool.user_id)
             
             logger.info(f"Task {task_id} completed successfully, result_url: {result_url}")
-            return _handle_task_success(project_id, task_id, result_url)
+            return await _handle_task_success(project_id, task_id, result_url)
             
         elif status == "FAILED":
             # 任务失败
@@ -270,7 +357,7 @@ def _check_task_status(ai_tool):
         # 不立即标记为失败，继续重试
         return False
 
-def _handle_task_success(project_id, task_id, media_url):
+async def _handle_task_success(project_id, task_id, media_url):
     """
     Handle successful task completion
     
@@ -283,21 +370,38 @@ def _handle_task_success(project_id, task_id, media_url):
         bool: True if handled successfully
     """
     try:
+        # 下载并缓存媒体文件
+        from utils.media_cache import download_and_cache
+        
+        # 判断媒体类型（根据任务类型或URL扩展名）
+        media_type = "video"  # 默认为视频
+        if media_url:
+            ext = media_url.split('?')[0].split('.')[-1].lower()
+            if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                media_type = "image"
+        
+        # 下载并缓存，如果失败则使用原URL
+        cached_url = await download_and_cache(media_url, task_id, media_type)
+        final_url = cached_url if cached_url else media_url
+        
+        logger.info(f"Media cached: {media_url} -> {final_url}")
+        
         AIToolsModel.update_by_project_id(
             project_id=project_id,
-            result_url=media_url,
+            result_url=final_url,
             status=AI_TOOL_STATUS_COMPLETED
         )
         TasksModel.update_by_task_id(task_id, status=TASK_STATUS_COMPLETED)
-        
-        # 释放 RunningHub 槽位（通过 project_id）
-        RunningHubSlotsModel.release_slot_by_project_id(project_id)
-        
-        logger.info(f"Task {project_id} completed successfully, slot released")
+
+        logger.info(f"Task {project_id} completed successfully")
         return True
     except Exception as db_error:
         logger.error(f"Failed to update records for success task {project_id}: {db_error}")
         return False
+    finally:
+        # 无论如何都释放 RunningHub 槽位
+        RunningHubSlotsModel.release_slot_by_project_id(project_id)
+        logger.info(f"Released RunningHub slot for project_id: {project_id}")
 
 
 def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
@@ -399,23 +503,23 @@ def _handle_task_failure(project_id, task_id, ai_tool_type, reason, user_id):
     return True
 
 
-def process_generate_video(task):
+async def process_generate_video(task):
     """Process video generation task logic"""
     try:
         logger.info(f"Processing video generation task: {task.task_id}")
         ai_tool = AIToolsModel.get_by_id(task.task_id)
         logger.info(f"AI tool {task.task_id} is {ai_tool}")
-        
+
         if not ai_tool:
             logger.error(f"Failed to get AI tool record by ID {task.task_id}")
             return False
-        
+
         status = ai_tool.status
-        
+
         if status == AI_TOOL_STATUS_PENDING:
-            return _submit_new_task(ai_tool)
+            return await _submit_new_task(ai_tool)
         elif status == AI_TOOL_STATUS_PROCESSING:
-            return _check_task_status(ai_tool)
+            return await _check_task_status(ai_tool)
         else:
             logger.warning(f"Unexpected status {status} for task {task.task_id}")
             return False
@@ -600,7 +704,15 @@ def process_task_with_retry(task_type, process_func):
                     logger.info(f"Updated task {task.task_id} status to TASK_STATUS_PROCESSING (处理中)")
                 
                 # Call the specific processing function
-                success= process_func(task)
+                # 检查是否为协程函数
+                import asyncio
+                import inspect
+                if inspect.iscoroutinefunction(process_func):
+                    # 异步函数，使用 asyncio.run
+                    success = asyncio.run(process_func(task))
+                else:
+                    # 同步函数，直接调用
+                    success = process_func(task)
                 processed_count += 1
                 
                 if success:

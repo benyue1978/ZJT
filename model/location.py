@@ -2,7 +2,6 @@
 Location Model - Database operations for location table
 """
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 from config.constant import Edition
 import logging
@@ -91,6 +90,42 @@ class LocationModel:
             return record_id
         except Exception as e:
             logger.error(f"Failed to create location record: {e}")
+            raise
+
+    @staticmethod
+    def create_or_update(
+        world_id: int,
+        name: str,
+        user_id: int,
+        parent_id: Optional[int] = None,
+        reference_image: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> int:
+        """
+        Create a new location record or update if exists (based on world_id, name unique constraint)
+        Uses INSERT ... ON DUPLICATE KEY UPDATE to handle race conditions
+        
+        Returns:
+            Record ID (inserted or existing)
+        """
+        sql = """
+            INSERT INTO location 
+            (world_id, name, user_id, parent_id, reference_image, description)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                parent_id = VALUES(parent_id),
+                reference_image = VALUES(reference_image),
+                description = VALUES(description),
+                user_id = VALUES(user_id)
+        """
+        params = (world_id, name, user_id, parent_id, reference_image, description)
+        
+        try:
+            record_id = execute_insert(sql, params)
+            logger.info(f"Created or updated location record for world_id={world_id}, name={name}")
+            return record_id
+        except Exception as e:
+            logger.error(f"Failed to create or update location record: {e}")
             raise
     
     @staticmethod

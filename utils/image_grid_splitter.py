@@ -1,7 +1,7 @@
 
 from PIL import Image
 import os
-from typing import List, Tuple, Optional
+from typing import List, Optional
 from pathlib import Path
 
 

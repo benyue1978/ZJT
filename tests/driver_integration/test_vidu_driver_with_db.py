@@ -5,10 +5,9 @@ Vidu 驱动数据库集成测试
 import sys
 from unittest.mock import patch, MagicMock
 
-sys.modules['vidu_api_requset'] = MagicMock()
 sys.modules['utils.sentry_util'] = MagicMock()
 
-from tests.base_video_driver_test import BaseVideoDriverTest
+from tests.base_video_driver_test import BaseVideoDriverTest, mock_get_dynamic_config_value
 from task.visual_drivers.vidu_default_driver import ViduDefaultDriver
 from config.constant import AI_TOOL_STATUS_PENDING, AI_TOOL_STATUS_PROCESSING, AI_TOOL_STATUS_COMPLETED, AI_TOOL_STATUS_FAILED
 
@@ -17,10 +16,13 @@ VIDU_IMAGE_TO_VIDEO_TYPE = 14
 
 class TestViduDefaultWithDB(BaseVideoDriverTest):
     """Vidu 驱动数据库集成测试"""
-    
+
     def setUp(self):
+        """测试前准备"""
         super().setUp()
-        self.driver = ViduDefaultDriver()
+        # 使用统一的 mock 配置函数，从 config_unit.yml 获取配置
+        with patch('task.visual_drivers.vidu_default_driver.get_dynamic_config_value', side_effect=mock_get_dynamic_config_value):
+            self.driver = ViduDefaultDriver()
 
     def test_driver_initialization(self):
         self.assertIsNotNone(self.driver)

@@ -34,28 +34,52 @@ uv sync
 ```powershell
 # 开发环境
 $env:comfyui_env="dev"
-uv run start_windows.py
+uv run scripts/launchers/start_windows.py
 
 # 生产环境（默认）
-uv run start_windows.py
+uv run scripts/launchers/start_windows.py
 ```
 
 或直接双击 `start.bat`（显示日志，适合调试）。
 
-### Linux/macOS 启动
-
-```bash
-python3 server.py
-```
-
-### 启动流程说明
-
-`start_windows.py` 会自动：
+`scripts/launchers/start_windows.py` 会自动：
 1. 检查 Python 和 uv 环境
 2. 启动本地 MySQL 服务（首次自动初始化）
 3. 执行数据库迁移
 4. 启动 Web 服务和定时任务
 5. 监控服务状态，异常时自动重启
+
+### Linux/macOS 启动
+
+```bash
+# 1. 复制配置文件（首次运行）
+cp config.example.yml config_prod.yml
+
+# 2. 修改数据库配置（重要！）
+# 编辑 config_prod.yml，修改以下配置项：
+#   - database.host: 数据库地址
+#   - database.port: 数据库端口（默认 3306）
+#   - database.user: 数据库用户名
+#   - database.password: 数据库密码
+#   - database.name: 数据库名称
+
+# 3. 导入数据库基线（首次运行）
+mysql -u root -p your_database < model/sql/baseline.sql
+
+# 4. 启动服务
+# 生产环境
+python3 scripts/running/run_prod.py
+
+# 或开发环境
+python3 scripts/running/run_dev.py
+```
+
+### run_prod.py 与 run_dev.py 的区别
+
+| 启动方式 | 配置文件 | 日志级别 | 用途 |
+|----------|----------|----------|------|
+| `scripts/running/run_prod.py` | `config_prod.yml` | WARNING | 生产环境，日志精简 |
+| `scripts/running/run_dev.py` | `config_dev.yml` | DEBUG | 开发环境，日志详细 |
 
 ---
 
@@ -171,6 +195,38 @@ test_mode:
 
 ---
 
+## 打包工具
+
+### Windows 托盘启动器打包
+
+**📌 详细说明：[scripts/build/README.md](../scripts/build/README.md)**
+
+本项目提供自动化打包工具，用于生成带托盘功能的 Windows 可执行文件：
+
+```bash
+# 方法一：使用批处理脚本（推荐）
+scripts\build\build.bat
+
+# 方法二：直接运行 Python 脚本
+python scripts\build\build_launcher.py
+```
+
+打包工具会自动：
+- 检查并安装必需的依赖（pystray、PIL、PyInstaller）
+- 清理之前的构建文件
+- 使用正确的参数打包
+- 验证输出文件
+
+**输出文件**：`点我启动.exe` - 包含完整托盘功能的可执行程序
+
+**托盘功能**：
+- 系统托盘图标显示启动状态
+- 右键菜单（打开浏览器、查看日志、退出）
+- 自动打开浏览器
+- 单实例检测防止重复启动
+
+---
+
 ## 目录结构
 
 ```
@@ -178,11 +234,34 @@ comfyui_server/
 ├─ 点我启动.exe               # Windows 托盘启动器（推荐）
 ├─ start.bat                  # Windows 启动脚本（显示日志）
 ├─ stop.bat                   # Windows 停止脚本
-├─ launcher.py                # 启动器源码
-├─ start_windows.py           # Windows 启动逻辑
+├─ start.command              # macOS 启动脚本
+├─ stop.command               # macOS 停止脚本
+├─ scripts/                   # 脚本目录
+│  ├─ build/                  # 打包工具目录
+│  │  ├─ build_launcher.py    # 主打包脚本
+│  │  ├─ build.bat            # 批处理打包脚本
+│  │  └─ README.md            # 打包工具说明
+│  ├─ launchers/              # 启动器脚本
+│  │  ├─ launcher.py          # Windows 托盘启动器源码
+│  │  ├─ launcher_mac.py      # macOS 托盘启动器源码
+│  │  ├─ start_windows.py     # Windows 启动逻辑
+│  │  └─ start_mac.py         # macOS 启动逻辑
+│  ├─ running/                # 运行脚本
+│  │  ├─ run_prod.py          # 生产环境启动器
+│  │  ├─ run_dev.py           # 开发环境启动器
+│  │  ├─ run_scheduler.py     # 定时任务启动器
+│  │  └─ run_unit_tests.py    # 单元测试启动器
+│  ├─ testing/                # 测试脚本
+│  │  ├─ run_driver_tests.sh  # 驱动测试脚本
+│  │  └─ run_tests.sh         # 测试脚本
+│  ├─ tools/                  # 工具脚本
+│  │  ├─ create_mac_app.sh    # macOS 应用创建脚本
+│  │  ├─ create_shortcuts.vbs # Windows 快捷方式创建脚本
+│  │  ├─ start_silent.vbs     # Windows 静默启动脚本
+│  │  └─ obfuscate.sh         # 混淆脚本
+│  └─ startup/                # 启动脚本
+│     └─ linux_start_prod.sh  # Linux 生产启动脚本
 ├─ server.py                  # FastAPI 后端主入口
-├─ run_prod.py                # 生产环境启动器
-├─ run_dev.py                 # 开发环境启动器
 │
 ├─ api/                       # API 路由模块
 ├─ model/                     # 数据模型 & ORM
@@ -211,6 +290,7 @@ comfyui_server/
 
 | 文档 | 说明 |
 |------|------|
+| [scripts/build/README.md](../scripts/build/README.md) | Windows 托盘启动器打包工具使用指南 |
 | [Windows启动开发说明.md](Windows启动开发说明.md) | Windows 启动流程详解 |
 | [database_migration.md](database_migration.md) | 数据库迁移指南 |
 | [test_mode_guide.md](test_mode_guide.md) | 测试模式使用指南 |

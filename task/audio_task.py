@@ -1,5 +1,5 @@
 """
-Video generation task processing
+Audio generation task processing
 """
 import logging
 from datetime import datetime, timedelta

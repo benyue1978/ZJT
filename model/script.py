@@ -1,8 +1,7 @@
 """
 Script Model - Database operations for script table
 """
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import Optional, Dict, Any
 from .database import execute_query, execute_update, execute_insert
 import logging
 

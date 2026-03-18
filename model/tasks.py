@@ -2,13 +2,10 @@
 Tasks Model - Database operations for tasks table
 """
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from .database import execute_query, execute_update, execute_insert
 from config.constant import (
     TASK_STATUS_QUEUED,
-    TASK_STATUS_PROCESSING,
-    TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED
+    TASK_STATUS_PROCESSING
 )
 import logging
 

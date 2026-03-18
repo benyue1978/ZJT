@@ -28,9 +28,11 @@
       <header>
         <div style="display: flex; align-items: center; gap: 12px;">
           <img src="/files/logo.svg" alt="Logo" style="width: 48px; height: 48px;" />
-          <div class="title">{{ pageTitle }}</div>
+          <div class="header-title-group">
+            <div class="title">{{ mainTitle }}</div>
+            <div class="subtitle" v-if="route.name==='list'">AI短剧制作平台</div>
+          </div>
         </div>
-        <div class="muted" v-if="route.name==='list'">共 {{ tools.length }} 个工具</div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <button class="btn secondary" v-if="route.name!=='list'" @click="goHome">返回</button>
           <template v-if="isLoggedIn">
@@ -44,7 +46,7 @@
                   ↻
                 </button>
               </div>
-              <button class="btn secondary" @click="showRechargePowerModal = true; fetchRechargePackages()" style="margin-top: 8px; font-size: 12px; padding: 4px 12px;">算力充值</button>
+              <button class="btn secondary" @click="handleRechargeClick" style="margin-top: 8px; font-size: 12px; padding: 4px 12px;">算力充值</button>
             </div>
             <a v-if="userRole === 'admin'" href="/admin" class="btn secondary" style="text-decoration: none;">管理后台</a>
             <button class="btn secondary" @click="handleLogout">登出</button>
@@ -58,7 +60,9 @@
     
     <!-- ICP备案信息 -->
     <footer class="icp-footer">
-      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">xxxxxxxxxx</a>
+      <span v-if="footerConfig.copyright">{{ footerConfig.copyright }}</span>
+      <a v-if="footerConfig.icp_number" :href="footerConfig.icp_url" target="_blank" rel="noopener noreferrer" style="margin-left: 8px;">{{ footerConfig.icp_number }}</a>
+      <a v-if="footerConfig.police_number" :href="footerConfig.police_url" target="_blank" rel="noopener noreferrer" style="margin-left: 8px;">{{ footerConfig.police_number }}</a>
     </footer>
 
     <!-- 意见反馈按钮 -->
@@ -141,7 +145,16 @@
             <label class="label">密码</label>
             <input class="input" type="password" v-model="registerForm.password" placeholder="请输入密码" />
           </div>
-          <div class="field">
+          <!-- 本地模式提示 -->
+          <div v-if="isLocal" class="field">
+            <div class="local-mode-tip" style="background: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
+              <p style="margin: 0; color: #2e7d32; font-size: 13px;">
+                <strong>本地模式：</strong>您的数据（包括算力）都存储您自己的电脑中，您可以在后台修改或通知管理员(第一位用户)修改。
+              </p>
+            </div>
+          </div>
+          <!-- 非本地模式显示邀请码 -->
+          <div class="field" v-if="!isLocal">
             <label class="label">邀请码（选填）</label>
             <input class="input" type="text" v-model="registerForm.inviteCode" placeholder="请输入邀请码" maxlength="10" @keyup.enter="handleRegister" />
             <div class="invite-tip">
@@ -422,112 +435,182 @@
         </div>
       </div>
     </div>
+    
+    <!-- Mode Selection Modal -->
+    <div class="modal-overlay" v-if="showModeSelectModal" @click.self="creationMode ? showModeSelectModal = false : null">
+      <div class="modal" style="position: relative; max-width: 500px;">
+        <button class="modal-close" v-if="creationMode" @click="showModeSelectModal = false">×</button>
+        <div class="modal-title" style="text-align: center;">选择创作模式</div>
+        <div style="padding: 20px;">
+          <p style="text-align: center; color: var(--muted); margin-bottom: 24px;">请选择您的创作模式</p>
+          <div class="mode-select-list">
+            <div class="mode-select-item" :class="{active: creationMode === 'short_drama'}" @click="selectCreationMode('short_drama')">
+              <div class="mode-select-icon">🎬</div>
+              <div class="mode-select-content">
+                <div class="mode-select-title">短剧模式</div>
+                <div class="mode-select-desc">适用于AI短剧创作，包含剧本、角色、场景、视频生成全流程</div>
+              </div>
+              <div class="mode-select-check" v-if="creationMode === 'short_drama'">✓</div>
+            </div>
+            <div class="mode-select-item disabled" style="opacity: 0.5; cursor: not-allowed;">
+              <div class="mode-select-icon">🛒</div>
+              <div class="mode-select-content">
+                <div class="mode-select-title">电商模式</div>
+                <div class="mode-select-desc">即将推出...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
   </div>
 
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://unpkg.com/vue-router@4"></script>
   <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="/js/task_config.js"></script>
   <script>
   const ListPage = {
     name: 'ListPage',
+    data() {
+      return {
+        aiToolsExpanded: false
+      };
+    },
     template: `
-      <div>
+      <div class="homepage-container">
+        <!-- 当前模式显示 -->
+        <div class="current-mode-bar">
+          <span class="current-mode-label">当前模式：</span>
+          <span class="current-mode-value">{{ $root.creationMode === 'short_drama' ? '🎬 短剧模式' : '未选择' }}</span>
+          <button class="mode-switch-btn" @click.stop="$root.showModeSelectModal = true">切换模式</button>
+        </div>
+        
+        <!-- 开始创作大横幅 -->
+        <div class="start-creation-banner" @click="handleStartCreation">
+          <div class="banner-content">
+            <div class="banner-title-row">
+              <span class="banner-sparkle">✨</span>
+              <h1 class="banner-title">开始创作</h1>
+              <span class="banner-sparkle">✨</span>
+            </div>
+            <p class="banner-desc">创建新的短剧工作流，一站式完成剧本、角色、场景到视频的全流程制作</p>
+            <p class="banner-subtitle">→ 点击开始您的创作之旅</p>
+          </div>
+        </div>
+        
+        <!-- 工作流入口卡片 -->
         <div class="feature-cards">
           <div class="feature-card" @click="handleVideoWorkflowClick">
-            <div class="feature-card-icon">🎬</div>
-            <div class="feature-card-title">视频工作流</div>
-            <div class="feature-card-desc">空画布 + 节点式工作流编辑<br>创建和管理您的视频项目</div>
-            <div class="feature-card-arrow">→</div>
+            <div class="feature-card-header">
+              <div class="feature-card-icon blue">📹</div>
+              <div class="feature-card-info">
+                <div class="feature-card-title">视频工作流</div>
+                <div class="feature-card-subtitle">空画布 + 节点式工作流编辑</div>
+              </div>
+            </div>
+            <div class="feature-card-body">
+              <p class="feature-card-desc">创建和管理视频的视频项目</p>
+            </div>
+            <div class="feature-card-footer">
+              <span class="feature-card-link">→</span>
+            </div>
           </div>
           <div class="feature-card" @click="handleScriptWriterClick">
-            <div class="feature-card-icon">✨</div>
-            <div class="feature-card-title">剧本智能创作系统</div>
-            <div class="feature-card-desc">AI智能体生成剧本、人物、场景、道具<br>一键创作完整短剧素材</div>
-            <div class="feature-card-arrow">→</div>
+            <div class="feature-card-header">
+              <div class="feature-card-icon purple">✨</div>
+              <div class="feature-card-info">
+                <div class="feature-card-title">剧本智能创作系统</div>
+                <div class="feature-card-subtitle">AI智能体生成 · 人物 · 场景 · 道具</div>
+              </div>
+            </div>
+            <div class="feature-card-body">
+              <p class="feature-card-desc">一键创作完整的短剧素材</p>
+            </div>
+            <div class="feature-card-footer">
+              <span class="feature-card-link">→</span>
+            </div>
           </div>
         </div>
-        <div class="list">
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">图片编辑</div>
-            <div class="muted">上传图片 + 提示词</div>
+        
+        <!-- AI工具区域 -->
+        <div class="ai-tools-section">
+          <div class="ai-tools-header" @click="aiToolsExpanded = !aiToolsExpanded">
+            <div class="ai-tools-left">
+              <div class="ai-tools-icon">🤖</div>
+              <div class="ai-tools-info">
+                <span class="ai-tools-title">AI 工具箱</span>
+                <span class="ai-tools-subtitle" v-if="!aiToolsExpanded">展开查看所有可用工具</span>
+              </div>
+            </div>
+            <div class="ai-tools-toggle" :class="{expanded: aiToolsExpanded}">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </div>
           </div>
-          <button class="btn" @click="$router.push({name:'image-edit'})">打开</button>
+          <div class="ai-tools-content" v-show="aiToolsExpanded">
+            <div class="ai-tools-grid">
+              <div class="tool-card" @click="$router.push({name:'image-edit'})">
+                <div class="tool-card-icon blue">🖼️</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">图片编辑</div>
+                  <div class="tool-card-desc">上传图片 + 提示词</div>
+                </div>
+              </div>
+              <div class="tool-card" @click="$router.push({name:'text-to-image'})">
+                <div class="tool-card-icon purple">🎨</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">AI文生图</div>
+                  <div class="tool-card-desc">输入文本提示词生成图片</div>
+                </div>
+              </div>
+              <div class="tool-card" @click="$router.push({name:'ai-video-gen'})">
+                <div class="tool-card-icon orange">📹</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">AI视频生成</div>
+                  <div class="tool-card-desc">输入文本提示词生成视频</div>
+                </div>
+              </div>
+              <div class="tool-card" @click="$router.push({name:'image-to-video'})">
+                <div class="tool-card-icon green">🎬</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">图片生成视频</div>
+                  <div class="tool-card-desc">上传图片 + 提示词生成视频</div>
+                </div>
+              </div>
+              <div class="tool-card" @click="$router.push({name:'video-enhance'})">
+                <div class="tool-card-icon yellow">✨</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">视频高清修复</div>
+                  <div class="tool-card-desc">上传模糊视频进行高清修复</div>
+                </div>
+              </div>
+              <div class="tool-card" @click="$router.push({name:'audio-generate'})">
+                <div class="tool-card-icon purple">🎵</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">AI音频生成</div>
+                  <div class="tool-card-desc">输入文本生成语音，支持声音克隆</div>
+                </div>
+              </div>
+              <div class="tool-card" @click="$router.push({name:'digital-human'})">
+                <div class="tool-card-icon pink">👤</div>
+                <div class="tool-card-info">
+                  <div class="tool-card-title">在线图片数字人</div>
+                  <div class="tool-card-desc">上传图片+文本+音频生成数字人</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">AI文生图</div>
-            <div class="muted">输入文本提示词生成图片</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'text-to-image'})">打开</button>
-        </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">AI视频生成</div>
-            <div class="muted">输入文本提示词生成视频</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'ai-video-gen'})">打开</button>
-        </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">图片生成视频</div>
-            <div class="muted">上传图片 + 提示词生成视频</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'image-to-video'})">打开</button>
-        </div>
-        <div class="list-item" style="display: none;">
-          <div>
-            <div style="font-weight:700">图生视频智能体</div>
-            <div class="muted">上传1-5张图片生成视频脚本</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'ai-script-gen'})">打开</button>
-        </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">视频高清修复</div>
-            <div class="muted">上传模糊视频进行高清修复</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'video-enhance'})">打开</button>
-        </div>
-        <div class="list-item" style="display: none;">
-          <div>
-            <div style="font-weight:700">视频 Remix</div>
-            <div class="muted">基于现有视频ID进行重新编辑</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'video-remix'})">打开</button>
-        </div>
-        <div class="list-item" style="display: none;">
-          <div>
-            <div style="font-weight:700">创建角色卡</div>
-            <div class="muted">从视频中提取角色，用于后续@引用</div>
-          </div>
-          <button class="btn" onclick="location.href='/character_card.html'">打开</button>
-        </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">AI音频生成</div>
-            <div class="muted">输入文本生成语音，支持声音克隆和情感控制</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'audio-generate'})">打开</button>
-        </div>
-        <div class="list-item">
-          <div>
-            <div style="font-weight:700">在线图片数字人</div>
-            <div class="muted">上传图片+文本+音频生成数字人视频</div>
-          </div>
-          <button class="btn" @click="$router.push({name:'digital-human'})">打开</button>
-        </div>
-        <!-- <div class="list-item">
-          <div>
-            <div style="font-weight:700">小红书笔记修改</div>
-            <div class="muted">直接跳转到表单页面进行笔记修改</div>
-          </div>
-          <button class="btn" onclick="location.href='http://ssh.perseids.cn:15678/form/8cd1955c-5cf6-4111-a3a4-406001d7e3b2'">打开</button>
-        </div>-->
-      </div>
       </div>
     `,
     methods: {
+      handleStartCreation() {
+        // 跳转到工作流列表页面并自动打开新建表单
+        window.location.href = '/video-workflow-list?action=create';
+      },
       handleVideoWorkflowClick() {
         window.location.href = '/video-workflow-list';
       },
@@ -568,10 +651,13 @@
         historyLoading: false,
         historyPage: 1,
         historyTotal: 0,
+        modelConfigs: {}  // 从后端获取的模型配置
       }
     },
     mounted() {
       this.authToken = localStorage.getItem('auth_token') || '';
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() {
@@ -586,21 +672,47 @@
         return '';
       },
       aspectRatioOptions() {
-        return [
-          { value: '9:16', label: '9:16 (竖屏)' },
-          { value: '16:9', label: '16:9 (横屏)' },
-          { value: '1:1', label: '1:1 (方形)' },
-          { value: '3:2', label: '3:2' },
-          { value: '4:3', label: '4:3' },
-          { value: '2:3', label: '2:3' },
-          { value: '3:4', label: '3:4' }
-        ];
+        const config = this.modelConfigs['digital_human'];
+        if (!config || !config.ratios) {
+          return [
+            { value: '9:16', label: '9:16 (竖屏)' },
+            { value: '16:9', label: '16:9 (横屏)' },
+            { value: '1:1', label: '1:1 (方形)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1 (方形)',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '3:4': '3:4',
+          '4:3': '4:3'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       computingPower() {
         return 12;
       }
     },
     methods: {
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          // 设置初始默认值
+          const config = this.modelConfigs['digital_human'];
+          if (config && config.default_ratio) {
+            this.aspectRatio = config.default_ratio;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       onImageFile(e) {
         this.imageFile = e.target.files[0] || null;
       },
@@ -1986,7 +2098,7 @@
         prompt: '',
         ratio: '9:16',
         count: 1,
-        model: 'gemini-2.5-pro-image-preview',
+        model: 'gemini',  // 简短 key，对应 gemini_image_edit
         imageSize: '1K',
         loading: false,
         error: '',
@@ -2005,7 +2117,10 @@
         upscaleProjectIds: {},
         upscaleResults: {},
         upscaleStatusIntervals: {},
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        taskTypeConfig: null,  // 从后端获取的任务类型配置
+        modelConfigs: {},  // 从后端获取的模型配置
+        configLoaded: false  // 配置是否已加载
       }
     },
     mounted() {
@@ -2013,17 +2128,38 @@
       this.authToken = localStorage.getItem('auth_token') || '';
       // 获取驱动状态
       this.fetchDriverStatus();
+      // 获取任务类型配置
+      this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() { return this.files.length > 0 && this.files.length <= 5 && !!this.prompt && !this.loading },
       ratioOptions() {
-        return [
-          { value: '9:16', label: '竖屏 (9:16)' },
-          { value: '16:9', label: '横屏 (16:9)' },
-          { value: '1:1', label: '正方形 (1:1)' },
-          { value: '3:4', label: '竖屏 (3:4)' },
-          { value: '4:3', label: '横屏 (4:3)' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.ratios) {
+          return [
+            { value: '9:16', label: '竖屏 (9:16)' },
+            { value: '16:9', label: '横屏 (16:9)' },
+            { value: '1:1', label: '正方形 (1:1)' },
+            { value: '3:4', label: '竖屏 (3:4)' },
+            { value: '4:3', label: '横屏 (4:3)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '竖屏 (9:16)',
+          '16:9': '横屏 (16:9)',
+          '1:1': '正方形 (1:1)',
+          '3:4': '竖屏 (3:4)',
+          '4:3': '横屏 (4:3)',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '21:9': '21:9'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       countOptions() {
         return [
@@ -2034,10 +2170,10 @@
         ];
       },
       modelOptions() {
-        const allOptions = [
-          { value: 'gemini-2.5-pro-image-preview', label: '标准版 (2算力)', taskType: 1 },
-          { value: 'gemini-3-pro-image-preview', label: '加强版 (6算力)', taskType: 7 }
-        ];
+        // 依赖 configLoaded 触发重新计算
+        if (!this.configLoaded) return [];
+        // 动态从配置获取图片编辑模型列表
+        const allOptions = TaskConfig.getModelOptionsForCategory('image_edit');
         return allOptions.map(opt => {
           const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
           return {
@@ -2048,11 +2184,17 @@
         });
       },
       imageSizeOptions() {
-        return [
-          { value: '1K', label: '1K' },
-          { value: '2K', label: '2K' },
-          { value: '4K', label: '4K' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.image_sizes) {
+          return [
+            { value: '1K', label: '1K' },
+            { value: '2K', label: '2K' }
+          ];
+        }
+        return config.image_sizes.map(size => ({
+          value: size,
+          label: size
+        }));
       },
       statusText() {
         switch(this.status) {
@@ -2062,6 +2204,20 @@
           case 'SUCCESS': return '生成完成！';
           case 'FAILED': return '任务失败';
           default: return '';
+        }
+      }
+    },
+    watch: {
+      model(newModel) {
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          if (config.default_ratio && !config.ratios.includes(this.ratio)) {
+            this.ratio = config.default_ratio;
+          }
+          if (config.default_image_size && config.image_sizes && !config.image_sizes.includes(this.imageSize)) {
+            this.imageSize = config.default_image_size;
+          }
         }
       }
     },
@@ -2076,6 +2232,40 @@
           console.error('获取驱动状态异常:', error);
         }
       },
+
+      async fetchTaskTypeConfig() {
+        try {
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          this.configLoaded = true;  // 标记配置已加载
+          
+          // 检查当前 model 是否在可用选项中，如果不在则选择第一个
+          const allOptions = TaskConfig.getModelOptionsForCategory('image_edit');
+          const validValues = allOptions.map(opt => opt.value);
+          if (!validValues.includes(this.model) && allOptions.length > 0) {
+            this.model = allOptions[0].value;
+          }
+          
+          // 设置初始默认值
+          const config = this.modelConfigs[this.model];
+          if (config) {
+            if (config.default_ratio) this.ratio = config.default_ratio;
+            if (config.default_image_size) this.imageSize = config.default_image_size;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       onFile(e){ 
         const selectedFiles = Array.from(e.target.files || []);
         const remainingSlots = 5 - this.files.length;
@@ -2118,8 +2308,14 @@
           form.append('prompt', this.prompt);
           form.append('ratio', this.ratio);
           form.append('count', this.count);
-          form.append('model', this.model);
           form.append('image_size', this.imageSize);
+          
+          // 根据 model 获取 task_id
+          const taskId = TaskConfig.getTaskIdByKey(this.model, 'image_edit');
+          if (!taskId) {
+            throw new Error(`未找到模型 ${this.model} 对应的任务配置`);
+          }
+          form.append('task_id', taskId);
           
           // Add user_id from localStorage
           const userId = localStorage.getItem('user_id');
@@ -2269,16 +2465,24 @@
         this.historyLoading = true;
         try {
           const authToken = localStorage.getItem('auth_token');
+          // 如果没有获取到任务类型配置，先获取
+          if (!this.taskTypeConfig) {
+            await this.fetchTaskTypeConfig();
+          }
+          // 图片编辑界面只查询图片编辑类型
+          const imageEditTypes = this.taskTypeConfig?.image_edit_types || [1, 7];
+          const typesStr = imageEditTypes.join(',');
+
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 1,  // 1-图片编辑
+              types: typesStr,
               auth_token: authToken || undefined
             }
           });
-          
+
           if (response.data.success) {
             const newData = response.data.data.data || [];
             if (append) {
@@ -2500,7 +2704,7 @@
             </select>
           </div>
 
-          <div class="field" v-if="model === 'gemini-3-pro-image-preview'">
+          <div class="field" v-if="imageSizeOptions.length > 0">
             <label class="label">分辨率</label>
             <select class="input" v-model="imageSize">
               <option v-for="opt in imageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -2618,7 +2822,7 @@
     data() {
       return {
         prompt: '',
-        model: 'gemini-2.5-pro-image-preview',
+        model: 'gemini',  // 简短 key，对应 gemini_image_edit
         aspectRatio: '9:16',
         imageSize: '1K',
         count: 1,
@@ -2635,21 +2839,28 @@
         historyLoading: false,
         historyPage: 1,
         historyTotal: 0,
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        taskTypeConfig: null,  // 从后端获取的任务类型配置
+        modelConfigs: {},  // 从后端获取的模型配置
+        configLoaded: false  // 配置是否已加载
       }
     },
     mounted() {
       this.authToken = localStorage.getItem('auth_token') || '';
       // 获取驱动状态
       this.fetchDriverStatus();
+      // 获取任务类型配置
+      this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     computed: {
       canSubmit() { return !!this.prompt.trim() && !this.loading },
       modelOptions() {
-        const allOptions = [
-          { value: 'gemini-3-pro-image-preview', label: 'nano-banana-pro 加强版 (6算力)', taskType: 7 },
-          { value: 'gemini-2.5-pro-image-preview', label: 'nano-banana 标准版 (2算力)', taskType: 1 }
-        ];
+        // 依赖 configLoaded 触发重新计算
+        if (!this.configLoaded) return [];
+        // 动态从配置获取文生图模型列表
+        const allOptions = TaskConfig.getModelOptionsForCategory('text_to_image');
         return allOptions.map(opt => {
           const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
           return {
@@ -2660,25 +2871,43 @@
         });
       },
       aspectRatioOptions() {
-        return [
-          { value: '1:1', label: '1:1' },
-          { value: '2:3', label: '2:3' },
-          { value: '3:2', label: '3:2' },
-          { value: '3:4', label: '3:4' },
-          { value: '4:3', label: '4:3' },
-          { value: '4:5', label: '4:5' },
-          { value: '5:4', label: '5:4' },
-          { value: '9:16', label: '9:16 (竖屏)' },
-          { value: '16:9', label: '16:9 (横屏)' },
-          { value: '21:9', label: '21:9' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.ratios) {
+          return [
+            { value: '1:1', label: '1:1' },
+            { value: '9:16', label: '9:16 (竖屏)' },
+            { value: '16:9', label: '16:9 (横屏)' }
+          ];
+        }
+        const labelMap = {
+          '9:16': '9:16 (竖屏)',
+          '16:9': '16:9 (横屏)',
+          '1:1': '1:1',
+          '3:4': '3:4',
+          '4:3': '4:3',
+          '3:2': '3:2',
+          '2:3': '2:3',
+          '21:9': '21:9',
+          '4:5': '4:5',
+          '5:4': '5:4'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
       },
       imageSizeOptions() {
-        return [
-          { value: '1K', label: '1K' },
-          { value: '2K', label: '2K' },
-          { value: '4K', label: '4K' }
-        ];
+        const config = this.modelConfigs[this.model];
+        if (!config || !config.image_sizes) {
+          return [
+            { value: '1K', label: '1K' },
+            { value: '2K', label: '2K' }
+          ];
+        }
+        return config.image_sizes.map(size => ({
+          value: size,
+          label: size
+        }));
       },
       countOptions() {
         return [
@@ -2699,6 +2928,20 @@
         }
       }
     },
+    watch: {
+      model(newModel) {
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          if (config.default_ratio && !config.ratios.includes(this.aspectRatio)) {
+            this.aspectRatio = config.default_ratio;
+          }
+          if (config.default_image_size && config.image_sizes && !config.image_sizes.includes(this.imageSize)) {
+            this.imageSize = config.default_image_size;
+          }
+        }
+      }
+    },
     methods: {
       async fetchDriverStatus() {
         try {
@@ -2710,6 +2953,40 @@
           console.error('获取驱动状态异常:', error);
         }
       },
+
+      async fetchTaskTypeConfig() {
+        try {
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          this.configLoaded = true;  // 标记配置已加载
+          
+          // 检查当前 model 是否在可用选项中，如果不在则选择第一个
+          const allOptions = TaskConfig.getModelOptionsForCategory('text_to_image');
+          const validValues = allOptions.map(opt => opt.value);
+          if (!validValues.includes(this.model) && allOptions.length > 0) {
+            this.model = allOptions[0].value;
+          }
+          
+          // 设置初始默认值
+          const config = this.modelConfigs[this.model];
+          if (config) {
+            if (config.default_ratio) this.aspectRatio = config.default_ratio;
+            if (config.default_image_size) this.imageSize = config.default_image_size;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
+        }
+      },
+
       async submit(){
         if(!this.canSubmit) return;
         
@@ -2730,12 +3007,18 @@
         try {
           const form = new FormData();
           form.append('prompt', this.prompt);
-          form.append('model', this.model);
           form.append('aspect_ratio', this.aspectRatio);
           form.append('count', this.count);
           form.append('user_id', userId);
           
-          if (this.model === 'gemini-3-pro-image-preview' && this.imageSize) {
+          // 根据 model 获取 task_id
+          const taskId = TaskConfig.getTaskIdByKey(this.model, 'text_to_image');
+          if (!taskId) {
+            throw new Error(`未找到模型 ${this.model} 对应的任务配置`);
+          }
+          form.append('task_id', taskId);
+          
+          if (this.imageSize) {
             form.append('image_size', this.imageSize);
           }
           
@@ -2868,12 +3151,20 @@
         this.historyLoading = true;
         try {
           const authToken = localStorage.getItem('auth_token');
+          // 如果没有获取到任务类型配置，先获取
+          if (!this.taskTypeConfig) {
+            await this.fetchTaskTypeConfig();
+          }
+          // 文生图界面只查询文生图类型
+          const textToImageTypes = this.taskTypeConfig?.text_to_image_types || [16];
+          const typesStr = textToImageTypes.join(',');
+
           const response = await axios.get('/api/ai-tools/history', {
             params: {
               user_id: parseInt(userId),
               page: this.historyPage,
               page_size: 20,
-              type: 1,
+              types: typesStr,
               auth_token: authToken || undefined
             }
           });
@@ -2943,6 +3234,15 @@
       getAspectRatioLabel(value) {
         const option = this.aspectRatioOptions.find(opt => opt.value === value);
         return option ? option.label : value || '未知';
+      },
+
+      async fetchTaskTypeConfig() {
+        try {
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
+        } catch (err) {
+          console.error('获取任务类型配置失败:', err);
+        }
       }
     },
     
@@ -2971,12 +3271,11 @@
             </select>
           </div>
 
-          <div class="field" v-if="model === 'gemini-3-pro-image-preview'">
+          <div class="field" v-if="imageSizeOptions.length > 0">
             <label class="label">分辨率</label>
             <select class="input" v-model="imageSize">
               <option v-for="opt in imageSizeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
-            <div class="muted" style="margin-top: 4px;">nano-banana-pro 支持 1K/2K/4K 分辨率</div>
           </div>
 
           <div class="field">
@@ -3095,7 +3394,12 @@
         enhanceTaskIds: {},   // Track enhancement task IDs by index
         taskComputingPower: {},  // 从接口获取的算力配置
         taskTypeConfig: null,  // 从接口获取的任务类型配置
-        driverStatus: {}  // 驱动可用状态
+        driverStatus: {},  // 驱动可用状态
+        modelConfigs: {},  // 从后端获取的模型配置
+        configLoaded: false,  // 配置是否已加载
+        // 图片模式相关
+        imageMode: 'first_last_frame',  // 图片模式: first_last_frame, multi_reference, first_last_with_ref
+        referenceFiles: []  // 参考图文件（仅 first_last_with_ref 模式使用）
       }
     },
     mounted() {
@@ -3105,92 +3409,147 @@
       this.fetchComputingPowerConfig();
       // 获取任务类型配置
       this.fetchTaskTypeConfig();
+      // 获取模型配置
+      this.fetchModelConfigs();
     },
     watch: {
       videoModel(newModel, oldModel) {
-        // 当切换模型时，自动设置合适的默认时长
-        if (newModel === 'ltx2') {
-          // LTX2.0: 5, 8, 10秒
-          if (![5, 8, 10].includes(this.durationSeconds)) {
-            this.durationSeconds = 5;
+        // 切换模型时，更新默认值
+        const config = this.modelConfigs[newModel];
+        if (config) {
+          // 更新比例
+          if (config.default_ratio && config.ratios && !config.ratios.includes(this.model)) {
+            this.model = config.default_ratio;
           }
-        } else if (newModel === 'wan22' || newModel === 'kling'|| newModel === 'vidu') {
-          // Wan2.2 和可灵: 5, 10秒
-          if (![5, 10].includes(this.durationSeconds)) {
-            this.durationSeconds = 5;
-          }
-        } else if (newModel === 'veo3') {
-          // VEO3: 固定8秒
-          this.durationSeconds = 8;
-        } else {
-          // Sora2: 10, 15秒
-          if (![10, 15].includes(this.durationSeconds)) {
-            this.durationSeconds = 10;
+          // 更新时长
+          if (config.durations && !config.durations.includes(this.durationSeconds)) {
+            this.durationSeconds = config.default_duration || config.durations[0] || 5;
           }
         }
+      },
+      imageMode(newMode, oldMode) {
+        // 切换图片模式时，检查当前模型是否支持新模式
+        const config = this.modelConfigs[this.videoModel];
+        const supportedModes = config?.supported_image_modes || ['first_last_frame'];
+        if (!supportedModes.includes(newMode)) {
+          // 当前模型不支持新模式，切换到支持该模式的第一个模型
+          const allOptions = TaskConfig.getModelOptionsForCategory('image_to_video');
+          for (const opt of allOptions) {
+            const optConfig = this.modelConfigs[opt.value];
+            const optModes = optConfig?.supported_image_modes || ['first_last_frame'];
+            const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
+            if (optModes.includes(newMode) && isAvailable) {
+              this.videoModel = opt.value;
+              break;
+            }
+          }
+        }
+        // 模式切换时清空文件
+        this.files = [];
+        this.referenceFiles = [];
       }
     },
     computed: {
-      canSubmit() { return this.files.length > 0 && this.files.length <= 5 && !!this.prompt.trim() && !this.loading },
+      canSubmit() { 
+        // 根据模式验证图片数量
+        if (this.imageMode === 'first_last_frame') {
+          // 首尾帧模式：1-2张图片
+          return this.files.length >= 1 && this.files.length <= 2 && !!this.prompt.trim() && !this.loading;
+        } else if (this.imageMode === 'multi_reference') {
+          // 多参考图模式：1-5张图片
+          return this.files.length >= 1 && this.files.length <= 5 && !!this.prompt.trim() && !this.loading;
+        } else if (this.imageMode === 'first_last_with_ref') {
+          // 首尾帧+参考图模式：首尾帧1-2张，参考图0-3张
+          return this.files.length >= 1 && this.files.length <= 2 && this.referenceFiles.length <= 3 && !!this.prompt.trim() && !this.loading;
+        }
+        return false;
+      },
+      imageModeOptions() {
+        // 显示图片模式供用户选择
+        return [
+          { value: 'first_last_frame', label: '首尾帧模式', desc: '第一张为首帧，第二张为尾帧（可选）' },
+          { value: 'multi_reference', label: '多参考图模式', desc: '所有图片作为风格参考' }
+          // { value: 'first_last_with_ref', label: '首尾帧+参考图', desc: '首尾帧控制动作，参考图控制风格' }  // 暂无模型支持
+        ];
+      },
+      maxFilesForMode() {
+        if (this.imageMode === 'first_last_frame') return 2;
+        if (this.imageMode === 'multi_reference') return 5;
+        if (this.imageMode === 'first_last_with_ref') return 2;
+        return 5;
+      },
+      filesLabel() {
+        if (this.imageMode === 'first_last_frame') return '上传首尾帧图片 (1-2张)';
+        if (this.imageMode === 'multi_reference') return '上传参考图片 (1-5张)';
+        if (this.imageMode === 'first_last_with_ref') return '上传首尾帧图片 (1-2张)';
+        return '上传图片';
+      },
+      filesHint() {
+        if (this.imageMode === 'first_last_frame') return '第一张为首帧，第二张（可选）为尾帧';
+        if (this.imageMode === 'multi_reference') return '多张图片将作为风格参考';
+        if (this.imageMode === 'first_last_with_ref') return '第一张为首帧，第二张（可选）为尾帧';
+        return '';
+      },
       statusText() {
         if (this.status === 'completed') return '生成完成！';
         if (this.loading) return '正在生成视频，请稍候...';
         return '';
       },
       videoModelOptions() {
-        const allOptions = [
-          { value: 'sora2', label: 'Sora2', taskType: 3 },
-          { value: 'ltx2', label: 'LTX2.0', taskType: 10 },
-          { value: 'wan22', label: 'Wan2.2', taskType: 11 },
-          { value: 'kling', label: '可灵', taskType: 12 },
-          { value: 'vidu', label: 'Vidu', taskType: 14 },
-          { value: 'veo3', label: 'VEO3.1', taskType: 15 }
-        ];
+        // 依赖 configLoaded 触发重新计算
+        if (!this.configLoaded) return [];
+        // 动态从配置获取图生视频模型列表
+        const allOptions = TaskConfig.getModelOptionsForCategory('image_to_video');
+        // 根据当前选中的图片模式过滤支持该模式的模型
         return allOptions.map(opt => {
+          const config = this.modelConfigs[opt.value];
+          const supportedModes = config?.supported_image_modes || ['first_last_frame'];
+          const supportsCurrentMode = supportedModes.includes(this.imageMode);
           const isAvailable = !this.driverStatus || !this.driverStatus[opt.taskType] || this.driverStatus[opt.taskType].available !== false;
           return {
             value: opt.value,
             label: isAvailable ? opt.label : opt.label + ' (未配置)',
-            disabled: !isAvailable
+            disabled: !isAvailable || !supportsCurrentMode,
+            supportsMode: supportsCurrentMode
           };
         });
       },
       modelOptions() {
-        // Wan2.2、LTX2.0、Sora2、可灵都只支持横屏和竖屏
-        return [
-          { value: '9:16', label: '竖屏' },
-          { value: '16:9', label: '横屏' }
-        ];
-      },
-      durationOptions() {
-        if (this.videoModel === 'ltx2') {
+        const config = this.modelConfigs[this.videoModel];
+        if (!config || !config.ratios) {
           return [
-            { value: 5, label: '5秒 (121帧)' },
-            { value: 8, label: '8秒 (201帧)' },
-            { value: 10, label: '10秒 (241帧)' }
+            { value: '9:16', label: '竖屏' },
+            { value: '16:9', label: '横屏' }
           ];
         }
-        if (this.videoModel === 'wan22' || this.videoModel === 'kling') {
+        const labelMap = {
+          '9:16': '竖屏',
+          '16:9': '横屏',
+          '1:1': '正方形'
+        };
+        return config.ratios.map(ratio => ({
+          value: ratio,
+          label: labelMap[ratio] || ratio
+        }));
+      },
+      durationOptions() {
+        const config = this.modelConfigs[this.videoModel];
+        if (!config || !config.durations) {
           return [
             { value: 5, label: '5秒' },
             { value: 10, label: '10秒' }
           ];
         }
-        if (this.videoModel === 'vidu') {
-          return [
-            { value: 5, label: '5秒' },
-            { value: 8, label: '8秒' }
-          ];
-        }
-        if (this.videoModel === 'veo3') {
-          return [
-            { value: 8, label: '8秒' }
-          ];
-        }
-        return [
-          { value: 10, label: '10秒' },
-          { value: 15, label: '15秒' }
-        ];
+        // LTX2 特殊标签
+        const ltx2Labels = {
+          5: '5秒 (121帧)',
+          8: '8秒 (201帧)',
+          10: '10秒 (241帧)'
+        };
+        return config.durations.map(duration => ({
+          value: duration,
+          label: this.videoModel === 'ltx2' ? (ltx2Labels[duration] || `${duration}秒`) : `${duration}秒`
+        }));
       },
       countOptions() {
         return [
@@ -3238,6 +3597,14 @@
         } else if (this.videoModel === 'veo3') {
           // type=15: VEO3固定算力
           power = this.taskComputingPower[15] || 0;
+        } else if (this.videoModel === 'vidu_q2') {
+          // type=19: Vidu Q2根据时长区分算力
+          const viduQ2Power = this.taskComputingPower[19];
+          if (typeof viduQ2Power === 'object') {
+            power = viduQ2Power[this.durationSeconds] || viduQ2Power[5] || 0;
+          } else {
+            power = viduQ2Power || 0;
+          }
         }
         return power;
       },
@@ -3266,14 +3633,26 @@
       
       async fetchTaskTypeConfig() {
         try {
-          const response = await axios.get('/api/task-type-config');
-          if (response.data.success) {
-            this.taskTypeConfig = response.data.data;
-          } else {
-            console.error('获取任务类型配置失败:', response.data.message);
-          }
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
         } catch (error) {
           console.error('获取任务类型配置异常:', error);
+        }
+      },
+
+      async fetchModelConfigs() {
+        try {
+          await TaskConfig.load();
+          this.modelConfigs = TaskConfig.getModelConfigs();
+          this.configLoaded = true;  // 标记配置已加载
+          // 设置初始默认值
+          const config = this.modelConfigs[this.videoModel];
+          if (config) {
+            if (config.default_ratio) this.model = config.default_ratio;
+            if (config.default_duration) this.durationSeconds = config.default_duration;
+          }
+        } catch (err) {
+          console.error('获取模型配置失败:', err);
         }
       },
       
@@ -3351,11 +3730,12 @@
 
       onFile(e){ 
         const selectedFiles = Array.from(e.target.files || []);
-        const remainingSlots = 5 - this.files.length;
+        const maxFiles = this.maxFilesForMode;
+        const remainingSlots = maxFiles - this.files.length;
         
         if (remainingSlots <= 0) {
-          alert('已达到最大数量5张图片，请先删除一些图片');
-          e.target.value = ''; // 清空input
+          alert(`已达到最大数量${maxFiles}张图片，请先删除一些图片`);
+          e.target.value = '';
           return;
         }
         
@@ -3366,15 +3746,49 @@
           this.files = [...this.files, ...selectedFiles];
         }
         
-        e.target.value = ''; // 清空input，允许重复选择同一文件
+        e.target.value = '';
+      },
+      
+      onReferenceFile(e) {
+        const selectedFiles = Array.from(e.target.files || []);
+        const maxRefFiles = 3;
+        const remainingSlots = maxRefFiles - this.referenceFiles.length;
+        
+        if (remainingSlots <= 0) {
+          alert('参考图最多3张，请先删除一些图片');
+          e.target.value = '';
+          return;
+        }
+        
+        if (selectedFiles.length > remainingSlots) {
+          alert(`最多还能添加${remainingSlots}张参考图，已自动截取前${remainingSlots}张`);
+          this.referenceFiles = [...this.referenceFiles, ...selectedFiles.slice(0, remainingSlots)];
+        } else {
+          this.referenceFiles = [...this.referenceFiles, ...selectedFiles];
+        }
+        
+        e.target.value = '';
       },
       
       removeFile(index) {
         this.files.splice(index, 1);
       },
       
+      removeReferenceFile(index) {
+        this.referenceFiles.splice(index, 1);
+      },
+      
       clearAllFiles() {
         this.files = [];
+      },
+      
+      clearAllReferenceFiles() {
+        this.referenceFiles = [];
+      },
+      
+      onImageModeChange() {
+        this.files = [];
+        this.referenceFiles = [];
       },
       
       async submit(){
@@ -3388,15 +3802,30 @@
         
         try {
           const form = new FormData();
-          // Append all images
+          // Append all images (首尾帧图片)
           this.files.forEach(file => {
             form.append('images', file);
           });
+          
+          // 添加参考图（仅 first_last_with_ref 模式）
+          if (this.imageMode === 'first_last_with_ref' && this.referenceFiles.length > 0) {
+            this.referenceFiles.forEach(file => {
+              form.append('reference_images', file);
+            });
+          }
+          
           form.append('prompt', this.prompt);
-          form.append('video_model', this.videoModel);
           form.append('ratio', this.model);
           form.append('duration_seconds', this.durationSeconds);
           form.append('count', this.count);
+          form.append('image_mode', this.imageMode);
+          
+          // 根据 videoModel 获取 task_id
+          const taskId = TaskConfig.getTaskIdByKey(this.videoModel, 'image_to_video');
+          if (!taskId) {
+            throw new Error(`未找到视频模型 ${this.videoModel} 对应的任务配置`);
+          }
+          form.append('task_id', taskId);
           
           // Add user_id from localStorage
           const userId = localStorage.getItem('user_id');
@@ -3663,20 +4092,53 @@
     template: `
       <div>
         <div class="form">
+          <!-- 图片模式选择 -->
           <div class="field">
-            <label class="label">上传图片 (最多5张，可多次选择累加)</label>
+            <label class="label">图片模式</label>
+            <select class="input" v-model="imageMode" @change="onImageModeChange">
+              <option v-for="opt in imageModeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <div class="muted" style="margin-top:6px; color: var(--muted);">
+              {{ imageModeOptions.find(o => o.value === imageMode)?.desc || '' }}
+            </div>
+          </div>
+
+          <!-- 首尾帧/主图片上传 -->
+          <div class="field">
+            <label class="label">{{ filesLabel }}</label>
             <input class="input" type="file" accept="image/*" multiple @change="onFile" />
             <div class="muted" v-if="videoModel === 'sora2'" style="margin-top:6px; color: #fca5a5;">⚠️ 注意：请勿上传真人图片</div>
-            <div class="muted" style="margin-top:6px; color: var(--muted);">多张图片将自动拼接成一张</div>
+            <div class="muted" style="margin-top:6px; color: var(--muted);">{{ filesHint }}</div>
             <div v-if="files.length > 0" style="margin-top: 10px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div style="font-size: 13px; color: var(--muted);">已选择 {{ files.length }}/5 张图片:</div>
+                <div style="font-size: 13px; color: var(--muted);">已选择 {{ files.length }}/{{ maxFilesForMode }} 张图片:</div>
                 <button @click="clearAllFiles" class="btn secondary" style="font-size: 12px; padding: 4px 10px;">清空全部</button>
               </div>
               <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                 <div v-for="(file, index) in files" :key="index" style="position: relative; display: inline-block; padding: 6px 12px; background: #0b1220; border: 1px solid var(--border); border-radius: 6px; font-size: 12px;">
-                  <span>{{ file.name }}</span>
+                  <span>{{ imageMode === 'first_last_frame' ? (index === 0 ? '首帧: ' : (index === 1 ? '尾帧: ' : '')) : '' }}{{ file.name }}</span>
                   <button @click="removeFile(index)" style="margin-left: 8px; background: transparent; border: none; color: #ef4444; cursor: pointer; font-weight: bold;">×</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 参考图上传（仅 first_last_with_ref 模式显示） -->
+          <div class="field" v-if="imageMode === 'first_last_with_ref'">
+            <label class="label">上传参考图 (0-3张，用于风格参考)</label>
+            <input class="input" type="file" accept="image/*" multiple @change="onReferenceFile" />
+            <div class="muted" style="margin-top:6px; color: var(--muted);">参考图用于控制视频风格，可选</div>
+            <div v-if="referenceFiles.length > 0" style="margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="font-size: 13px; color: var(--muted);">已选择 {{ referenceFiles.length }}/3 张参考图:</div>
+                <button @click="clearAllReferenceFiles" class="btn secondary" style="font-size: 12px; padding: 4px 10px;">清空全部</button>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <div v-for="(file, index) in referenceFiles" :key="'ref-'+index" style="position: relative; display: inline-block; padding: 6px 12px; background: #1a2530; border: 1px solid #3b82f6; border-radius: 6px; font-size: 12px;">
+                  <span style="color: #60a5fa;">参考{{ index + 1 }}: {{ file.name }}</span>
+                  <button @click="removeReferenceFile(index)" style="margin-left: 8px; background: transparent; border: none; color: #ef4444; cursor: pointer; font-weight: bold;">×</button>
                 </div>
               </div>
             </div>
@@ -3692,9 +4154,12 @@
             <label class="label">视频模型</label>
             <select class="input" v-model="videoModel">
               <option v-for="opt in videoModelOptions" :key="opt.value" :value="opt.value" :disabled="opt.disabled">
-                {{ opt.label }}
+                {{ opt.label }}{{ !opt.supportsMode ? ' (不支持当前模式)' : '' }}
               </option>
             </select>
+            <div class="muted" v-if="videoModelOptions.filter(o => o.supportsMode).length === 0" style="margin-top:6px; color: #fca5a5;">
+              ⚠️ 当前没有模型支持所选的图片模式
+            </div>
           </div>
 
           <div class="field" v-if="videoModel !== 'vidu'">
@@ -4509,12 +4974,8 @@
     methods: {
       async fetchTaskTypeConfig() {
         try {
-          const response = await axios.get('/api/task-type-config');
-          if (response.data.success) {
-            this.taskTypeConfig = response.data.data;
-          } else {
-            console.error('获取任务类型配置失败:', response.data.message);
-          }
+          await TaskConfig.load();
+          this.taskTypeConfig = TaskConfig.getTaskTypeConfig();
         } catch (error) {
           console.error('获取任务类型配置异常:', error);
         }
@@ -5431,7 +5892,20 @@
       adminSwitchError: '',
       adminSwitchSuccess: '',
       isAdminMode: false,
-      userRole: ''
+      userRole: '',
+      // 模式选择相关
+      showModeSelectModal: false,
+      creationMode: '',
+      // 本地模式配置
+      isLocal: false,
+      // 网站底部配置
+      footerConfig: {
+        copyright: '',
+        icp_number: '',
+        icp_url: 'https://beian.miit.gov.cn/',
+        police_number: '',
+        police_url: ''
+      },
     } },
     mounted() {
       // Extract auth_token from URL query parameters at app level
@@ -5467,7 +5941,10 @@
       
       // 尝试从localStorage恢复openid
       this.wechatOpenid = localStorage.getItem('wechat_openid') || '';
-      
+
+      // 获取服务器配置（is_local）
+      this.fetchServerConfig();
+
       // 获取用户IP地址
       this.fetchUserIp();
       
@@ -5525,11 +6002,16 @@
       
       // 检查是否处于管理员模式
       this.isAdminMode = localStorage.getItem('admin_mode') === 'true';
+      
+      // 已登录用户检查创作模式
+      if (this.authToken && this.userPhone) {
+        this.checkCreationMode();
+      }
     },
     computed: {
       route(){ return this.$route },
-      pageTitle(){ 
-        if (this.route.name === 'list') return '智剧通 AI短剧制作平台';
+      mainTitle(){ 
+        if (this.route.name === 'list') return '智剧通';
         if (this.route.name === 'image-edit') return '图片编辑';
         if (this.route.name === 'ai-video-gen') return 'AI 视频生成';
         if (this.route.name === 'image-to-video') return '图片生成视频';
@@ -5663,8 +6145,8 @@
                 return;
               }
               
-              // 登录成功后跳转到视频工作流列表页面
-              window.location.href = '/video-workflow-list';
+              // 登录成功后留在首页，检查模式选择
+              this.checkCreationMode();
             }
             
             // 关闭模态框并清空表单
@@ -6247,12 +6729,35 @@
         const appId = 'wxfcf09f56c3d2b2b8'; // TODO: 从后端配置获取
         const redirectUri = encodeURIComponent(window.location.href);
         const scope = 'snsapi_base'; // 静默授权，只获取openid
-        
+
         // 跳转到微信授权页面
         const authUrl = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=STATE#wechat_redirect`;
         window.location.href = authUrl;
       },
-      
+
+      async fetchServerConfig() {
+        try {
+          const response = await axios.get('/api/system/server-config');
+          if (response.data.code === 0) {
+            this.isLocal = response.data.data.is_local || false;
+            if (response.data.data.footer) {
+              this.footerConfig = response.data.data.footer;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch server config:', error);
+        }
+      },
+
+      handleRechargeClick() {
+        if (this.isLocal) {
+          alert('只有云端环境才能开启二维码支付。本地模式下，管理员用户请进入后台增加算力，非管理员用户请通知管理员。');
+        } else {
+          this.showRechargePowerModal = true;
+          this.fetchRechargePackages();
+        }
+      },
+
       async fetchUserIp() {
         try {
           // 使用公共IP查询API获取用户IP
@@ -6379,7 +6884,26 @@
         this.paymentError = '';
         this.nativeCodeUrl = '';
         this.rechargePackages = [];
-      }
+      },
+      
+      // 检查创作模式
+      checkCreationMode() {
+        const savedMode = localStorage.getItem('creation_mode');
+        if (savedMode) {
+          this.creationMode = savedMode;
+        } else {
+          // 未选择模式，显示模式选择弹窗
+          this.showModeSelectModal = true;
+        }
+      },
+      
+      // 选择创作模式
+      selectCreationMode(mode) {
+        this.creationMode = mode;
+        localStorage.setItem('creation_mode', mode);
+        this.showModeSelectModal = false;
+      },
+      
     },
     
     beforeUnmount() {

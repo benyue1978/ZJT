@@ -1,8 +1,7 @@
 """
 World Model - Database operations for world table
 """
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import Optional, Dict, Any
 from .database import execute_query, execute_update, execute_insert
 from config.constant import Edition
 import logging

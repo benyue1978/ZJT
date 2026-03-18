@@ -84,16 +84,28 @@
       }
     }
 
-    // 算力配置（用于节点算力预估）
+    // 算力配置（用于节点算力预估）- 从 TaskConfig 模块获取
     let taskComputingPowerConfig = {};
-    // 视频模型时长选项配置（全局缓存，只请求一次）
+    // 视频模型时长选项配置（全局缓存）- 从 TaskConfig 模块获取
     let videoModelDurationOptions = {};
     // 驱动可用状态（用于禁用未配置的功能）
     let driverStatusConfig = {};
+    // 模型配置（比例、尺寸、时长等）- 从 TaskConfig 模块获取
+    let modelConfigs = {};
     // 工作流配置（轮询间隔等，单位：毫秒）
     let workflowConfig = {
       poll_status_interval: 60000  // 默认60秒
     };
+    
+    // 使用统一配置模块更新本地缓存
+    function syncFromTaskConfig() {
+      if (window.TaskConfig && window.TaskConfig.isLoaded()) {
+        taskComputingPowerConfig = window.TaskConfig.getTaskComputingPowerConfig();
+        videoModelDurationOptions = window.TaskConfig.getVideoModelDurationOptions();
+        modelConfigs = window.TaskConfig.getModelConfigs();
+        console.log('[工作流] 已从 TaskConfig 同步配置');
+      }
+    }
     
     async function fetchWorkflowConfig(){
       try {
@@ -126,11 +138,34 @@
       // 图片模型
       'gemini-2.5-pro-image-preview': 1,
       'gemini-3-pro-image-preview': 7,
-      'gemini-3-pro-4grid': 7  // 4宫格也用加强版
+      'gemini-3-pro-4grid': 7,  // 4宫格也用加强版
+      'seedream-5.0': 16,  // Seedream 5.0 文生图
+      'seedream-4.5': 18   // Seedream 4.5 图片编辑
     };
     
     async function fetchComputingPowerConfig(){
       try {
+        // 优先使用统一配置模块
+        if (window.TaskConfig) {
+          await window.TaskConfig.load();
+          syncFromTaskConfig();
+          // 配置加载完成后，更新所有图生视频节点和分镜节点的算力显示
+          updateAllImageToVideoNodesPower();
+          updateAllShotFrameNodesPower();
+          
+          // 驱动状态仍从原接口获取（暂未迁移）
+          const response = await fetch('/api/computing-power-config');
+          if(response.ok){
+            const data = await response.json();
+            if(data.success && data.data && data.data.driver_status){
+              driverStatusConfig = data.data.driver_status;
+              console.log('[驱动状态] 已加载:', driverStatusConfig);
+            }
+          }
+          return;
+        }
+        
+        // 回退：使用旧接口
         const response = await fetch('/api/computing-power-config');
         if(response.ok){
           const data = await response.json();
@@ -138,7 +173,6 @@
             if(data.data.task_computing_power){
               taskComputingPowerConfig = data.data.task_computing_power;
               console.log('[算力配置] 已加载:', taskComputingPowerConfig);
-              // 配置加载完成后，更新所有图生视频节点和分镜节点的算力显示
               updateAllImageToVideoNodesPower();
               updateAllShotFrameNodesPower();
             }
@@ -175,6 +209,24 @@
     // 获取模型任务类型映射（供节点使用）
     function getModelTaskTypeMap(){
       return MODEL_TASK_TYPE_MAP;
+    }
+    
+    // 获取模型配置（供节点使用）
+    function getModelConfigs(){
+      return modelConfigs;
+    }
+    
+    // 获取模型配置
+    async function fetchModelConfigs(){
+      try {
+        // 使用统一配置模块
+        if (window.TaskConfig) {
+          await window.TaskConfig.load();
+          syncFromTaskConfig();
+        }
+      } catch(error){
+        console.error('[模型配置] 加载失败:', error);
+      }
     }
     
     // 计算视频生成算力（公共函数）
@@ -272,6 +324,8 @@
       }
       // 加载算力配置
       fetchComputingPowerConfig();
+      // 加载模型配置
+      fetchModelConfigs();
     });
 
     window.addEventListener('beforeunload', () => {
@@ -327,11 +381,13 @@
         if(nodeData.file) delete nodeData.file;
         if(nodeData.startFile) delete nodeData.startFile;
         if(nodeData.endFile) delete nodeData.endFile;
+        if(nodeData.videoFile) delete nodeData.videoFile;  // 提取帧节点的视频文件
         // 对于本地blob URL，需要清除（这些是临时的）
         // 服务器URL（以http开头）保留
         if(nodeData.url && nodeData.url.startsWith('blob:')) nodeData.url = '';
         if(nodeData.startUrl && nodeData.startUrl.startsWith('blob:')) nodeData.startUrl = '';
         if(nodeData.endUrl && nodeData.endUrl.startsWith('blob:')) nodeData.endUrl = '';
+        if(nodeData.videoUrl && nodeData.videoUrl.startsWith('blob:')) nodeData.videoUrl = '';  // 提取帧节点
         if(nodeData.preview && nodeData.preview.startsWith('data:') && nodeData.url) nodeData.preview = nodeData.url;
         if(nodeData.startPreview && nodeData.startPreview.startsWith('data:') && nodeData.startUrl) nodeData.startPreview = nodeData.startUrl;
         if(nodeData.endPreview && nodeData.endPreview.startsWith('data:') && nodeData.endUrl) nodeData.endPreview = nodeData.endUrl;
@@ -794,6 +850,8 @@
         createDialogueGroupNodeWithData(nodeData);
       } else if(nodeData.type === 'text'){
         createTextNodeWithData(nodeData);
+      } else if(nodeData.type === 'extract_frame'){
+        createExtractFrameNodeWithData(nodeData);
       }
     }
 
@@ -959,7 +1017,14 @@
       form.append('prompt', prompt || '');
       form.append('ratio', ratio || '9:16');
       form.append('count', count || 1);
-      form.append('model', model || 'gemini-2.5-pro-image-preview');
+      
+      // 根据 model 获取 task_id
+      const taskId = TaskConfig.getTaskIdByKey(model || 'gemini-2.5-pro-image-preview', 'image_edit');
+      if(!taskId){
+        throw new Error(`未找到模型 ${model} 对应的任务配置`);
+      }
+      form.append('task_id', taskId);
+      
       if(userId){
         form.append('user_id', userId);
       }
@@ -1029,6 +1094,9 @@
         node.data.drawCount = nodeData.data.drawCount || 1;
         node.data.motionLevel = nodeData.data.motionLevel || 5;
         node.data.useMotion = nodeData.data.useMotion || false;
+        // 恢复图片模式和参考图
+        node.data.imageMode = nodeData.data.imageMode || 'first_last_frame';
+        node.data.referenceUrls = nodeData.data.referenceUrls || [];
         
         // 更新DOM显示
         const el = canvasEl.querySelector(`.node[data-node-id="${node.id}"]`);
@@ -1037,71 +1105,103 @@
           const promptEl = el.querySelector('.prompt');
           if(promptEl) promptEl.value = node.data.prompt;
           
-          // 先更新视频模型选择
-          const videoModelSelect = el.querySelector('.video-model-select');
-          if(videoModelSelect) videoModelSelect.value = node.data.videoModel;
+          // 更新提示词字符计数
+          const promptCharCount = el.querySelector('.prompt-char-count');
+          if(promptCharCount && node.data.prompt) {
+            promptCharCount.textContent = `${node.data.prompt.length} 字符`;
+          }
           
-          // 根据模型更新时长选项
+          // 先更新视频模型选择
+
+          // 根据图片模式筛选并填充视频模型选项
+          const videoModelSelect = el.querySelector('.video-model-select');
+          if(videoModelSelect) {
+            const imageMode = node.data.imageMode || 'first_last_frame';
+            const savedVideoModel = node.data.videoModel;
+            videoModelSelect.innerHTML = '';
+            
+            if(window.TaskConfig && window.TaskConfig.isLoaded()) {
+              const options = window.TaskConfig.getModelOptionsForCategory('image_to_video');
+              let firstAvailable = null;
+              
+              options.forEach(opt => {
+                const config = modelConfigs[opt.value];
+                const supportedModes = config?.supported_image_modes || ['first_last_frame'];
+                const supportsCurrentMode = supportedModes.includes(imageMode);
+                
+                const optEl = document.createElement('option');
+                optEl.value = opt.value;
+                optEl.textContent = supportsCurrentMode ? opt.label : opt.label + ' (不支持当前模式)';
+                optEl.disabled = !supportsCurrentMode;
+                videoModelSelect.appendChild(optEl);
+                
+                if(supportsCurrentMode && !firstAvailable) {
+                  firstAvailable = opt.value;
+                }
+              });
+              
+              // 恢复之前的选择（如果仍然可用且支持当前模式）
+              const selectedOption = videoModelSelect.querySelector(`option[value="${savedVideoModel}"]:not([disabled])`);
+              if(selectedOption) {
+                videoModelSelect.value = savedVideoModel;
+              } else if(firstAvailable) {
+                videoModelSelect.value = firstAvailable;
+                node.data.videoModel = firstAvailable;
+              }
+            } else {
+              // 回退：直接设置保存的值
+              videoModelSelect.value = savedVideoModel;
+            }
+          }
+          
+          // 根据模型更新时长选项（从后端配置获取）
           const durationSelect = el.querySelector('.duration-select');
           if(durationSelect && videoModelSelect) {
             const videoModel = node.data.videoModel;
-            if(videoModel === 'ltx2') {
-              durationSelect.innerHTML = `
-                <option value="5">5秒 (121帧)</option>
-                <option value="8">8秒 (201帧)</option>
-                <option value="10">10秒 (241帧)</option>
-              `;
-              if(![5, 8, 10].includes(node.data.duration)) {
-                node.data.duration = 5;
-              }
-            } else if(videoModel === 'wan22' || videoModel === 'kling') {
-              durationSelect.innerHTML = `
-                <option value="5">5秒</option>
-                <option value="10">10秒</option>
-              `;
-              if(![5, 10].includes(node.data.duration)) {
-                node.data.duration = 5;
-              }
-            } else if(videoModel === 'vidu') {
-              durationSelect.innerHTML = `
-                <option value="5">5秒</option>
-                <option value="8">8秒</option>
-              `;
-              if(![5, 8].includes(node.data.duration)) {
-                node.data.duration = 5;
+            const config = modelConfigs[videoModel];
+            const ltx2Labels = { 5: '5秒 (121帧)', 8: '8秒 (201帧)', 10: '10秒 (241帧)' };
+            
+            if(config && config.durations && config.durations.length > 0) {
+              durationSelect.innerHTML = '';
+              config.durations.forEach(duration => {
+                const label = videoModel === 'ltx2' ? (ltx2Labels[duration] || `${duration}秒`) : `${duration}秒`;
+                durationSelect.innerHTML += `<option value="${duration}">${label}</option>`;
+              });
+              if(!config.durations.includes(node.data.duration)) {
+                node.data.duration = config.default_duration || config.durations[0];
               }
             } else {
-              durationSelect.innerHTML = `
-                <option value="10">10秒</option>
-                <option value="15">15秒</option>
-              `;
-              if(![10, 15].includes(node.data.duration)) {
-                node.data.duration = 10;
-              }
+              durationSelect.innerHTML = `<option value="5">5秒</option><option value="10">10秒</option>`;
+              if(![5, 10].includes(node.data.duration)) node.data.duration = 5;
             }
             durationSelect.value = node.data.duration;
           }
           
-          // 根据模型更新比例选项
+          // 根据模型更新比例选项（从后端配置获取）
           const ratioSelect = el.querySelector('.ratio-select');
           if(ratioSelect) {
             const ratioField = ratioSelect.closest('.field');
             const videoModel = node.data.videoModel;
+            const config = modelConfigs[videoModel];
+            const labelMap = { '9:16': '9:16 (竖屏)', '16:9': '16:9 (横屏)', '1:1': '1:1 (方形)' };
             
             // vidu 模型隐藏比例选择器
             if(videoModel === 'vidu') {
               if(ratioField) ratioField.style.display = 'none';
             } else {
-              // 其他模型显示比例选择器
               if(ratioField) ratioField.style.display = '';
               
-              ratioSelect.innerHTML = `
-                <option value="9:16">9:16 (竖屏)</option>
-                <option value="16:9">16:9 (横屏)</option>
-              `;
-              // 如果保存的比例不在支持列表中，使用16:9
-              if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') {
-                node.data.ratio = '16:9';
+              if(config && config.ratios && config.ratios.length > 0) {
+                ratioSelect.innerHTML = '';
+                config.ratios.forEach(ratio => {
+                  ratioSelect.innerHTML += `<option value="${ratio}">${labelMap[ratio] || ratio}</option>`;
+                });
+                if(!config.ratios.includes(node.data.ratio)) {
+                  node.data.ratio = config.default_ratio || config.ratios[0];
+                }
+              } else {
+                ratioSelect.innerHTML = `<option value="9:16">9:16 (竖屏)</option><option value="16:9">16:9 (横屏)</option>`;
+                if(node.data.ratio !== '9:16' && node.data.ratio !== '16:9') node.data.ratio = '16:9';
               }
               ratioSelect.value = node.data.ratio;
             }
@@ -1147,6 +1247,15 @@
                 } else {
                   singlePower = viduPower || 0;
                 }
+              } else if(videoModel === 'vidu_q2') {
+                const viduQ2Power = config[19];
+                if(typeof viduQ2Power === 'object') {
+                  singlePower = viduQ2Power[duration] || viduQ2Power[5] || 0;
+                } else {
+                  singlePower = viduQ2Power || 0;
+                }
+              } else if(videoModel === 'veo3') {
+                singlePower = config[15] || 0;
               }
             }
             const count = node.data.drawCount || 1;
@@ -1179,6 +1288,67 @@
             }
             if(endPreviewRow) endPreviewRow.style.display = 'flex';
             if(endImagePort) endImagePort.classList.add('disabled');
+          }
+          
+          // 更新图片模式UI
+          const imageModeSelect = el.querySelector('.image-mode-select');
+          const imageModeHint = el.querySelector('.image-mode-hint');
+          const firstLastFields = el.querySelectorAll('.first-last-fields');
+          const referenceFields = el.querySelector('.reference-fields');
+          const startImagePort = el.querySelector('.start-image-port');
+          const endImagePort2 = el.querySelector('.end-image-port');
+          const referencePreviewList = el.querySelector('.reference-preview-list');
+          
+          const imageMode = node.data.imageMode || 'first_last_frame';
+          const imageModeHints = {
+            'first_last_frame': '第一张为首帧，第二张（可选）为尾帧',
+            'multi_reference': '所有图片作为风格参考'
+          };
+          
+          if(imageModeSelect) imageModeSelect.value = imageMode;
+          if(imageModeHint) imageModeHint.textContent = imageModeHints[imageMode] || '';
+          
+          // 显示/隐藏对应的上传区域
+          firstLastFields.forEach(field => {
+            field.style.display = imageMode === 'first_last_frame' ? '' : 'none';
+          });
+          if(referenceFields) referenceFields.style.display = imageMode === 'multi_reference' ? '' : 'none';
+          
+          // 显示/隐藏端口
+          if(startImagePort) startImagePort.style.display = imageMode === 'first_last_frame' ? '' : 'none';
+          if(endImagePort2) endImagePort2.style.display = imageMode === 'first_last_frame' ? '' : 'none';
+          
+          // 渲染参考图预览
+          if(referencePreviewList && node.data.referenceUrls && node.data.referenceUrls.length > 0) {
+            referencePreviewList.innerHTML = '';
+            node.data.referenceUrls.forEach((url, idx) => {
+              const item = document.createElement('div');
+              item.style.cssText = 'position: relative; width: 50px; height: 50px;';
+              item.innerHTML = `
+                <img src="${url}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px; cursor: pointer;" />
+                <button class="ref-remove-btn" data-idx="${idx}" style="position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; border-radius: 50%; background: #ef4444; border: none; color: white; font-size: 10px; cursor: pointer; line-height: 1;">×</button>
+              `;
+              item.querySelector('img').addEventListener('click', (e) => {
+                e.stopPropagation();
+                openImageModal(url, `参考图 ${idx + 1}`);
+              });
+              item.querySelector('.ref-remove-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                node.data.referenceUrls.splice(idx, 1);
+                // 重新渲染
+                const newList = el.querySelector('.reference-preview-list');
+                if(newList) {
+                  newList.innerHTML = '';
+                  node.data.referenceUrls.forEach((u, i) => {
+                    const newItem = document.createElement('div');
+                    newItem.style.cssText = 'position: relative; width: 50px; height: 50px;';
+                    newItem.innerHTML = `<img src="${u}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px;" />`;
+                    newList.appendChild(newItem);
+                  });
+                }
+              });
+              referencePreviewList.appendChild(item);
+            });
           }
         }
       }
@@ -1281,8 +1451,22 @@
           const titleEl = el.querySelector('.node-title');
           
           if(promptEl) promptEl.value = node.data.prompt;
-          if(ratioEl) ratioEl.value = node.data.ratio;
           if(modelEl) modelEl.value = node.data.model;
+          // 根据模型动态更新比例选项
+          if(ratioEl && node.data.model) {
+            const config = modelConfigs[node.data.model];
+            const labelMap = { '9:16': '竖屏 (9:16)', '16:9': '横屏 (16:9)', '1:1': '正方形 (1:1)', '3:4': '竖屏 (3:4)', '4:3': '横屏 (4:3)' };
+            if(config && config.ratios && config.ratios.length > 0) {
+              ratioEl.innerHTML = '';
+              config.ratios.forEach(ratio => {
+                ratioEl.innerHTML += `<option value="${ratio}">${labelMap[ratio] || ratio}</option>`;
+              });
+              if(!config.ratios.includes(node.data.ratio)) {
+                node.data.ratio = config.default_ratio || config.ratios[0];
+              }
+            }
+          }
+          if(ratioEl) ratioEl.value = node.data.ratio;
           if(drawCountLabel) drawCountLabel.textContent = `抽卡次数：X${node.data.drawCount}`;
           if(titleEl && nodeData.title) titleEl.textContent = nodeData.title;
           
@@ -1439,7 +1623,15 @@
           if(Array.isArray(result.data.locations)){
             state.worldLocations = result.data.locations;
           }
-          
+
+          // 刷新所有分镜节点的引用显示（角色、道具、场景）
+          // 这样当世界数据加载完成后，节点中的引用标签会自动更新
+          state.nodes.forEach(node => {
+            if(node.updateReferences) {
+              node.updateReferences();
+            }
+          });
+
           const updatedNodes = result.data.updated_nodes || [];
           
           if(updatedNodes.length > 0){
@@ -1855,34 +2047,34 @@
     // ============ Debug 模式功能 ============
     
     // 从 URL 参数中检查是否需要启用 Debug 模式
+    // 使用方式: ?debug=你的密码
     function initDebugMode(){
       const urlParams = new URLSearchParams(window.location.search);
       const debugParam = urlParams.get('debug');
       
-      if(debugParam === '1' && !state.debugMode){
-        // 开启 Debug 模式需要密码
-        const password = prompt('请输入 Debug 模式密码:');
-        if(!password){
-          return;
-        }
-        
-        // 验证密码
-        fetch('/api/config/debug-password')
-          .then(res => res.json())
-          .then(data => {
-            if(data.success && data.password === password){
-              state.debugMode = true;
-              updateDebugModeUI();
-              showToast('Debug 模式已开启', 'success');
-            } else {
-              showToast('密码错误', 'error');
-            }
-          })
-          .catch(err => {
-            console.error('验证密码失败:', err);
-            showToast('验证失败', 'error');
-          });
+      if(!debugParam || state.debugMode){
+        return;
       }
+      
+      // 将 debug 参数值作为密码验证
+      const password = debugParam;
+      
+      // 验证密码
+      fetch('/api/config/debug-password')
+        .then(res => res.json())
+        .then(data => {
+          if(data.success && data.password === password){
+            state.debugMode = true;
+            updateDebugModeUI();
+            showToast('Debug 模式已开启', 'success');
+          } else {
+            showToast('密码错误', 'error');
+          }
+        })
+        .catch(err => {
+          console.error('验证密码失败:', err);
+          showToast('验证失败', 'error');
+        });
     }
     
     // 更新 Debug 模式 UI

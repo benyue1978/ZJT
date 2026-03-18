@@ -3,14 +3,12 @@
 """
 
 import os
-import json
 import uuid
-import shutil
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
-from jianying_config import JianyingConfig
+from jianying.config import JianyingConfig
 from media_utils import MediaUtils
 
 

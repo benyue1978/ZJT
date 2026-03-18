@@ -107,6 +107,9 @@ const AdminApp = {
                 },
                 vidu: {
                     token: ''
+                },
+                volcengine: {
+                    apiKey: ''
                 }
             },
             
@@ -773,6 +776,8 @@ const AdminApp = {
                                     this.quickConfigModal.runninghub.apiKey = value;
                                 } else if (config.key === 'vidu.token') {
                                     this.quickConfigModal.vidu.token = value;
+                                } else if (config.key === 'volcengine.api_key') {
+                                    this.quickConfigModal.volcengine.apiKey = value;
                                 }
                             }
                         } catch (e) {
@@ -797,6 +802,15 @@ const AdminApp = {
             this.quickConfigModal.google.baseUrl = '';
             this.quickConfigModal.runninghub.apiKey = '';
             this.quickConfigModal.vidu.token = '';
+            this.quickConfigModal.volcengine.apiKey = '';
+        },
+        
+        // 显示 jiekou 注册提示
+        showJiekouTip() {
+            const confirmed = confirm('💡 提示：\n\njiekou 注册需要 Google 或 GitHub 账号，但注册即送 $1 代金券！\n\n点击"确定"前往注册页面');
+            if (confirmed) {
+                window.open('https://jiekou.ai/user/register?invited_code=119T5V', '_blank');
+            }
         },
         
         // 测试 Google 连接
@@ -855,7 +869,10 @@ const AdminApp = {
             if (this.quickConfigModal.vidu.token) {
                 configs.push({ key: 'vidu.token', value: this.quickConfigModal.vidu.token });
             }
-            
+            if (this.quickConfigModal.volcengine.apiKey) {
+                configs.push({ key: 'volcengine.api_key', value: this.quickConfigModal.volcengine.apiKey });
+            }
+
             if (configs.length === 0) {
                 this.showToast('请至少填写一项配置', 'error');
                 return;

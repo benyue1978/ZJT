@@ -12,15 +12,15 @@ import threading
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.jobstores.memory import MemoryJobStore
-from PIL import Image
-from io import BytesIO
 from script_writer_core.image_grid_splitter import ImageGridSplitter
 from config.config_util import get_config
 from config.constant import FilePathConstants
-    
+from utils.network_utils import is_local_file_path
+
+logger = logging.getLogger(__name__)
+
 class TaskManager:
     """任务管理器，使用APScheduler处理后台任务"""
     
@@ -403,13 +403,29 @@ class TaskManager:
             filename = f"generated_{uuid.uuid4().hex[:8]}.png"
         
         local_file_path = os.path.join(upload_dir, filename)
-        
-        # 下载图片
-        img_response = requests.get(file_url, timeout=30)
-        img_response.raise_for_status()
-        
-        with open(local_file_path, 'wb') as f:
-            f.write(img_response.content)
+
+        # 检查是否为本地文件路径（如 /upload/cache/...）
+        if is_local_file_path(file_url):
+            # 本地路径，直接映射到文件系统
+            if file_url.startswith("/"):
+                file_url = file_url[1:]  # 移除开头的斜杠
+            src_path = os.path.join(os.path.dirname(__file__), "..", file_url)
+            src_path = os.path.abspath(src_path)
+
+            if os.path.exists(src_path):
+                # 文件存在，复制到目标目录
+                import shutil
+                shutil.copy2(src_path, local_file_path)
+                logger.info(f"本地文件已复制: {src_path} -> {local_file_path}")
+            else:
+                raise Exception(f"本地文件不存在: {src_path}")
+        else:
+            # 远程URL，正常下载
+            img_response = requests.get(file_url, timeout=30)
+            img_response.raise_for_status()
+
+            with open(local_file_path, 'wb') as f:
+                f.write(img_response.content)
 
         config_comfyui_base_url = get_config()["server"]["host"]
         local_image_url = f"{config_comfyui_base_url.rstrip('/')}/{local_url_path}/{filename}"
@@ -486,9 +502,9 @@ class TaskManager:
                         config_comfyui_base_url = get_config()["server"]["host"]
                         
                         for split_path in split_paths:
-                            # 获取相对路径
-                            rel_path = os.path.relpath(split_path, start=os.path.dirname(__file__))
-                            split_url = f"{config_comfyui_base_url.rstrip('/')}/{rel_path}"
+                            # 获取文件名，使用预定义的 output_dir 构建 URL
+                            filename = os.path.basename(split_path)
+                            split_url = f"{config_comfyui_base_url.rstrip('/')}/{output_dir}/{filename}"
                             split_image_urls.append(split_url)
                         
                         print(f"[SUCCESS] 4宫格图片拆分成功: {len(split_paths)} 张图片")

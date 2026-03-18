@@ -71,7 +71,8 @@ echo [4/4] Starting services...
 echo ========================================
 echo.
 
-!UV_CMD! run --python cpython-3.10-windows-x86_64-none --with-requirements requirements.txt start_windows.py
+
+!UV_CMD! run --python cpython-3.10-windows-x86_64-none --with-requirements requirements.txt scripts\launchers\start_windows.py
 
 if errorlevel 1 (
     echo.

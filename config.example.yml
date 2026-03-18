@@ -9,7 +9,7 @@
 runninghub:
   host: "https://www.runninghub.cn"
   api_key: "9549532f3c3d435eXXXX"
-  max_concurrent_slots: 3  # RunningHub 最大并发槽位数量
+  max_concurrent_slots: 3  # RunningHub 最大并发槽位数量 根据您的 RunningHub 套餐设置
 # Server configuration
 server:
   host: "http://localhost:9003"
@@ -21,6 +21,13 @@ server:
     enabled: false
     certfile: "secret/xxx.pem"
     keyfile: "secret/xxx.key"
+  # 网站底部信息配置
+  footer:
+    copyright: "© 2026 智剧通 AI短剧制作平台 | 所有权利保留"  # 版权信息
+    icp_number: ""  # ICP备案号，如：京ICP备12345678号
+    icp_url: "https://beian.miit.gov.cn/"  # ICP备案查询链接
+    police_number: ""  # 公安备案号，如：京公网安备 11010502000000号
+    police_url: ""  # 公安备案查询链接
 # Default timeout settings
 timeout:
   request_timeout: 10000
@@ -62,6 +69,9 @@ duomi:
 
 vidu:
   token: "vda_xxxx"
+
+volcengine:
+  api_key: "your_volcengine_api_key"  # 火山引擎 API Key（用于 Seedream 5.0 文生图）
 
 pay:
   wxpay:
@@ -168,6 +178,15 @@ file_storage:
 
 image:
   enable_download: true
+
+# 媒体文件缓存配置
+media_cache:
+  enabled: true                    # 是否启用缓存
+  cache_dir: "upload/cache"        # 缓存目录（相对于项目根目录）
+  max_days: 30                     # 文件保留天数（0=不限制）
+  max_size_gb: 10                  # 最大缓存容量GB（0=不限制）
+  cleanup_on_startup: true         # 启动时执行清理
+  cleanup_interval_hours: 24       # 定时清理间隔（小时）
 
 # Sentry 配置
 sentry:

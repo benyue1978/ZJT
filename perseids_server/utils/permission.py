@@ -4,9 +4,8 @@
 """
 
 from functools import wraps
-from typing import Optional, List, Union
+from typing import List, Union
 from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
 import logging
 
 logger = logging.getLogger(__name__)

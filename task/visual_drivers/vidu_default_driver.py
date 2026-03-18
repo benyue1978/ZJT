@@ -1,9 +1,9 @@
 """
 Vidu 默认驱动实现
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import traceback
-from .base_video_driver import BaseVideoDriver
+from .base_video_driver import BaseVideoDriver, ImageMode
 from config.config_util import get_config, get_dynamic_config_value
 from utils.sentry_util import SentryUtil, AlertLevel
 from utils.image_upload_utils import upload_local_images_to_cdn_sync
@@ -136,6 +136,11 @@ class ViduDefaultDriver(BaseVideoDriver):
     def build_create_request(self, ai_tool) -> Dict[str, Any]:
         """
         构建创建 Vidu 任务的完整请求参数
+        
+        支持三种图片模式：
+        - first_last_frame: 首尾帧模式（1-2张图片）
+        - multi_reference: 多参考图模式（暂不支持，回退到单图模式）
+        - first_last_with_ref: 首尾帧+参考图模式（暂不支持，仅使用首尾帧）
 
         Args:
             ai_tool: AITool 对象
@@ -143,13 +148,36 @@ class ViduDefaultDriver(BaseVideoDriver):
         Returns:
             Dict[str, Any]: 请求参数字典
         """
-        # 解析图片路径
+        # 解析图片模式
+        image_info = self.get_all_images_by_mode(ai_tool)
+        mode = image_info['mode']
+        first_frame = image_info['first_frame']
+        last_frame = image_info['last_frame']
+        reference_images = image_info['reference_images']
+        
+        self.logger.info(f"Vidu 驱动图片模式: {mode}, 首帧: {first_frame}, 尾帧: {last_frame}, 参考图: {len(reference_images)}张")
+        
+        # 根据模式构建图片列表
         image_urls = []
-        if ai_tool.image_path:
-            if isinstance(ai_tool.image_path, str):
-                image_urls = [url.strip() for url in ai_tool.image_path.split(',') if url.strip()]
-            else:
-                image_urls = ai_tool.image_path
+        if mode == ImageMode.FIRST_LAST_FRAME:
+            # 首尾帧模式：使用 image_path 中的图片
+            if first_frame:
+                image_urls.append(first_frame)
+            if last_frame:
+                image_urls.append(last_frame)
+        elif mode == ImageMode.MULTI_REFERENCE:
+            # 多参考图模式：Vidu 暂不支持，使用第一张参考图作为单图
+            if reference_images:
+                image_urls = [reference_images[0]]
+                self.logger.warning(f"Vidu 不支持多参考图模式，仅使用第一张参考图")
+        elif mode == ImageMode.FIRST_LAST_WITH_REF:
+            # 首尾帧+参考图模式：Vidu 暂不支持参考图，仅使用首尾帧
+            if first_frame:
+                image_urls.append(first_frame)
+            if last_frame:
+                image_urls.append(last_frame)
+            if reference_images:
+                self.logger.warning(f"Vidu 不支持参考图，已忽略 {len(reference_images)} 张参考图")
 
         # 如果是本地环境，将本地图片上传到图床
         if self._is_local and image_urls:

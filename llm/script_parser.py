@@ -5,10 +5,8 @@
 """
 
 import json
-import os
 from typing import Dict, Any, Optional
 from llm.gemini_client import get_gemini_client
-from config.config_util import get_config_path
 
 # ============================================================
 # 日志开关配置
@@ -419,7 +417,7 @@ async def convert_script_to_narration(
         model=model,
         messages=messages,
         temperature=temperature,
-        max_tokens=16000,
+        max_tokens=65536,
         auth_token=auth_token,
         vendor_id=vendor_id,
         model_id=model_id
@@ -864,7 +862,7 @@ JSON格式示例：
             model=model,
             messages=messages,
             temperature=temperature,
-            max_tokens=16000,
+            max_tokens=65536,
             auth_token=auth_token,
             vendor_id=vendor_id,
             model_id=model_id

@@ -3,8 +3,7 @@ LoginLog Model - Database operations for login_logs table
 对应Go的models/login_logs.go
 """
 from typing import Optional, Dict, Any, List
-from datetime import datetime
-from .database import execute_query, execute_update, execute_insert
+from .database import execute_query, execute_insert
 import logging
 
 logger = logging.getLogger(__name__)

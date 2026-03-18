@@ -14,29 +14,52 @@
     <script src="js/axios.min.js"></script>
 </head>
 <body>
-    <div class="app-container">
-        <!-- 世界选择侧边栏 -->
-        <aside class="world-sidebar" id="world-sidebar">
-            <div class="world-sidebar-header">
-                <h3 class="world-sidebar-title">🌍 选择世界</h3>
-                <div class="world-header-actions">
-                    <button class="world-add-btn" onclick="showNewWorldModal()" title="新建世界">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 5v14M5 12h14"/>
-                        </svg>
-                    </button>
-                    <button class="world-close-btn" onclick="toggleWorldSidebar()">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 6L6 18M6 6l12 12"/>
-                        </svg>
-                    </button>
+    <!-- 左侧导览条 - 悬浮模式 -->
+    <nav class="step-nav" id="step-nav">
+        <div class="step-nav-content">
+            <div class="step-nav-title">创作流程</div>
+            <div class="step-nav-list">
+                <div class="step-nav-item active" data-step="script">
+                    <div class="step-nav-icon">📚</div>
+                    <div class="step-nav-text">剧本资产</div>
+                    <div class="step-nav-badge current">当前</div>
+                </div>
+                <div class="step-nav-connector"></div>
+                <div class="step-nav-item clickable" data-step="canvas" onclick="goToWorkflowCanvas()">
+                    <div class="step-nav-icon">🎬</div>
+                    <div class="step-nav-text">制作工坊</div>
+                    <div class="step-nav-arrow">→</div>
                 </div>
             </div>
-            <div class="world-list" id="world-list">
-                <div class="world-empty">加载中...</div>
+        </div>
+    </nav>
+    
+    <!-- 世界选择遮罩层 -->
+    <div class="world-sidebar-overlay" id="world-sidebar-overlay" onclick="toggleWorldSidebar()"></div>
+    
+    <!-- 世界选择侧边栏 -->
+    <aside class="world-sidebar" id="world-sidebar">
+        <div class="world-sidebar-header">
+            <h3 class="world-sidebar-title">🌍 选择世界</h3>
+            <div class="world-header-actions">
+                <button class="world-add-btn" onclick="showNewWorldModal()" title="新建世界">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                </button>
+                <button class="world-close-btn" onclick="toggleWorldSidebar()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
             </div>
-        </aside>
+        </div>
+        <div class="world-list" id="world-list">
+            <div class="world-empty">加载中...</div>
+        </div>
+    </aside>
 
+    <div class="app-container">
         <!-- 顶部导航栏 -->
         <header class="top-header">
             <div class="header-left">
@@ -56,9 +79,35 @@
                 <span class="world-name-display" id="world-name-display">加载中...</span>
             </div>
             <div class="header-right">
-                <select id="model-selector" class="model-select" onchange="changeModel()" title="选择 AI 模型">
-                    <option value="">加载中...</option>
-                </select>
+                <div class="model-selector-card">
+                    <div class="model-selector-item">
+                        <div class="model-icon text-model-icon" id="llm-model-icon" title="AI 模型">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+                                <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+                            </svg>
+                        </div>
+                        <select id="model-selector" class="model-select" onchange="changeModel()" title="选择 AI 模型">
+                            <option value="">加载中...</option>
+                        </select>
+                    </div>
+                    <div class="model-divider"></div>
+                    <div class="model-selector-item">
+                        <div class="model-icon image-model-icon" id="image-model-icon" title="生图模型">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 5c-2.5 0-4.5 1.5-4.5 3.5 0 1.5 1 2.8 2.5 3.4-.3.8-.5 1.6-.5 2.6 0 3 2.5 5.5 5.5 5.5s5.5-2.5 5.5-5.5c0-1-.2-1.8-.5-2.6 1.5-.6 2.5-1.9 2.5-3.4 0-2-2-3.5-4.5-3.5z"/>
+                                <path d="M12 5c0-1.5-1-2.5-2.5-2.5s-2.5 1-2.5 2.5"/>
+                                <path d="M12 5c0-1.5 1-2.5 2.5-2.5s2.5 1 2.5 2.5"/>
+                                <path d="M7.5 8c-1 0-2 .5-2.5 1.5"/>
+                                <path d="M16.5 8c1 0 2 .5 2.5 1.5"/>
+                                <path d="M9 12c0 1.5 1 3 3 3s3-1.5 3-3"/>
+                            </svg>
+                        </div>
+                        <select id="text-to-image-model-selector" class="model-select" onchange="changeTextToImageModel()" title="选择生图模型" style="display: none;">
+                            <option value="">加载中...</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="computing-power-display" id="computing-power-display" title="当前算力余额（点击查看日志）" onclick="openComputingPowerLogsModal()" style="cursor: pointer;">
                     <span class="power-icon">⚡</span>
                     <span class="power-value" id="power-value">--</span>
@@ -67,10 +116,18 @@
                     <span class="btn-icon">🗑️</span>
                     <span class="btn-text">删除暂存，重置会话</span>
                 </button>
-                <button class="header-action-btn primary" onclick="submitToDatabase()" title="提交到数据库">
+                <button class="header-action-btn primary" onclick="submitToDatabase()" title="提交数据">
                     <span class="btn-icon">💾</span>
-                    <span class="btn-text">提交数据库</span>
+                    <span class="btn-text">提交数据</span>
                 </button>
+                <div class="auto-submit-container">
+                    <label class="auto-submit-toggle" title="开启后每分钟自动提交">
+                        <input type="checkbox" id="auto-submit-switch" onchange="toggleAutoSubmit()">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">🔄 自动提交</span>
+                    </label>
+                    <span id="auto-submit-countdown" class="auto-submit-countdown" style="display: none;"></span>
+                </div>
             </div>
         </header>
 
@@ -88,6 +145,29 @@
                         <div class="welcome-icon">🎬</div>
                         <h2 class="welcome-title">欢迎使用剧本智能创作系统</h2>
                         <p class="welcome-desc">我是剧本架构师，可以调度所有智能体完成从大纲到合规的全流程创作。</p>
+
+                        <!-- 需求选择区域（有世界时显示） -->
+                        <div class="requirement-selector" id="requirement-selector" style="display: none;">
+                            <p class="requirement-title">请选择您的创作需求</p>
+                            <div class="requirement-buttons">
+                                <button class="requirement-btn" onclick="handleRequirementSelect(1)">
+                                    <span class="req-icon">📥</span>
+                                    <span class="req-text">导入已有剧本</span>
+                                </button>
+                                <button class="requirement-btn" onclick="handleRequirementSelect(2)">
+                                    <span class="req-icon">✍️</span>
+                                    <span class="req-text">剧本续写</span>
+                                </button>
+                                <button class="requirement-btn" onclick="handleRequirementSelect(3)">
+                                    <span class="req-icon">📝</span>
+                                    <span class="req-text">剧本新建</span>
+                                </button>
+                                <button class="requirement-btn" onclick="handleRequirementSelect(4)">
+                                    <span class="req-icon">💡</span>
+                                    <span class="req-text">其他</span>
+                                </button>
+                            </div>
+                        </div>
 
                         <div class="agent-carousel" id="agent-carousel">
                             <div class="carousel-track">
@@ -743,6 +823,7 @@
         // 全局参数：从URL获取并存储，供所有接口使用
         const USER_ID = urlParams.get('user_id');
         const WORLD_ID = urlParams.get('world_id');
+        const WORKFLOW_ID = urlParams.get('workflow_id')
         // auth_token 从 localStorage 读取，不再从 URL 获取，避免敏感信息暴露
         const AUTH_TOKEN = localStorage.getItem('auth_token') || '';
         
@@ -750,6 +831,7 @@
         let currentFileType = 'worlds';
         let currentEditFile = { fileType: '', fileName: '' };
         let currentEditWorld = { id: '', name: '', description: '' };
+        let driverStatus = {};  // 驱动可用状态
 
         function handleTokenExpired() {
             alert('⚠️ 登录已过期\n\n您的登录信息已过期，请重新登录。');
@@ -861,6 +943,8 @@
 
             configureMarked();
             await loadAvailableModels();
+            await loadDriverStatus();
+            await loadTextToImageModels();
             await loadComputingPower();
             await loadUserWorlds();
 
@@ -905,6 +989,17 @@
             await loadCurrentWorldName();
             await createSession();
             await loadFiles('worlds');
+
+            // 有世界时显示需求选择界面
+            const requirementSelector = document.getElementById('requirement-selector');
+            if (requirementSelector) {
+                requirementSelector.style.display = 'block';
+            }
+            // 更新欢迎提示文字
+            const welcomeHint = document.querySelector('.welcome-hint');
+            if (welcomeHint) {
+                welcomeHint.textContent = '选择下方需求或直接输入，开始您的创作之旅！';
+            }
             if (messageInput) messageInput.focus();
         });
 
@@ -955,13 +1050,15 @@
                             warningMsg += `📁 本地独有文件（数据库中不存在）：\n  • ${localOnlyList}\n\n`;
                         }
                         
-                        warningMsg += '💡 提示：这些文件的本地内容已保留，不会被数据库覆盖。如需同步，请使用"提交数据库"功能。';
+                        warningMsg += '💡 提示：这些文件的本地内容已保留，不会被数据库覆盖。如需同步，请使用"提交数据"按钮。';
                         
                         alert(warningMsg);
                         updateStatus('剧本编排系统已就绪（检测到未提交的本地修改）');
                     } else {
                         updateStatus('剧本编排系统已就绪');
                     }
+                    // 会话创建成功后，自动设置生图模型到后端
+                    await autoSetTextToImageModel();
                 } else {
                     showError('创建会话失败: ' + data.error);
                 }
@@ -1040,29 +1137,194 @@
             }
         }
 
-        async function submitToDatabase() {
-            try {
-                    updateStatus('正在提交到数据库...');
-                    const response = await fetch('/api/submit-to-database', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_id: USER_ID, world_id: WORLD_ID })
-                    });
+        // 提交状态标志，防止重复提交
+        let isSubmitting = false;
 
-                    const data = await response.json();
-                    if (data.success) {
-                        showSuccess(`✓ 提交成功！共保存 ${data.total} 个文件到数据库`);
-                        updateStatus('数据已提交到数据库');
-                    } else {
-                        showError('提交失败: ' + (data.error || '未知错误'));
-                        updateStatus('提交失败');
-                    }
-                } catch (error) {
-                    showError('提交失败: ' + error.message);
+        async function submitToDatabase() {
+            // 防止重复提交
+            if (isSubmitting) {
+                console.log('[提交] 已有提交任务进行中，跳过');
+                return;
+            }
+
+            // 检查是否选择了世界
+            if (!WORLD_ID) {
+                showError('请先选择世界');
+                return;
+            }
+
+            // 设置提交状态并禁用按钮
+            isSubmitting = true;
+            const submitBtn = document.querySelector('.header-action-btn.primary');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('disabled');
+            }
+
+            try {
+                updateStatus('正在提交数据...');
+                const response = await fetch('/api/submit-to-database', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: USER_ID, world_id: WORLD_ID })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showSuccess(`✓ 提交成功！共保存 ${data.total} 个文件到数据库`);
+                    updateStatus('数据已提交到数据库');
+                } else {
+                    showError('提交失败: ' + (data.error || '未知错误'));
                     updateStatus('提交失败');
                 }
-            
+            } catch (error) {
+                showError('提交失败: ' + error.message);
+                updateStatus('提交失败');
+            } finally {
+                // 恢复提交状态并启用按钮
+                isSubmitting = false;
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('disabled');
+                }
+            }
         }
+
+        // ========== 自动提交功能 ==========
+        let autoSubmitTimer = null;
+        let countdownInterval = null;
+        let nextSubmitTime = null;
+
+        function toggleAutoSubmit() {
+            const switchEl = document.getElementById('auto-submit-switch');
+            if (switchEl.checked) {
+                startAutoSubmit();
+            } else {
+                stopAutoSubmit();
+            }
+            saveAutoSubmitSettings();
+        }
+
+        function startAutoSubmit() {
+            scheduleNextSubmit();
+        }
+
+        function stopAutoSubmit() {
+            if (autoSubmitTimer) {
+                clearTimeout(autoSubmitTimer);
+                autoSubmitTimer = null;
+            }
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            nextSubmitTime = null;
+            updateCountdownDisplay();
+        }
+
+        function scheduleNextSubmit() {
+            // 先清除已有的定时器，避免重复
+            if (autoSubmitTimer) {
+                clearTimeout(autoSubmitTimer);
+                autoSubmitTimer = null;
+            }
+
+            const baseInterval = 60 * 1000; // 固定1分钟
+            const randomDelay = Math.floor(Math.random() * 30000); // 0-30秒随机延迟
+
+            const totalDelay = baseInterval + randomDelay;
+            nextSubmitTime = Date.now() + totalDelay;
+
+            console.log(`[自动提交] 已调度，${Math.round(totalDelay/1000)}秒后执行`);
+
+            autoSubmitTimer = setTimeout(async () => {
+                const switchEl = document.getElementById('auto-submit-switch');
+                try {
+                    console.log('[自动提交] 开始执行提交...');
+                    await submitToDatabase();
+                    console.log('[自动提交] 提交完成');
+                } catch (error) {
+                    console.error('[自动提交] 提交出错:', error);
+                } finally {
+                    // 无论成功失败，只要开关仍然开启，继续调度下一次
+                    if (switchEl && switchEl.checked) {
+                        scheduleNextSubmit();
+                    }
+                }
+            }, totalDelay);
+
+            updateCountdownDisplay();
+            startCountdownUpdater();
+        }
+
+        function startCountdownUpdater() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            countdownInterval = setInterval(updateCountdownDisplay, 1000);
+        }
+
+        function updateCountdownDisplay() {
+            const countdownEl = document.getElementById('auto-submit-countdown');
+            const switchEl = document.getElementById('auto-submit-switch');
+            
+            if (!switchEl || !switchEl.checked || !nextSubmitTime) {
+                countdownEl.style.display = 'none';
+                return;
+            }
+
+            const remaining = Math.max(0, nextSubmitTime - Date.now());
+            if (remaining <= 0) {
+                countdownEl.style.display = 'none';
+                return;
+            }
+
+            const minutes = Math.floor(remaining / 60000);
+            const seconds = Math.floor((remaining % 60000) / 1000);
+            countdownEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            countdownEl.style.display = 'inline';
+        }
+
+        function saveAutoSubmitSettings() {
+            const switchEl = document.getElementById('auto-submit-switch');
+            const enabled = switchEl.checked;
+            
+            // 使用cookie保存，设置1年有效期
+            const expires = new Date();
+            expires.setFullYear(expires.getFullYear() + 1);
+            document.cookie = `autoSubmitEnabled=${enabled}; expires=${expires.toUTCString()}; path=/`;
+            
+            console.log(`[自动提交] 设置已保存: ${enabled}`);
+        }
+
+        function loadAutoSubmitSettings() {
+            // 从cookie读取设置
+            const cookies = document.cookie.split(';');
+            let enabled = null;
+            
+            for (const cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'autoSubmitEnabled') {
+                    enabled = value === 'true';
+                    break;
+                }
+            }
+            
+            // 如果有保存的设置，恢复状态
+            if (enabled !== null) {
+                const switchEl = document.getElementById('auto-submit-switch');
+                switchEl.checked = enabled;
+                if (enabled) {
+                    startAutoSubmit();
+                }
+                console.log(`[自动提交] 已恢复设置: ${enabled}`);
+            }
+        }
+
+        // 页面加载完成后恢复设置
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(loadAutoSubmitSettings, 500);
+        });
 
         async function sendMessage(customMessage = null, isSystemMessage = false) {
             console.log('sendMessage called, isProcessing:', isProcessing);
@@ -1286,7 +1548,12 @@
                                 return hljs.highlight(code, { language: lang }).value;
                             } catch (err) {}
                         }
-                        return code;
+                        // 确保代码被正确转义，防止HTML标签破坏页面结构
+                        return code.replace(/&/g, '&amp;')
+                                   .replace(/</g, '&lt;')
+                                   .replace(/>/g, '&gt;')
+                                   .replace(/"/g, '&quot;')
+                                   .replace(/'/g, '&#39;');
                     },
                     breaks: true,
                     gfm: true
@@ -1501,17 +1768,50 @@
         function updateModelTooltip() {
             const selector = document.getElementById('model-selector');
             if (!selector) return;
-            
+
             const selectedOption = selector.options[selector.selectedIndex];
             if (!selectedOption) return;
-            
+
             const isRecommended = selectedOption.dataset.recommended === 'true';
-            
+
             if (!isRecommended) {
                 selector.style.color = '#ff6b6b';
             } else {
                 selector.style.color = '';
             }
+
+            // 更新 LLM 模型图标的 hover 提示
+            updateLlmModelIcon();
+        }
+
+        function updateLlmModelIcon() {
+            const selector = document.getElementById('model-selector');
+            const icon = document.getElementById('llm-model-icon');
+            if (!selector || !icon) return;
+
+            const selectedOption = selector.options[selector.selectedIndex];
+            if (!selectedOption) {
+                icon.title = 'AI 模型';
+                return;
+            }
+
+            const modelName = selectedOption.textContent;
+            icon.title = `AI 模型: ${modelName}`;
+        }
+
+        function updateImageModelIcon() {
+            const selector = document.getElementById('text-to-image-model-selector');
+            const icon = document.getElementById('image-model-icon');
+            if (!selector || !icon) return;
+
+            const selectedOption = selector.options[selector.selectedIndex];
+            if (!selectedOption) {
+                icon.title = '生图模型';
+                return;
+            }
+
+            const modelName = selectedOption.textContent;
+            icon.title = `生图模型: ${modelName}`;
         }
 
         async function changeModel() {
@@ -1548,9 +1848,10 @@
                     return;
                 }
             }
-            
+
             updateModelTooltip();
-            
+            updateLlmModelIcon();
+
             if (!AUTH_TOKEN) {
                 showError('缺少认证信息，请重新登录');
                 return;
@@ -1581,6 +1882,186 @@
             } catch (error) {
                 showError('切换模型失败: ' + error.message);
             }
+        }
+
+        async function loadDriverStatus() {
+            try {
+                const response = await fetch('/api/computing-power-config', {
+                    headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
+                });
+                const data = await response.json();
+                if (data.success && data.data) {
+                    driverStatus = data.data.driver_status || {};
+                }
+            } catch (error) {
+                console.error('获取驱动状态失败:', error);
+            }
+        }
+
+        async function loadTextToImageModels() {
+            try {
+                const response = await fetch('/api/text-to-image-models', {
+                    headers: {
+                        'Authorization': `Bearer ${AUTH_TOKEN}`
+                    }
+                });
+                const data = await response.json();
+
+                if (checkTokenExpired(data, response)) {
+                    return;
+                }
+
+                const selector = document.getElementById('text-to-image-model-selector');
+                selector.innerHTML = '';
+
+                if (!data.success) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = '模型加载失败';
+                    selector.appendChild(option);
+                    showError(data.error || '获取生图模型列表失败');
+                    return;
+                }
+
+                const models = data.models;
+                if (!models || models.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = '暂无可用模型';
+                    selector.appendChild(option);
+                    return;
+                }
+
+                // 只显示支持宫格生图的模型，Seedream 5.0 排在最前面
+                const seedreamModel = models.find(m => m.name === 'Seedream 5.0');
+                const otherModels = models.filter(m => m.name !== 'Seedream 5.0' && m.supports_grid_image);
+
+                // 先添加 Seedream 5.0，并默认选中
+                if (seedreamModel) {
+                    const option = document.createElement('option');
+                    option.value = seedreamModel.task_id;
+                    // 检查模型可用性
+                    const taskTypeKey = String(seedreamModel.task_id);
+                    const status = driverStatus[taskTypeKey];
+                    const isAvailable = !status || status.available !== false;
+                    if (!isAvailable) {
+                        option.textContent = `${seedreamModel.name} (未配置)`;
+                        option.disabled = true;
+                    } else {
+                        option.textContent = seedreamModel.name;
+                        option.selected = true;  // Seedream 5.0 默认选中（仅当可用时）
+                    }
+                    selector.appendChild(option);
+                }
+
+                // 再添加其他模型
+                otherModels.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.task_id;
+                    // 检查模型可用性
+                    const taskTypeKey = String(model.task_id);
+                    const status = driverStatus[taskTypeKey];
+                    const isAvailable = !status || status.available !== false;
+                    if (!isAvailable) {
+                        option.textContent = `${model.name} (未配置)`;
+                        option.disabled = true;
+                    } else {
+                        option.textContent = model.name;
+                    }
+                    selector.appendChild(option);
+                });
+
+                // 显示选择器
+                selector.style.display = '';
+                // 注意：自动设置模型逻辑已移至 createSession() 成功后执行
+            } catch (error) {
+                console.error('加载生图模型列表失败:', error);
+                const selector = document.getElementById('text-to-image-model-selector');
+                if (selector) {
+                    selector.innerHTML = '<option value="">模型加载失败</option>';
+                }
+                showError('加载生图模型列表失败，请稍后重试');
+            }
+        }
+
+        async function autoSetTextToImageModel() {
+            /** 会话创建后自动设置生图模型到后端 */
+            const selector = document.getElementById('text-to-image-model-selector');
+            if (!selector || !sessionId) return;
+
+            const selectedModel = selector.value;
+            if (!selectedModel) return;
+
+            console.log('[DEBUG] 自动设置生图模型:', selector.options[selector.selectedIndex].text, 'task_id:', selectedModel);
+            try {
+                const response = await fetch('/api/text-to-image-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: USER_ID,
+                        world_id: WORLD_ID,
+                        model_id: selectedModel,
+                        auth_token: AUTH_TOKEN,
+                        session_id: sessionId
+                    })
+                });
+                const data = await response.json();
+                console.log('[DEBUG] 设置生图模型响应:', data);
+                if (data.success) {
+                    console.log('[DEBUG] 生图模型已保存:', data.model_name);
+                }
+            } catch (err) {
+                console.error('[DEBUG] 设置生图模型异常:', err);
+            }
+            updateImageModelIcon();
+        }
+
+        async function changeTextToImageModel() {
+            if (!sessionId) {
+                showError('请先创建会话');
+                return;
+            }
+
+            const selector = document.getElementById('text-to-image-model-selector');
+            const model = selector.value;
+
+            if (!model) {
+                showError('请选择生图模型');
+                return;
+            }
+
+            if (!USER_ID || !WORLD_ID) {
+                showError('缺少用户ID或世界ID，请刷新页面重试');
+                return;
+            }
+
+            if (!AUTH_TOKEN) {
+                showError('缺少认证信息，请重新登录');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/text-to-image-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: USER_ID,
+                        world_id: WORLD_ID,
+                        model_id: model,
+                        auth_token: AUTH_TOKEN,
+                        session_id: sessionId
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showSuccess(`已切换到 ${selector.options[selector.selectedIndex].text}`);
+                } else {
+                    showError('切换生图模型失败: ' + data.error);
+                }
+            } catch (error) {
+                showError('切换生图模型失败: ' + error.message);
+            }
+            updateImageModelIcon();
         }
 
         function escapeHtml(text) {
@@ -2183,7 +2664,9 @@
 
         function toggleWorldSidebar() {
             const sidebar = document.getElementById('world-sidebar');
+            const overlay = document.getElementById('world-sidebar-overlay');
             sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
         }
 
         function switchWorld(worldId) {
@@ -2193,7 +2676,11 @@
             }
             
             // auth_token 已在 localStorage 中，无需通过 URL 传递
-            const newUrl = `${window.location.pathname}?user_id=${USER_ID}&world_id=${worldId}`;
+            // 保留workflow_id参数，确保切换世界后仍能跳转到制作工坊
+            let newUrl = `${window.location.pathname}?user_id=${USER_ID}&world_id=${worldId}`;
+            if (WORKFLOW_ID) {
+                newUrl += `&workflow_id=${WORKFLOW_ID}`;
+            }
             window.location.href = newUrl;
         }
 
@@ -2400,11 +2887,52 @@
             }
         });
 
+        // 处理需求选择
+        function handleRequirementSelect(option) {
+            const messageInput = document.getElementById('message-input');
+            if (!messageInput) return;
+
+            // 隐藏需求选择区域
+            const requirementSelector = document.getElementById('requirement-selector');
+            if (requirementSelector) {
+                requirementSelector.style.display = 'none';
+            }
+
+            let promptText = '';
+            switch(option) {
+                case 1:
+                    promptText = '请帮我导入已有的剧本内容，我将直接粘贴剧本文本，请帮我分析并适配到当前世界';
+                    break;
+                case 2:
+                    promptText = '我想进行剧本续写，请继续之前的剧情发展';
+                    break;
+                case 3:
+                    promptText = '我想新建一个剧本';
+                    break;
+                case 4:
+                    promptText = '';
+                    // 其他选项不自动填充，让用户自己输入
+                    break;
+                default:
+                    return;
+            }
+
+            if (promptText) {
+                messageInput.value = promptText;
+            }
+
+            // 将光标移到末尾
+            messageInput.focus();
+            messageInput.setSelectionRange(messageInput.value.length, messageInput.value.length);
+        }
+
         // 显示世界选择提示
         function showWorldSelectionPrompt() {
             // 自动打开世界选择侧边栏
             const sidebar = document.getElementById('world-sidebar');
+            const overlay = document.getElementById('world-sidebar-overlay');
             sidebar.classList.add('open');
+            overlay.classList.add('active');
             
             // 更新欢迎卡片内容，显示世界选择提示
             const chatMessages = document.getElementById('chat-messages');
@@ -2454,6 +2982,114 @@
                 worldNameDisplay.style.color = 'var(--warning-color)';
             }
         }
+        
+        // ========== 左侧导览条相关函数 ==========
+        // 导览条现在是悬浮模式，通过CSS hover自动展开/收起，无需JavaScript控制
+        
+        // 检查资产完成状态
+        async function checkAssetsComplete() {
+            if (!WORLD_ID) {
+                return { hasScript: false, missingAssets: [] };
+            }
+            
+            try {
+                const response = await fetch('/api/check-assets-complete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': AUTH_TOKEN,
+                        'X-User-Id': USER_ID
+                    },
+                    body: JSON.stringify({ world_id: parseInt(WORLD_ID) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.code === 0) {
+                    return {
+                        hasScript: data.data.has_script,
+                        missingAssets: data.data.missing_assets || []
+                    };
+                } else {
+                    console.error('检查资产状态失败:', data.message);
+                    return { hasScript: true, missingAssets: [] };
+                }
+            } catch (error) {
+                console.error('检查资产状态请求失败:', error);
+                return { hasScript: true, missingAssets: [] };
+            }
+        }
+        
+        // 显示资产检查确认弹窗
+        function showAssetConfirmModal(hasScript, missingAssets) {
+            return new Promise((resolve) => {
+                let message = '检测到以下问题：\n\n';
+                
+                // 检查剧本
+                if (!hasScript) {
+                    message += '⚠️ 当前世界还没有剧本\n';
+                }
+                
+                // 检查资产图片
+                if (missingAssets && missingAssets.length > 0) {
+                    message += '\n以下资产图片尚未生成：\n';
+                    missingAssets.forEach(asset => {
+                        message += `【${asset.type}】${asset.items.slice(0, 3).join('、')}`;
+                        if (asset.items.length > 3) {
+                            message += ` 等${asset.items.length}项`;
+                        }
+                        message += '\n';
+                    });
+                    message += '\n💡 提示：请点击「提交数据」按钮生成资产图片后再进入制作工坊\n';
+                }
+
+                message += '\n是否仍要进入制作工坊？';
+                
+                if (confirm(message)) {
+                    resolve(true);
+                } else {
+                    resolve(false);
+                }
+            });
+        }
+        
+        // 跳转到工作流画布
+        async function goToWorkflowCanvas() {
+            // 如果没有WORKFLOW_ID，尝试从当前世界获取关联的工作流
+            if (!WORKFLOW_ID && window.currentWorldId) {
+                // 可以在这里添加获取世界关联工作流的逻辑
+                console.log('当前世界ID:', window.currentWorldId);
+            }
+            
+            // 先提交当前数据
+            try {
+                await submitToDatabase();
+            } catch (e) {
+                console.error('提交数据失败:', e);
+            }
+            
+            // 检查资产完成状态
+            const assetsStatus = await checkAssetsComplete();
+            
+            // 如果有问题（没有剧本或资产缺失图片），弹出确认提示
+            const hasProblems = !assetsStatus.hasScript || assetsStatus.missingAssets.length > 0;
+            if (hasProblems) {
+                const confirmed = await showAssetConfirmModal(assetsStatus.hasScript, assetsStatus.missingAssets);
+                if (!confirmed) {
+                    return;
+                }
+            }
+            
+            // 跳转到工作流画布
+            if (WORKFLOW_ID) {
+                window.location.href = `/video-workflow?id=${WORKFLOW_ID}`;
+            } else {
+                // 没有WORKFLOW_ID，跳转到工作流列表
+                alert('未找到关联的工作流，请先创建工作流');
+                window.location.href = '/video-workflow-list';
+            }
+        }
+        
     </script>
 </body>
 </html>

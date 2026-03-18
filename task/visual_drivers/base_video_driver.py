@@ -3,14 +3,21 @@
 所有视频生成驱动都需要继承此基类并实现其抽象方法
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 import logging
-import os
-import json
 import traceback
 from datetime import datetime
+import json
 import requests
 from .exceptions import DriverConfigError
+from utils.logger_config import DailyFileHandler
+
+
+class ImageMode:
+    """图片模式常量"""
+    FIRST_LAST_FRAME = 'first_last_frame'      # 首尾帧模式
+    MULTI_REFERENCE = 'multi_reference'         # 多参考图模式
+    FIRST_LAST_WITH_REF = 'first_last_with_ref' # 首尾帧+参考图模式
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +26,8 @@ def _setup_api_logger():
     """设置 API 请求日志记录器"""
     api_logger = logging.getLogger("api_requests")
     if not api_logger.handlers:
-        # 确保 logs 目录存在
-        log_dir = os.path.join(os.getcwd(), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-
-        # 创建文件处理器
-        file_handler = logging.FileHandler(
-            os.path.join(log_dir, "api_requests.log"),
-            encoding="utf-8"
-        )
+        # 创建按日期命名的文件处理器
+        file_handler = DailyFileHandler('api_requests', encoding='utf-8')
         file_handler.setLevel(logging.INFO)
 
         # 设置日志格式
@@ -380,6 +380,93 @@ class BaseVideoDriver(ABC):
         return {
             "driver_name": self.driver_name,
             "driver_type": self.driver_type
+        }
+    
+    def parse_image_mode(self, ai_tool) -> str:
+        """
+        从 extra_config 解析图片模式
+        
+        Args:
+            ai_tool: AITool 对象
+        
+        Returns:
+            str: 图片模式，默认 'first_last_frame'
+        """
+        if not ai_tool.extra_config:
+            return ImageMode.FIRST_LAST_FRAME
+        
+        try:
+            config = json.loads(ai_tool.extra_config) if isinstance(ai_tool.extra_config, str) else ai_tool.extra_config
+            return config.get('image_mode', ImageMode.FIRST_LAST_FRAME)
+        except (json.JSONDecodeError, TypeError):
+            self.logger.warning(f"无法解析 extra_config: {ai_tool.extra_config}")
+            return ImageMode.FIRST_LAST_FRAME
+    
+    def get_first_last_frames(self, ai_tool) -> Tuple[Optional[str], Optional[str]]:
+        """
+        获取首尾帧图片URL
+        
+        Args:
+            ai_tool: AITool 对象
+        
+        Returns:
+            Tuple[Optional[str], Optional[str]]: (首帧URL, 尾帧URL)
+        """
+        if not ai_tool.image_path:
+            return None, None
+        
+        image_urls = [url.strip() for url in ai_tool.image_path.split(',') if url.strip()]
+        
+        if len(image_urls) == 0:
+            return None, None
+        elif len(image_urls) == 1:
+            return image_urls[0], None
+        else:
+            return image_urls[0], image_urls[1]
+    
+    def get_reference_images(self, ai_tool) -> List[str]:
+        """
+        获取参考图URL列表
+        
+        Args:
+            ai_tool: AITool 对象
+        
+        Returns:
+            List[str]: 参考图URL列表
+        """
+        if not ai_tool.reference_images:
+            return []
+        
+        try:
+            refs = json.loads(ai_tool.reference_images) if isinstance(ai_tool.reference_images, str) else ai_tool.reference_images
+            return refs if isinstance(refs, list) else []
+        except (json.JSONDecodeError, TypeError):
+            self.logger.warning(f"无法解析 reference_images: {ai_tool.reference_images}")
+            return []
+    
+    def get_all_images_by_mode(self, ai_tool) -> Dict[str, Any]:
+        """
+        根据图片模式获取所有图片信息
+        
+        Args:
+            ai_tool: AITool 对象
+        
+        Returns:
+            Dict[str, Any]: 图片信息字典
+                - mode: 图片模式
+                - first_frame: 首帧URL（可选）
+                - last_frame: 尾帧URL（可选）
+                - reference_images: 参考图URL列表（可选）
+        """
+        mode = self.parse_image_mode(ai_tool)
+        first_frame, last_frame = self.get_first_last_frames(ai_tool)
+        reference_images = self.get_reference_images(ai_tool)
+        
+        return {
+            'mode': mode,
+            'first_frame': first_frame,
+            'last_frame': last_frame,
+            'reference_images': reference_images
         }
     
     def __str__(self):
