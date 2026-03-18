@@ -6426,6 +6426,10 @@
             showToast(`正在生成 ${i + 1}/${shotGroupsWithFrames.length} 分镜组的视频...`, 'info');
             
             try {
+              // 将剧本节点的视频模型同步到分镜组节点（修复剧本节点视频模型选择不生效的bug）
+              if(node.data.videoModel) {
+                shotGroupNode.data.videoModel = node.data.videoModel;
+              }
               // 为每个分镜组调用批量生成函数
               await generateAllShotFrameVideos(shotGroupNode.id, shotGroupNode);
               successCount++;
@@ -9797,6 +9801,8 @@
 
           try {
             showToast(`正在生成 ${i + 1}/${shotFrameNodes.length} 分镜视频...`, 'info');
+            // 从分镜组节点继承视频模型配置（修复视频模型选择不生效的bug）
+            shotFrameNode.data.videoModel = shotGroupNode.data.videoModel || shotFrameNode.data.videoModel;
             await generateShotFrameVideo(shotFrameNode.id, shotFrameNode);
             successCount++;
           } catch(error) {
