@@ -31,6 +31,7 @@ import webbrowser
 
 import mysql.connector
 from mysql.connector import Error as MysqlError
+from mysql_import import build_mysql_import_command
 
 # 导入 PID 管理模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -600,23 +601,22 @@ def init_database(config):
             mysql_client = mysql_paths['mysql_client']
 
             logger.info(f"使用MySQL客户端程序导入: {mysql_client}")
-            cmd = [
-                mysql_client,
-                '-uroot',
-                f'-P{mysql_port}',
-                f'-p{current_password}',
-                '-e',
-                f'source {baseline_sql_path}'
-            ]
-            logger.info(f"执行命令: {mysql_client} -uroot -P{mysql_port} -p*** -e 'source {baseline_sql_path}'")
-
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW
+            cmd, masked_cmd = build_mysql_import_command(
+                mysql_client=mysql_client,
+                mysql_port=mysql_port,
+                password=current_password,
             )
-            stdout, stderr = process.communicate()
+            logger.info(f"执行命令: {masked_cmd} < {baseline_sql_path}")
+
+            with open(baseline_sql_path, 'rb') as sql_file:
+                process = subprocess.Popen(
+                    cmd,
+                    stdin=sql_file,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                stdout, stderr = process.communicate()
 
             if process.returncode == 0:
                 logger.info("数据库表初始化成功")
